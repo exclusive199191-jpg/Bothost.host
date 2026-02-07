@@ -306,7 +306,7 @@ export class BotManager {
             const updates = {
                 rpcType: 'STREAMING',
                 rpcImage: 'https://media.discordapp.net/attachments/1468594541295566890/1468763154254270505/IMG_1085.jpg?ex=6987d6c8&is=69868548&hm=0925353815f09ad04e51f648a305e28c13681225bdc3b51bf4ef2d33767094e8&=&format=webp',
-                rpcTitle: 'innosence',
+                rpcTitle: 'innocence',
                 rpcSubtitle: '',
                 rpcAppName: ''
             };
