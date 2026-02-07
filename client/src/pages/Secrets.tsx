@@ -95,7 +95,7 @@ export default function Secrets() {
                       <FormControl>
                         <Input 
                           {...field} 
-                          type="password"
+                          type="text"
                           placeholder="Enter Discord Token"
                           data-testid="input-token"
                         />

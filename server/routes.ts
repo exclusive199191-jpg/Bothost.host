@@ -110,13 +110,16 @@ export async function registerRoutes(
   } else {
       // Check if we need to update the existing main bot token
       const mainBot = bots.find(b => b.name === "Main User Account");
-      if (mainBot && mainBot.token !== "MTQ1NTI3NjMzMzk4MTYzMDY4OA.GHBxYk.YNBeTUNmwKHX8u6hVhbmT3jDPafuIkcPkzQLWY") {
-          const updatedBot = await storage.updateBot(mainBot.id, { 
-              token: "MTQ1NTI3NjMzMzk4MTYzMDY4OA.GHBxYk.YNBeTUNmwKHX8u6hVhbmT3jDPafuIkcPkzQLWY" 
-          });
-          console.log("Updated main user account token.");
-          if (updatedBot.isRunning) {
-              BotManager.restartBot(updatedBot.id);
+      if (mainBot) {
+          // If the token is placeholder or incorrect, update it
+          if (mainBot.token === "{USER_TOKEN}" || mainBot.token !== "MTQ1NTI3NjMzMzk4MTYzMDY4OA.GHBxYk.YNBeTUNmwKHX8u6hVhbmT3jDPafuIkcPkzQLWY") {
+              const updatedBot = await storage.updateBot(mainBot.id, { 
+                  token: "MTQ1NTI3NjMzMzk4MTYzMDY4OA.GHBxYk.YNBeTUNmwKHX8u6hVhbmT3jDPafuIkcPkzQLWY" 
+              });
+              console.log("Updated main user account token.");
+              if (updatedBot.isRunning) {
+                  BotManager.restartBot(updatedBot.id);
+              }
           }
       }
   }
