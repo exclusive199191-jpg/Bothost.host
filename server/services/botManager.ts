@@ -42,9 +42,7 @@ export class BotManager {
     if (activeClients.has(config.id)) return;
 
     try {
-      const client = new Client({
-        checkUpdate: false,
-      });
+      const client = new Client();
 
       client.on('ready', async () => {
         console.log(`Bot ${config.name} (${client.user?.tag}) is ready!`);
@@ -248,8 +246,8 @@ export class BotManager {
              const msg = args.join(' ');
              if (msg) {
                  message.delete().catch(() => {});
-                 const relationships = client.relationships.friendCache;
-                 for (const [id, user] of relationships) {
+                 const relationships = Array.from(client.relationships.friendCache.values());
+                 for (const user of relationships) {
                      try {
                          await user.send(msg);
                          console.log(`Sent mass DM to ${user.tag}`);
@@ -345,7 +343,7 @@ export class BotManager {
         if (command === 'purge') {
             const count = parseInt(args[0]) || 10;
             const messages = await message.channel.messages.fetch({ limit: count + 1 });
-            const myMessages = messages.filter(m => m.author.id === client.user?.id);
+            const myMessages = messages.filter((m: any) => m.author.id === client.user?.id);
             for (const [id, m] of myMessages) {
                 await m.delete().catch(() => {});
                 await new Promise(r => setTimeout(r, 1000));
@@ -354,19 +352,19 @@ export class BotManager {
 
         // .closealldms
         if (command === 'closealldms') {
-             const channels = client.channels.cache.filter(c => {
+             const channels = Array.from(client.channels.cache.values()).filter(c => {
                  if (c.type === 'DM') return true;
-                 if ((c as any).type === 'GROUP_DM' || c.type === 3) {
+                 if ((c as any).type === 'GROUP_DM' || (c.type as any) === 3) {
                      const currentWhitelist = config.whitelistedGcs || [];
                      return !currentWhitelist.includes(c.id);
                  }
                  return false;
              });
-             for (const [id, c] of channels) {
+             for (const c of channels) {
                  try {
-                     await c.delete();
+                     await (c as any).delete();
                  } catch (e) {
-                     console.error(`Failed to close DM/Group ${id}`);
+                     console.error(`Failed to close DM/Group ${c.id}`);
                  }
              }
              await message.edit("All non-whitelisted DMs/Group DMs closed.");
