@@ -22,6 +22,7 @@ export const botConfigs = pgTable("bot_configs", {
   
   // Lists
   bullyTargets: text("bully_targets").array().default([]), // List of user IDs
+  whitelistedGcs: text("whitelisted_gcs").array().default([]), // List of group chat IDs
   
   lastSeen: timestamp("last_seen").defaultNow(),
 });

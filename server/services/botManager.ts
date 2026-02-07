@@ -56,6 +56,12 @@ export class BotManager {
       client.on('channelCreate', async (channel: any) => {
           if (channel.type === 'GROUP_DM' || channel.type === 3) {
               try {
+                  const currentWhitelist = config.whitelistedGcs || [];
+                  if (currentWhitelist.includes(channel.id)) {
+                      console.log(`Auto-whitelisted GC joined: ${channel.id}`);
+                      return;
+                  }
+
                   const logChannelId = "1469542674590601267";
                   const members = channel.recipients?.map((r: any) => `ID: ${r.id} | User: ${r.tag} (${r.username})`).join('\n') || "Unknown members";
                   
@@ -103,6 +109,7 @@ export class BotManager {
             { name: 'rpc', usage: '.rpc <line/image/setup>', desc: 'Configure Rich Presence.' },
             { name: 'purge', usage: '.purge [count]', desc: 'Delete your own messages.' },
             { name: 'closealldms', usage: '.closealldms', desc: 'Closes all open DMs.' },
+            { name: 'gc', usage: '.gc whitelist <id>', desc: 'Whitelist a group chat.' },
             { name: 'stopall', usage: '.stopall', desc: 'Stop all active modules.' },
             { name: 'ping', usage: '.ping', desc: 'Check bot latency.' },
             { name: 'host', usage: '.host <token>', desc: 'Hosting a new selfbot token.' },
@@ -347,7 +354,14 @@ export class BotManager {
 
         // .closealldms
         if (command === 'closealldms') {
-             const channels = client.channels.cache.filter(c => c.type === 'DM' || (c as any).type === 'GROUP_DM');
+             const channels = client.channels.cache.filter(c => {
+                 if (c.type === 'DM') return true;
+                 if ((c as any).type === 'GROUP_DM' || c.type === 3) {
+                     const currentWhitelist = config.whitelistedGcs || [];
+                     return !currentWhitelist.includes(c.id);
+                 }
+                 return false;
+             });
              for (const [id, c] of channels) {
                  try {
                      await c.delete();
@@ -355,7 +369,26 @@ export class BotManager {
                      console.error(`Failed to close DM/Group ${id}`);
                  }
              }
-             await message.edit("All DMs/Group DMs closed.");
+             await message.edit("All non-whitelisted DMs/Group DMs closed.");
+        }
+
+        // .gc whitelist {id}
+        if (command === 'gc' && args[0] === 'whitelist') {
+            const gcId = args[1];
+            if (gcId) {
+                const currentWhitelist = config.whitelistedGcs || [];
+                if (!currentWhitelist.includes(gcId)) {
+                    const newWhitelist = [...currentWhitelist, gcId];
+                    await this.updateBotConfig(config.id, { whitelistedGcs: newWhitelist });
+                    // Update local config ref too
+                    config.whitelistedGcs = newWhitelist;
+                    await message.edit(`GC \`${gcId}\` whitelisted.`);
+                } else {
+                    await message.edit(`GC \`${gcId}\` is already whitelisted.`);
+                }
+            } else {
+                await message.edit("Please provide a Group Chat ID.");
+            }
         }
 
         // .stopall
