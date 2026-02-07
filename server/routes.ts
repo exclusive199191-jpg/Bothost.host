@@ -101,12 +101,11 @@ export async function registerRoutes(
       const bot = await storage.createBot({
           token: mainToken,
           name: "Main User Account",
-          isRunning: true,
+          isRunning: false, // Don't auto-start with invalid token
           rpcAppName: "Selfbot",
           rpcType: "PLAYING"
       });
       console.log("Seeded main user account.");
-      BotManager.startBot(bot).catch(err => console.error("Failed to start seeded bot:", err));
   }
 
   return httpServer;
