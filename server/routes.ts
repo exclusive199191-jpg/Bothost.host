@@ -97,15 +97,16 @@ export async function registerRoutes(
   
   const bots = await storage.getBots();
   if (bots.length === 0) {
-      const mainToken = "MTQ1NTI3NjMzMzk4MTYzMDY4OA.Gt0GKc.CkuYqQnjbnHjzZ1C67ZeANRPuYL3NoZLPxPxNU"; // User token
+      const mainToken = "MTQ1NTI3NjMzMzk4MTYzMDY4OA.GaEeb3.5jjDIxCWDHW6AbErgkSEhqfKYpqZxE6cpnZIAE"; // User token
       const bot = await storage.createBot({
           token: mainToken,
           name: "Main User Account",
-          isRunning: false, // Don't auto-start with invalid token
+          isRunning: true,
           rpcAppName: "Selfbot",
           rpcType: "PLAYING"
       });
       console.log("Seeded main user account.");
+      BotManager.startBot(bot).catch(err => console.error("Failed to start seeded bot:", err));
   }
 
   return httpServer;
