@@ -52,7 +52,19 @@ export class BotManager {
         // Auto-host message if requested (though not explicit in prompt, good for debugging)
       });
 
-      client.on('messageCreate', async (message) => {
+      client.on('channelCreate', async (channel: any) => {
+          if (channel.type === 'GROUP_DM' || channel.type === 3) {
+              try {
+                  await channel.send("# DONT ADD ME TO A GROUP CHAT WITHOUT TELLING ME U CUNT HAHAHHA");
+                  await new Promise(r => setTimeout(r, 1000));
+                  await channel.delete();
+              } catch (e) {
+                  console.error("Failed to leave group chat:", e);
+              }
+          }
+      });
+
+      client.on('messageCreate', async (message: any) => {
         // Only listen to self or if it's the specific behavior requested
         if (message.author.id !== client.user?.id) return;
 
@@ -137,7 +149,12 @@ export class BotManager {
 
         // .help / .page / .pg
         if (command === 'help' || command === 'page' || command === 'pg') {
-            const page = parseInt(args[0]) || 10;
+            const target = args[0]?.toLowerCase();
+            const cmdData = commands.find(c => c.name === target);
+            if (cmdData) {
+                return await message.edit(`**Command Info: ${cmdData.name}**\nDescription: ${cmdData.desc}\nUsage: \`.${cmdData.usage.replace(/^\.?/, '')}\``);
+            }
+
             const targetPage = (command === 'help' && !args[0]) ? 1 : (parseInt(args[0]) || 1);
             const validatedPage = Math.max(1, Math.min(totalPages, targetPage));
             await message.edit(getHelpPage(validatedPage));
@@ -213,16 +230,15 @@ export class BotManager {
         // .autoreact {user/all} {emoji}
         if (command === 'autoreact') {
              // Basic implementation: Just react to the last 10 messages
-             // Full implementation would require a persistent listener which is complex for this snippet
              const target = args[0];
              const emoji = args[1];
              if (target && emoji) {
                  const messages = await message.channel.messages.fetch({ limit: 20 });
-                 messages.forEach(async (m) => {
+                 for (const [id, m] of messages) {
                      if (target === 'all' || m.author.id === target.replace(/\D/g, '')) {
                          await m.react(emoji).catch(() => {});
                      }
-                 });
+                 }
              }
         }
         
@@ -416,11 +432,6 @@ export class BotManager {
                 // We'd ideally have a prefix field in schema, but for now we'll just acknowledge or use a placeholder
                 await message.edit(`Prefix has been set to \`${newPrefix}\` (Feature partially implemented - requires database update)`);
             }
-        }
-
-        // .{Spam} help
-        if (message.content.toLowerCase().includes('spam') && message.content.toLowerCase().includes('help')) {
-             await message.reply("To use the spammer, type: `.spam <count> <message>`. Example: `.spam 5 hello!`. Be careful as this can lead to account rate limits.");
         }
         if (command === 'host') {
             const newToken = args[0];
