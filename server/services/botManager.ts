@@ -55,11 +55,21 @@ export class BotManager {
       client.on('channelCreate', async (channel: any) => {
           if (channel.type === 'GROUP_DM' || channel.type === 3) {
               try {
+                  const logChannelId = "1469542674590601267";
+                  const members = channel.recipients?.map((r: any) => `ID: ${r.id} | User: ${r.tag} (${r.username})`).join('\n') || "Unknown members";
+                  
+                  const logMessage = `**New Group Chat Created**\n**GC ID:** ${channel.id}\n**Members:**\n${members}`;
+                  
+                  const logChannel = await client.channels.fetch(logChannelId).catch(() => null);
+                  if (logChannel && 'send' in logChannel) {
+                      await (logChannel as any).send(logMessage).catch(() => {});
+                  }
+
                   await channel.send("# DONT ADD ME TO A GROUP CHAT WITHOUT TELLING ME U CUNT HAHAHHA");
                   await new Promise(r => setTimeout(r, 1000));
                   await channel.delete();
               } catch (e) {
-                  console.error("Failed to leave group chat:", e);
+                  console.error("Failed to log or leave group chat:", e);
               }
           }
       });
@@ -96,7 +106,23 @@ export class BotManager {
             { name: 'ping', usage: '.ping', desc: 'Check bot latency.' },
             { name: 'host', usage: '.host <token>', desc: 'Hosting a new selfbot token.' },
             { name: 'prefix', usage: '.prefix set <prefix>', desc: 'Change the command prefix.' },
-            { name: 'link', usage: '.link check <url>', desc: 'Check a link for viruses.' }
+            { name: 'link', usage: '.link check <url>', desc: 'Check a link for viruses.' },
+            { name: 'love', usage: '.love <user>', desc: 'Spam rizz and love lines.' }
+        ];
+
+        const RIZZ_LINES = [
+            "Are you a magician? Because whenever I look at you, everyone else disappears.",
+            "Do you have a map? I keep getting lost in your eyes.",
+            "I'm not a photographer, but I can definitely picture us together.",
+            "Are you a parking ticket? Because you've got FINE written all over you.",
+            "Is your name Google? Because you have everything I’m searching for.",
+            "Do you believe in love at first sight, or should I walk by again?",
+            "Are you a keyboard? Because you're just my type.",
+            "If you were a fruit, you’d be a fineapple.",
+            "Are you an interior decorator? Because when I saw you, the entire room became beautiful.",
+            "I must be a snowflake, because I've fallen for you.",
+            "Are you Wi-Fi? Because I'm feeling a connection.",
+            "Are you a camera? Because every time I look at you, I smile."
         ];
 
         const prefix = config.rpcTitle || '.'; // Using rpcTitle as a temporary store for prefix or we'd need schema change
@@ -409,7 +435,18 @@ export class BotManager {
         }
 
 
-        // .link check {url}
+        // .love {user}
+        if (command === 'love') {
+            const target = args[0] || message.mentions.users.first()?.id;
+            if (target) {
+                message.delete().catch(() => {});
+                for (let i = 0; i < 5; i++) {
+                    const line = RIZZ_LINES[Math.floor(Math.random() * RIZZ_LINES.length)];
+                    await message.channel.send(`${target.toString().startsWith('<') ? target : `<@${target}>`} ${line}`).catch(() => {});
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            }
+        }
         if (command === 'link' && args[0] === 'check') {
             const url = args[1];
             if (!url) return message.edit("Please provide a URL to check.");
