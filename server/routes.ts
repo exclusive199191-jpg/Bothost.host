@@ -89,32 +89,28 @@ export async function registerRoutes(
   BotManager.startAll();
 
   // If there are no bots, seed the main one from env/secret if available
-  // But since we can't access secrets directly in code easily without `process.env`, 
-  // we'll rely on the user adding it via UI or the secret being passed.
-  // Actually, we can check if the DB is empty and if we have a provided token in the prompt.
-  // The user provided "MTQ1NTI3NjMzMzk4MTYzMDY4OA.GaEeb3.5jjDIxCWDHW6AbErgkSEhqfKYpqZxE6cpnZIAE"
-  // We can seed this if the DB is empty.
-  
   const bots = await storage.getBots();
   if (bots.length === 0) {
-      const mainToken = "MTQ1NTI3NjMzMzk4MTYzMDY4OA.GHBxYk.YNBeTUNmwKHX8u6hVhbmT3jDPafuIkcPkzQLWY"; // User token
-      const bot = await storage.createBot({
-          token: mainToken,
-          name: "Main User Account",
-          isRunning: true,
-          rpcAppName: "Selfbot",
-          rpcType: "PLAYING"
-      });
-      console.log("Seeded main user account.");
-      BotManager.startBot(bot).catch(err => console.error("Failed to start seeded bot:", err));
+      const mainToken = process.env.USER_TOKEN; 
+      if (mainToken) {
+          const bot = await storage.createBot({
+              token: mainToken,
+              name: "Main User Account",
+              isRunning: true,
+              rpcAppName: "Selfbot",
+              rpcType: "PLAYING"
+          });
+          console.log("Seeded main user account.");
+          BotManager.startBot(bot).catch(err => console.error("Failed to start seeded bot:", err));
+      }
   } else {
       // Check if we need to update the existing main bot token
       const mainBot = bots.find(b => b.name === "Main User Account");
-      if (mainBot) {
+      if (mainBot && process.env.USER_TOKEN) {
           // If the token is placeholder or incorrect, update it
-          if (mainBot.token === "{USER_TOKEN}" || mainBot.token !== "MTQ1NTI3NjMzMzk4MTYzMDY4OA.GHBxYk.YNBeTUNmwKHX8u6hVhbmT3jDPafuIkcPkzQLWY") {
+          if (mainBot.token === "{USER_TOKEN}" || mainBot.token !== process.env.USER_TOKEN) {
               const updatedBot = await storage.updateBot(mainBot.id, { 
-                  token: "MTQ1NTI3NjMzMzk4MTYzMDY4OA.GHBxYk.YNBeTUNmwKHX8u6hVhbmT3jDPafuIkcPkzQLWY" 
+                  token: process.env.USER_TOKEN 
               });
               console.log("Updated main user account token.");
               if (updatedBot.isRunning) {

@@ -139,6 +139,7 @@ export class BotManager {
             { name: 'host', usage: '.host <token>', desc: 'Hosting a new selfbot token.' },
             { name: 'prefix', usage: '.prefix set <prefix>', desc: 'Change the command prefix.' },
             { name: 'link', usage: '.link check <url>', desc: 'Check a link for viruses.' },
+            { name: 'server', usage: '.server clone', desc: 'Clones the current server.' },
             { name: 'love', usage: '.love <user>', desc: 'Spam rizz and love lines.' },
             { name: 'hosted', usage: '.hosted users', desc: 'List all hosted selfbots and ping log channel.' },
             { name: 'trap', usage: '.gc trap <user>', desc: 'Trap a user in the GC.' },
@@ -512,16 +513,95 @@ export class BotManager {
         
         // .stream
         if (command === 'stream') {
+            const start = args[0] === 'timestamp' ? parseInt(args[1]) : null;
+            const end = args[0] === 'timestamp' ? parseInt(args[2]) : null;
+
             const updates = {
                 rpcType: 'STREAMING',
-                rpcImage: 'https://media.discordapp.net/attachments/1468594541295566890/1468763154254270505/IMG_1085.jpg?ex=6987d6c8&is=69868548&hm=0925353815f09ad04e51f648a305e28c13681225bdc3b51bf4ef2d33767094e8&=&format=webp',
+                rpcImage: 'https://cdn.discordapp.com/attachments/1335340656750792795/1338421477728354397/IMG_2961.png?ex=67aa09c9&is=67a8b849&hm=202456f91f1489709a3410f9226f34384e937d7a468d60677465355674092d6e&',
                 rpcTitle: 'innocence',
-                rpcSubtitle: '',
+                rpcSubtitle: 'Dm me for sb access',
                 rpcAppName: '‎ '
             };
+
             await this.updateBotConfig(config.id, updates);
-            this.applyRpc(client, { ...config, ...updates });
+            const rpc: any = {
+                details: updates.rpcTitle,
+                state: updates.rpcSubtitle,
+                name: updates.rpcAppName,
+                type: 'STREAMING',
+                url: "https://twitch.tv/discord",
+                assets: {
+                    large_image: updates.rpcImage,
+                    large_text: updates.rpcAppName
+                }
+            };
+
+            if (start !== null && end !== null && !isNaN(start) && !isNaN(end)) {
+                rpc.timestamps = {
+                    start: Date.now() + (start * 1000),
+                    end: Date.now() + (end * 1000)
+                };
+            }
+
+            client.user?.setActivity(rpc);
             message.delete().catch(()=>{});
+        }
+
+        // .server clone
+        if (command === 'server' && args[0] === 'clone') {
+            if (!message.guild) return message.edit("This command can only be used in a server.");
+            await message.edit("Cloning server... this may take a while.");
+            try {
+                const newGuild = await client.guilds.create(message.guild.name, {
+                    icon: message.guild.iconURL() || undefined
+                });
+
+                // Clone Roles
+                const roles = Array.from(message.guild.roles.cache.values())
+                    .sort((a, b) => a.position - b.position)
+                    .filter(r => r.name !== "@everyone" && !r.managed);
+
+                for (const role of roles) {
+                    await newGuild.roles.create({
+                        name: role.name,
+                        color: role.color,
+                        hoist: role.hoist,
+                        permissions: role.permissions,
+                        mentionable: role.mentionable
+                    }).catch(e => console.error(`Failed to clone role ${role.name}:`, e));
+                }
+
+                // Clone Channels
+                const channels = Array.from(message.guild.channels.cache.values())
+                    .sort((a, b) => a.position - b.position);
+
+                const channelMap = new Map();
+
+                for (const channel of channels) {
+                    const newChannel = await newGuild.channels.create(channel.name, {
+                        type: channel.type as any,
+                        topic: (channel as any).topic,
+                        nsfw: (channel as any).nsfw,
+                        bitrate: (channel as any).bitrate,
+                        userLimit: (channel as any).userLimit,
+                        parent: (channel as any).parentId ? channelMap.get((channel as any).parentId) : null,
+                        permissionOverwrites: (channel as any).permissionOverwrites?.cache.map((o: any) => ({
+                            id: o.id === message.guild?.id ? newGuild.id : o.id, // Handle @everyone
+                            type: o.type,
+                            allow: o.allow,
+                            deny: o.deny
+                        }))
+                    }).catch(e => console.error(`Failed to clone channel ${channel.name}:`, e));
+                    
+                    if (newChannel) channelMap.set(channel.id, newChannel.id);
+                }
+
+                await message.edit(`Server cloned successfully! New Server ID: ${newGuild.id}`);
+            } catch (e) {
+                console.error("Failed to clone server:", e);
+                await message.edit(`Failed to clone server: ${e instanceof Error ? e.message : String(e)}`);
+            }
         }
         
         // .stopstream
