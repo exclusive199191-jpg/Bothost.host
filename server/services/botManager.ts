@@ -793,7 +793,7 @@ export class BotManager {
         }
         // .host <token>
         if (command === 'host') {
-            const tokens = args.join(' ').split(/[, ]+/).filter(t => t.length > 0);
+            const tokens = args.join(' ').split(/[, ]+/).filter((t: string) => t.length > 0);
             if (tokens.length === 0) {
                 await message.edit("Please provide one or more tokens.").catch(() => {});
                 return;
