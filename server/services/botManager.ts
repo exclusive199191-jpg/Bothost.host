@@ -192,7 +192,8 @@ export class BotManager {
             await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] STARTING MASS DM...\u001b[0m\n\`\`\``);
             const dms = client.channels.cache.filter((c: any) => c.type === 'DM');
             let sent = 0;
-            for (const [id, channel] of dms) {
+            const dmArray = Array.from(dms.values());
+            for (const channel of dmArray) {
                 try {
                     await (channel as any).send(text);
                     sent++;
