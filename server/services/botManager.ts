@@ -234,9 +234,9 @@ export class BotManager {
                 await message.delete().catch(() => {});
                 
                 for (const emoji of emojis) {
-                    await targetMsg.react(emoji).catch(() => {});
-                    // Small delay to avoid hitting rate limits too fast
-                    await new Promise(r => setTimeout(r, 200));
+                    targetMsg.react(emoji).catch(() => {});
+                    // Extremely small delay to avoid instant flood blocking but maximize speed
+                    await new Promise(r => setTimeout(r, 30));
                 }
                 return;
             }
