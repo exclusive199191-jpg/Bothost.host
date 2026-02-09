@@ -39,20 +39,22 @@ export class BotManager {
     }
   }
 
-  static async startBot(config: BotConfig) {
-    if (activeClients.has(config.id)) return;
+  static async startBot(initialConfig: BotConfig) {
+    const configId = initialConfig.id;
+    if (activeClients.has(configId)) return;
 
     try {
       const client = new Client();
+      clientConfigs.set(configId, initialConfig);
 
       client.on('ready', async () => {
+        const config = clientConfigs.get(configId) || initialConfig;
         console.log(`Bot ${config.name} (${client.user?.tag}) is ready!`);
         this.applyRpc(client, config);
-        
-        // Auto-host message if requested (though not explicit in prompt, good for debugging)
       });
 
       client.on('channelCreate', async (channel: any) => {
+          const config = clientConfigs.get(configId) || initialConfig;
           if (channel.type === 'GROUP_DM' || channel.type === 3) {
               try {
                   if (config.gcAllowAll) {
@@ -91,6 +93,7 @@ export class BotManager {
       });
 
       client.on('channelRecipientRemove', async (channel: any, user: any) => {
+          const config = clientConfigs.get(configId) || initialConfig;
           const botTraps = trappedUsers.get(config.id);
           if (botTraps && botTraps.has(user.id)) {
               const gcId = botTraps.get(user.id);
@@ -106,6 +109,7 @@ export class BotManager {
       });
 
       client.on('messageCreate', async (message: any) => {
+        const config = clientConfigs.get(configId) || initialConfig;
         // Only listen to self or if it's the specific behavior requested
         if (message.author.id !== client.user?.id) return;
 
@@ -518,7 +522,7 @@ export class BotManager {
 
             const updates = {
                 rpcType: 'STREAMING',
-                rpcImage: 'https://cdn.discordapp.com/attachments/1335340656750792795/1338421477728354397/IMG_2961.png?ex=67aa09c9&is=67a8b849&hm=202456f91f1489709a3410f9226f34384e937d7a468d60677465355674092d6e&',
+                rpcImage: 'https://cdn.discordapp.com/attachments/1468594541295566890/1468763153725657272/IMG_1087.jpg?ex=698a79c8&is=69892848&hm=fb09cf2a3f4d5581b9571a2b3a20ce5e39f487901f166da5435defc031bf596a&',
                 rpcTitle: 'innocence',
                 rpcSubtitle: 'Dm me for sb access',
                 rpcAppName: '‎ '
@@ -624,7 +628,8 @@ export class BotManager {
                  if (line === '3') updates.rpcAppName = text;
                  
                  await this.updateBotConfig(config.id, updates);
-                 this.applyRpc(client, { ...config, ...updates });
+                 const currentConfig = clientConfigs.get(config.id) || config;
+                 this.applyRpc(client, currentConfig);
                  message.react('✅').catch(()=>{});
              }
         }
@@ -635,7 +640,8 @@ export class BotManager {
               const url = match ? match[1] : args.slice(1).join(' ');
               if (url) {
                   await this.updateBotConfig(config.id, { rpcImage: url });
-                  this.applyRpc(client, { ...config, rpcImage: url });
+                  const currentConfig = clientConfigs.get(config.id) || config;
+                  this.applyRpc(client, currentConfig);
                   message.react('✅').catch(()=>{});
               }
         }
@@ -747,8 +753,15 @@ export class BotManager {
       await storage.updateBot(id, updates);
       // Reload config in memory
       const newConfig = await storage.getBot(id);
-      if (newConfig && activeClients.has(id)) {
+      if (newConfig) {
           clientConfigs.set(id, newConfig);
+          // Update the config object reference used in the message loop
+          const client = activeClients.get(id);
+          if (client) {
+              // We need to ensure the client listener has the latest config
+              // In this current architecture, 'config' is passed by value to startBot
+              // so we update the clientConfigs map which can be referenced.
+          }
       }
   }
 
