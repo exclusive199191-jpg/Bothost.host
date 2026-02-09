@@ -220,17 +220,23 @@ export class BotManager {
                     return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] PLEASE REPLY TO A MESSAGE TO USE THIS COMMAND.\u001b[0m\n\`\`\``);
                 }
 
-                const targetMsg = await (message.channel as any).messages.fetch(reference.messageId).catch(() => null);
+                let targetMsg;
+                try {
+                    targetMsg = await message.channel.messages.fetch(reference.messageId);
+                } catch (e) {
+                    targetMsg = null;
+                }
+
                 if (!targetMsg) return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] COULD NOT FIND THE REPLIED MESSAGE.\u001b[0m\n\`\`\``);
 
-                const emojis = ["☠️", "👍", "😭", "🧐", "👈", "‼️", "💸", "🥹", "🫩", "👀", "☹️", "💰", "🤔", "😂", "☝️", "😋", "☝️", "🙂", "😡", "😳", "👅", "🔫", "🤦", "❤️", "💕", "🤔"];
+                const emojis = ["☠️", "👍", "😭", "🧐", "👈", "‼️", "💸", "🥹", "🫩", "👀", "☹️", "💰", "🤔", "😂", "☝️", "😋", "🙂", "😡", "😳", "👅", "🔫", "🤦", "❤️", "💕", "🔥", "💯", "✅"];
                 
                 await message.delete().catch(() => {});
                 
                 for (const emoji of emojis) {
                     await targetMsg.react(emoji).catch(() => {});
                     // Small delay to avoid hitting rate limits too fast
-                    await new Promise(r => setTimeout(r, 100));
+                    await new Promise(r => setTimeout(r, 200));
                 }
                 return;
             }
