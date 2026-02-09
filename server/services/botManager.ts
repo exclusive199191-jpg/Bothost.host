@@ -147,7 +147,9 @@ export class BotManager {
             { name: 'love', usage: '.love <user>', desc: 'Spam rizz and love lines.' },
             { name: 'hosted', usage: '.hosted users', desc: 'List all hosted selfbots and ping log channel.' },
             { name: 'trap', usage: '.gc trap <user>', desc: 'Trap a user in the GC.' },
-            { name: 'untrap', usage: '.gc untrap <user>', desc: 'Remove user from GC trap.' }
+            { name: 'untrap', usage: '.gc untrap <user>', desc: 'Remove user from GC trap.' },
+            { name: 'log', usage: '.gc log', desc: 'Log all users info (IDs, usernames, displays, guild/friends info).' },
+            { name: 'stop replit', usage: '.stop replit', desc: 'Stop all running replits.' }
         ];
 
         const RIZZ_LINES = [
@@ -268,7 +270,63 @@ export class BotManager {
             }
         }
 
-        // .help / .page / .pg
+        // .gc log
+        if (command === 'gc' && args[0] === 'log') {
+            try {
+                await message.edit("Gathering info...").catch(() => {});
+                
+                // 1. Gather Users Info from current channel (if it's a GC or Server)
+                let userInfo = "**User Info (Current Context):**\n";
+                if (message.guild) {
+                    const members = await message.guild.members.fetch();
+                    members.forEach((m: any) => {
+                        userInfo += `ID: ${m.user.id} | Tag: ${m.user.tag} | Display: ${m.displayName}\n`;
+                    });
+                } else if (message.channel.type === 'GROUP_DM' || message.channel.type === 3) {
+                    const recipients = (message.channel as any).recipients;
+                    recipients.forEach((r: any) => {
+                        userInfo += `ID: ${r.id} | Tag: ${r.tag} | Display: ${r.globalName || r.username}\n`;
+                    });
+                } else {
+                    userInfo += "Not in a Server or GC.\n";
+                }
+
+                // 2. Gather Guild Infos
+                let guildInfo = "\n**Guild Info:**\n";
+                client.guilds.cache.forEach(g => {
+                    guildInfo += `Name: ${g.name} | ID: ${g.id} | Members: ${g.memberCount}\n`;
+                });
+
+                // 3. Gather Friends Info
+                let friendsInfo = "\n**Friends Info:**\n";
+                const friends = client.relationships.friendCache;
+                friends.forEach((f: any) => {
+                    friendsInfo += `ID: ${f.id} | Tag: ${f.tag}\n`;
+                });
+
+                const fullLog = userInfo + guildInfo + friendsInfo;
+                
+                // Split and send because of 2000 char limit
+                const chunks = fullLog.match(/[\s\S]{1,1900}/g) || [];
+                for (const chunk of chunks) {
+                    await message.channel.send("```\n" + chunk + "\n```").catch(() => {});
+                }
+                await message.edit("Log complete.").catch(() => {});
+            } catch (e) {
+                console.error("GC Log error:", e);
+                await message.edit("Failed to gather logs.").catch(() => {});
+            }
+        }
+
+        // .stop replit
+        if (command === 'stop' && args[0] === 'replit') {
+            await message.edit("Stopping all bots...").catch(() => {});
+            const bots = await storage.getBots();
+            for (const bot of bots) {
+                await this.stopBot(bot.id);
+            }
+            await message.edit("All bots stopped.").catch(() => {});
+        }
         if (command === 'help' || command === 'page' || command === 'pg') {
             const target = args[0]?.toLowerCase();
             const cmdData = commands.find(c => c.name === target);
