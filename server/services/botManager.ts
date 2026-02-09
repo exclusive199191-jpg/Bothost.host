@@ -158,6 +158,10 @@ export class BotManager {
 
   private static applyRpc(client: Client, config: BotConfig) {
       if (!client.user) return;
+      
+      // Clear previous activity first
+      client.user.setActivity(null);
+
       const rpc: any = {
           name: config.rpcAppName || "Selfbot",
           type: config.rpcType?.toUpperCase() || "PLAYING",
@@ -167,8 +171,12 @@ export class BotManager {
 
       if (config.rpcStartTimestamp || config.rpcEndTimestamp) {
           rpc.timestamps = {};
-          if (config.rpcStartTimestamp) rpc.timestamps.start = Number(config.rpcStartTimestamp);
-          if (config.rpcEndTimestamp) rpc.timestamps.end = Number(config.rpcEndTimestamp);
+          if (config.rpcStartTimestamp && config.rpcStartTimestamp !== "0") {
+              rpc.timestamps.start = Number(config.rpcStartTimestamp);
+          }
+          if (config.rpcEndTimestamp && config.rpcEndTimestamp !== "0") {
+              rpc.timestamps.end = Number(config.rpcEndTimestamp);
+          }
       }
 
       if (config.rpcImage) {
@@ -178,7 +186,18 @@ export class BotManager {
           };
       }
 
-      client.user.setActivity(rpc);
+      console.log(`Applying RPC for ${client.user.tag}:`, JSON.stringify(rpc, null, 2));
+      
+      try {
+          client.user.setActivity(rpc);
+          // Set presence to online and ensure activity is broadcast
+          client.user.setPresence({ 
+              status: 'online',
+              activities: [rpc]
+          });
+      } catch (e) {
+          console.error(`Failed to set activity for ${client.user.tag}:`, e);
+      }
   }
 
   static async stopBot(id: number) {
@@ -198,10 +217,13 @@ export class BotManager {
     }
   }
 
-  private static async updateBotConfig(id: number, updates: any) {
+  static async updateBotConfig(id: number, updates: any) {
     const updated = await storage.updateBot(id, updates);
     clientConfigs.set(id, updated);
     const client = activeClients.get(id);
-    if (client) this.applyRpc(client, updated);
+    if (client) {
+      console.log(`Config updated for bot ${id}, re-applying RPC...`);
+      this.applyRpc(client, updated);
+    }
   }
 }

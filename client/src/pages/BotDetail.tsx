@@ -61,7 +61,14 @@ export default function BotDetail() {
   }, [bot, form]);
 
   const onSubmit = (data: any) => {
-    updateBot.mutate({ id, ...data });
+    // Convert timestamps to string to match schema
+    // and handle potential numeric input from UI
+    const submissionData = {
+      ...data,
+      rpcStartTimestamp: data.rpcStartTimestamp ? String(data.rpcStartTimestamp) : "",
+      rpcEndTimestamp: data.rpcEndTimestamp ? String(data.rpcEndTimestamp) : "",
+    };
+    updateBot.mutate({ id, ...submissionData });
   };
 
   if (isLoading) {

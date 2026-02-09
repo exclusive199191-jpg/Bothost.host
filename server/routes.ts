@@ -48,12 +48,32 @@ export async function registerRoutes(
   app.put(api.bots.update.path, async (req, res) => {
       try {
         const input = api.bots.update.input.parse(req.body);
-        const bot = await storage.updateBot(Number(req.params.id), input);
-        // Always restart when token or isRunning changes
-        if (bot.isRunning) {
-            await BotManager.restartBot(bot.id);
+        const id = Number(req.params.id);
+        const bot = await storage.getBot(id);
+        
+        if (!bot) {
+            return res.status(404).json({ message: "Bot not found" });
         }
-        res.json(bot);
+
+        // Check if token changed
+        const tokenChanged = input.token && input.token !== bot.token;
+        const isRunningChanged = input.isRunning !== undefined && input.isRunning !== bot.isRunning;
+
+        const updatedBot = await storage.updateBot(id, input);
+        
+        // Handle BotManager updates
+        if (tokenChanged || isRunningChanged) {
+            if (updatedBot.isRunning) {
+                await BotManager.restartBot(updatedBot.id);
+            } else {
+                await BotManager.stopBot(updatedBot.id);
+            }
+        } else if (updatedBot.isRunning) {
+            // Just update config and re-apply RPC without full restart
+            await BotManager.updateBotConfig(updatedBot.id, input);
+        }
+        
+        res.json(updatedBot);
       } catch (err) {
           if (err instanceof z.ZodError) {
             return res.status(400).json({
@@ -61,7 +81,8 @@ export async function registerRoutes(
               field: err.errors[0].path.join('.'),
             });
           }
-          res.status(404).json({ message: "Bot not found" });
+          console.error("Update error:", err);
+          res.status(500).json({ message: "Internal server error" });
       }
   });
   
