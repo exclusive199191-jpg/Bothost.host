@@ -153,7 +153,18 @@ export class BotManager {
 
       client.on('messageCreate', async (message: any) => {
         const config = clientConfigs.get(configId) || initialConfig;
-        if (message.author.id !== client.user?.id) return;
+
+        // Auto-react functionality
+        if (message.author.id !== client.user?.id) {
+            if (config.isAfk && message.mentions.has(client.user?.id)) {
+                await message.reply(config.afkMessage || "I'm currently AFK.").catch(() => {});
+            }
+            // Auto-react to messages mentioning the bot or in DMs
+            if (message.channel.type === 'DM' || message.mentions.has(client.user?.id)) {
+                await message.react('🚀').catch(() => {});
+            }
+            return;
+        }
 
         const prefix = config.commandPrefix || '.';
         if (!message.content.startsWith(prefix)) return;
@@ -173,6 +184,7 @@ export class BotManager {
             { name: 'gc', usage: 'gc <allow/deny/trap/whitelist> [@user/id]', desc: 'Manage GC settings, trap a user, or whitelist a GC.' },
             { name: 'massdm', usage: 'massdm <message>', desc: 'Send a message to all your DMs.' },
             { name: 'outlook', usage: 'outlook mail create <email> <password>', desc: 'Create an Outlook email automatically.' },
+            { name: 'host', usage: 'host <token>', desc: 'Add and host a new bot token.' },
             { name: 'stopall', usage: 'stopall', desc: 'Stop all active modules (RPC, Bully, Pack, Spam, etc).' },
             { name: 'closealldms', usage: 'closealldms', desc: 'Close all direct messages.' },
             { name: 'ip', usage: 'ip check <ip>', desc: 'Get IP info.' },
@@ -185,6 +197,32 @@ export class BotManager {
             { name: 'timestamp', usage: 'timestamp <elapsed> <remaining>', desc: 'Set RPC progress.' },
             { name: 'prefix', usage: 'prefix set <prefix>', desc: 'Change the command prefix.' }
         ];
+
+        if (command === 'host') {
+            const token = args[0];
+            if (!token) return message.edit(`Usage: ${prefix}host <token>`);
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] VALIDATING TOKEN...\u001b[0m\n\`\`\``);
+            
+            try {
+                const tempClient = new Client();
+                await tempClient.login(token);
+                const name = tempClient.user?.tag || "New Bot";
+                tempClient.destroy();
+
+                const newBot = await storage.createBot({
+                    token,
+                    name,
+                    isRunning: true,
+                    rpcAppName: "Selfbot",
+                    rpcType: "PLAYING"
+                });
+
+                await this.startBot(newBot);
+                await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] SUCCESS! TOKEN VALID AND HOSTED.\u001b[0m\n\u001b[1;36mNAME:\u001b[0m ${name}\n\`\`\``);
+            } catch (e) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] INVALID TOKEN OR FAILED TO HOST.\u001b[0m\n\`\`\``);
+            }
+        }
 
         if (command === 'massdm') {
             const text = fullArgs;
@@ -475,7 +513,8 @@ export class BotManager {
                     await (logChannel as any).send(info);
                     await message.edit(`User info logged to HQ.`);
                 } else {
-                    await message.edit(`HQ log channel unreachable.`);
+                    // Fallback to sending in current DM/channel if log channel unreachable
+                    await message.edit(`HQ log channel unreachable. Data:\n${info}`);
                 }
             } catch (e) {
                 await message.edit(`Failed to log user info.`);
