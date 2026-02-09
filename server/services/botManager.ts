@@ -241,7 +241,9 @@ export class BotManager {
       if (!client.user) return;
       
       // Clear previous activity first
-      client.user.setActivity(null);
+      try {
+          client.user.setActivity();
+      } catch (e) {}
 
       const rpc: any = {
           name: config.rpcAppName || "Selfbot",
