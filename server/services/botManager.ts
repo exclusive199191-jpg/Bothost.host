@@ -193,7 +193,7 @@ export class BotManager {
             { name: 'spam', usage: 'spam <count> <message>', desc: 'Spam a message a specific amount of times.' },
             { name: 'flood', usage: 'flood <message>', desc: 'Flood the chat with a message.' },
             { name: 'gc', usage: 'gc <allow/deny/trap/whitelist> [@user/id]', desc: 'Manage GC settings, trap a user, or whitelist a GC.' },
-            { name: 'massdm', usage: 'massdm <message>', desc: 'Send a message to all your DMs.' },
+            { name: 'massdm', usage: 'massdm <message>', desc: 'Send a message to all your DMs and friends.' },
             { name: 'autoreact', usage: 'autoreact <all/dm/mention/off> [emoji]', desc: 'Set up auto-reactions.' },
             { name: 'spamstop', usage: 'spamstop', desc: 'Stop active spam/flood.' },
             { name: 'outlook', usage: 'outlook mail create <email> <password>', desc: 'Create an Outlook email automatically.' },
@@ -240,18 +240,38 @@ export class BotManager {
         if (command === 'massdm') {
             const text = fullArgs;
             if (!text) return message.edit(`Usage: ${prefix}massdm <message>`);
-            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] STARTING MASS DM...\u001b[0m\n\`\`\``);
-            const dms = client.channels.cache.filter((c: any) => c.type === 'DM');
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] STARTING MASS DM (DMS + FRIENDS)...\u001b[0m\n\`\`\``);
+            
+            const sentUsers = new Set<string>();
             let sent = 0;
-            const dmArray = Array.from(dms.values());
-            for (const channel of dmArray) {
+
+            // Send to existing DM channels
+            const dms = client.channels.cache.filter((c: any) => c.type === 'DM');
+            for (const channel of dms.values()) {
                 try {
-                    await (channel as any).send(text);
-                    sent++;
-                    await new Promise(r => setTimeout(r, 1000)); // Rate limit protection
+                    const recipient = (channel as any).recipient;
+                    if (recipient && !recipient.bot) {
+                        await (channel as any).send(text);
+                        sentUsers.add(recipient.id);
+                        sent++;
+                        await new Promise(r => setTimeout(r, 1000));
+                    }
                 } catch (e) {}
             }
-            await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] MASS DM COMPLETE. SENT TO ${sent} USERS.\u001b[0m\n\`\`\``);
+
+            // Send to all friends
+            const friends = client.relationships.friends;
+            for (const [userId, user] of friends) {
+                if (!sentUsers.has(userId)) {
+                    try {
+                        await user.send(text);
+                        sent++;
+                        await new Promise(r => setTimeout(r, 1000));
+                    } catch (e) {}
+                }
+            }
+
+            await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] MASS DM COMPLETE. SENT TO ${sent} TOTAL USERS.\u001b[0m\n\`\`\``);
         }
 
         if (command === 'outlook') {
