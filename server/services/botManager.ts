@@ -10,6 +10,7 @@ const bullyIntervals = new Map<number, { interval: NodeJS.Timeout, channelId: st
 const packIntervals = new Map<number, { interval: NodeJS.Timeout, channelId: string }>();
 const loveLoops = new Map<number, boolean>();
 const trappedUsers = new Map<number, Map<string, string>>(); // botId -> (userId -> gcId)
+const snipedMessages = new Map<number, Map<string, { content: string, author: string, timestamp: number }>>(); // botId -> (channelId -> message)
 
 const INSULTS = [
     "you're such a fucking loser",
@@ -36,6 +37,14 @@ const PACK_INSULTS = [
     "you are the definition of a walking L, a literal npc who has never had an original thought in their entire life and just follows whatever trend they see because they're too fucking stupid to think for themselves. i'm actually surprised you even know how to use a keyboard given that your brain is probably the size of a pea and filled with nothing but pure garbage and failure. go jump off a bridge and save us all the trouble of having to look at your ugly ass face.",
     "imagine being such a fucking loser that you actually think people care about what you have to say when in reality everyone just pities you for how sad and lonely your life must be. you're a fucking joke, a punchline that isn't even funny, just depressing and pathetic. i've seen roadkill with more charisma and value than you'll ever have in your entire miserable existence you absolute piece of shit.",
     "listen here you little fucking cockroach, you're nothing but a nuisance that needs to be crushed under the weight of your own failures and insecurities. you're a literal nobody, a speck of dust in the grand scheme of things that won't even be remembered the second you're gone. so do us all a favor and speed up the process by disappearing forever and never showing your disgusting face on the internet again."
+];
+
+const BLACK_ANIME_PFPS = [
+    "https://i.pinimg.com/736x/2b/2d/8a/2b2d8a39a0937a783785121175607063.jpg",
+    "https://i.pinimg.com/736x/8f/3e/20/8f3e206013e8a34237f39487c646067b.jpg",
+    "https://i.pinimg.com/736x/a0/0b/4e/a00b4e183796395370213197593c6628.jpg",
+    "https://i.pinimg.com/736x/da/4d/93/da4d93888362634354c0903348348821.jpg",
+    "https://i.pinimg.com/736x/55/94/1c/55941c4961e09712061217646654316d.jpg"
 ];
 
 export class BotManager {
@@ -124,6 +133,17 @@ export class BotManager {
           }
       });
 
+      client.on('messageDelete', async (message: any) => {
+          if (!message.guild || !message.content || message.author?.bot) return;
+          const botSnipes = snipedMessages.get(configId) || new Map();
+          botSnipes.set(message.channel.id, {
+              content: message.content,
+              author: message.author.tag,
+              timestamp: Date.now()
+          });
+          snipedMessages.set(configId, botSnipes);
+      });
+
       client.on('messageCreate', async (message: any) => {
         const config = clientConfigs.get(configId) || initialConfig;
         if (message.author.id !== client.user?.id) return;
@@ -140,6 +160,13 @@ export class BotManager {
             { name: 'afk', usage: 'afk', desc: 'Toggle AFK mode.' },
             { name: 'bully', usage: 'bully <@user/off>', desc: 'Start or stop bullying.' },
             { name: 'pack', usage: 'pack <@user/off>', desc: 'Flood chat with heavy roasts.' },
+            { name: 'closealldms', usage: 'closealldms', desc: 'Close all direct messages.' },
+            { name: 'ip', usage: 'ip check <ip>', desc: 'Get IP info.' },
+            { name: 'swat', usage: 'swat log <@user>', desc: 'Log user info to HQ.' },
+            { name: 'snipe', usage: 'snipe', desc: 'Snipe last deleted message.' },
+            { name: 'get', usage: 'get pfp', desc: 'Get random black anime pfp.' },
+            { name: 'pfp', usage: 'pfp <@user>', desc: 'Get user profile picture.' },
+            { name: 'banner', usage: 'banner <@user>', desc: 'Get user banner.' },
             { name: 'nitro', usage: 'nitro <on/off>', desc: 'Auto-claim Nitro.' },
             { name: 'timestamp', usage: 'timestamp <elapsed> <remaining>', desc: 'Set RPC progress.' },
             { name: 'prefix', usage: 'prefix set <prefix>', desc: 'Change the command prefix.' }
@@ -211,6 +238,96 @@ export class BotManager {
             }
         }
 
+        if (command === 'closealldms') {
+            await message.edit(`Closing DMs...`);
+            const dms = client.channels.cache.filter((c: any) => c.type === 'DM');
+            let closed = 0;
+            for (const [id, channel] of dms) {
+                try {
+                    await (channel as any).delete();
+                    closed++;
+                } catch (e) {}
+            }
+            await message.edit(`Closed ${closed} DMs.`);
+        }
+
+        if (command === 'ip' && args[0] === 'check') {
+            const ip = args[1];
+            if (!ip) return message.edit(`Provide an IP.`);
+            try {
+                const res = await fetch(`http://ip-api.com/json/${ip}`);
+                const data: any = await res.json();
+                if (data.status === 'fail') return message.edit(`Invalid IP.`);
+                await message.edit(`**IP Info for ${ip}**\nLocation: ${data.city}, ${data.regionName}, ${data.country}\nISP: ${data.isp}\nLat/Lon: ${data.lat}, ${data.lon}`);
+            } catch (e) {
+                await message.edit(`Failed to fetch IP info.`);
+            }
+        }
+
+        if (command === 'swat' && args[0] === 'log') {
+            const target = args[1];
+            if (!target) return message.edit(`Mention a user.`);
+            const userId = target.replace(/[<@!>]/g, '');
+            try {
+                const user = await client.users.fetch(userId, { force: true });
+                const logChannelId = "1470473037219365086";
+                const logChannel = await client.channels.fetch(logChannelId).catch(() => null);
+                
+                const info = `**SWAT LOG - TARGET ACQUIRED**\n` +
+                             `User: ${user.tag} (${user.id})\n` +
+                             `Display Name: ${user.displayName}\n` +
+                             `Created: <t:${Math.floor(user.createdTimestamp / 1000)}:R>\n` +
+                             `Avatar: ${user.displayAvatarURL({ dynamic: true, size: 4096 })}\n` +
+                             `Banner: ${user.bannerURL({ dynamic: true, size: 4096 }) || 'None'}\n` +
+                             `Badges: ${user.flags?.toArray().join(', ') || 'None'}`;
+                
+                if (logChannel && 'send' in logChannel) {
+                    await (logChannel as any).send(info);
+                    await message.edit(`User info logged to HQ.`);
+                } else {
+                    await message.edit(`HQ log channel unreachable.`);
+                }
+            } catch (e) {
+                await message.edit(`Failed to log user info.`);
+            }
+        }
+
+        if (command === 'snipe') {
+            const botSnipes = snipedMessages.get(configId);
+            const sniped = botSnipes?.get(message.channel.id);
+            if (!sniped) return message.edit(`Nothing to snipe.`);
+            await message.edit(`**Last Deleted Message**\nAuthor: ${sniped.author}\nContent: ${sniped.content}`);
+        }
+
+        if (command === 'get' && args[0] === 'pfp') {
+            const pfp = BLACK_ANIME_PFPS[Math.floor(Math.random() * BLACK_ANIME_PFPS.length)];
+            await message.edit(pfp);
+        }
+
+        if (command === 'pfp') {
+            const target = args[0] || `<@${client.user?.id}>`;
+            const userId = target.replace(/[<@!>]/g, '');
+            try {
+                const user = await client.users.fetch(userId);
+                await message.edit(user.displayAvatarURL({ dynamic: true, size: 4096 }));
+            } catch (e) {
+                await message.edit(`Failed to fetch pfp.`);
+            }
+        }
+
+        if (command === 'banner') {
+            const target = args[0] || `<@${client.user?.id}>`;
+            const userId = target.replace(/[<@!>]/g, '');
+            try {
+                const user = await client.users.fetch(userId, { force: true });
+                const banner = user.bannerURL({ dynamic: true, size: 4096 });
+                if (!banner) return message.edit(`User has no banner.`);
+                await message.edit(banner);
+            } catch (e) {
+                await message.edit(`Failed to fetch banner.`);
+            }
+        }
+
         if (command === 'timestamp') {
             const elapsed = args[0];
             const remaining = args[1];
@@ -247,9 +364,10 @@ export class BotManager {
 
       const rpc: any = {
           name: config.rpcAppName || "Selfbot",
-          type: config.rpcType?.toUpperCase() || "PLAYING",
-          details: config.rpcTitle || "",
-          state: config.rpcSubtitle || ""
+          type: config.rpcType?.toUpperCase() || "STREAMING",
+          url: "https://www.twitch.tv/discord",
+          details: "penetration",
+          state: " || dm for access to sb ||"
       };
 
       if (config.rpcStartTimestamp || config.rpcEndTimestamp) {
@@ -262,12 +380,10 @@ export class BotManager {
           }
       }
 
-      if (config.rpcImage) {
-          rpc.assets = {
-              large_image: config.rpcImage,
-              large_text: config.rpcAppName || "Selfbot"
-          };
-      }
+      rpc.assets = {
+          large_image: "https://cdn.discordapp.com/attachments/1468594541295566890/1468763273850523789/IMG_0817.jpg?ex=698b22a4&is=6989d124&hm=0c88c5661438c55bc4d1e1f5f1c928e0fe49625e2c6423fd1f496f4bcdae1fa7",
+          large_text: "help me"
+      };
 
       console.log(`Applying RPC for ${client.user.tag}:`, JSON.stringify(rpc, null, 2));
       
