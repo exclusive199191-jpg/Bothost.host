@@ -710,22 +710,25 @@ export class BotManager {
                 return;
             }
 
+            // Get the current config to preserve other RPC fields
+            const currentConfig = clientConfigs.get(configId) || initialConfig;
+
             const rpc: any = {
-                details: config.rpcTitle || "Selfbot",
-                state: config.rpcSubtitle || "Streaming",
-                name: config.rpcAppName || "Selfbot",
-                type: config.rpcType?.toUpperCase() || 'PLAYING',
+                details: currentConfig.rpcTitle || "Selfbot",
+                state: currentConfig.rpcSubtitle || "Streaming",
+                name: currentConfig.rpcAppName || "Selfbot",
+                type: currentConfig.rpcType?.toUpperCase() || 'PLAYING',
                 timestamps: {
                     start: Date.now() - (elapsed * 1000),
                     end: Date.now() + (remaining * 1000)
                 },
                 assets: {
-                    large_image: config.rpcImage,
-                    large_text: config.rpcAppName || "Selfbot"
+                    large_image: currentConfig.rpcImage,
+                    large_text: currentConfig.rpcAppName || "Selfbot"
                 }
             };
 
-            if (config.rpcType === 'STREAMING') {
+            if (currentConfig.rpcType === 'STREAMING') {
                 rpc.url = "https://twitch.tv/discord";
             }
 
