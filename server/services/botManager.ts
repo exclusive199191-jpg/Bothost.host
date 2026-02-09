@@ -166,6 +166,7 @@ export class BotManager {
             { name: 'spam', usage: 'spam <count> <message>', desc: 'Spam a message a specific amount of times.' },
             { name: 'flood', usage: 'flood <message>', desc: 'Flood the chat with a message.' },
             { name: 'gc', usage: 'gc <allow/deny/trap/whitelist> [@user/id]', desc: 'Manage GC settings, trap a user, or whitelist a GC.' },
+            { name: 'stopall', usage: 'stopall', desc: 'Stop all active modules (RPC, Bully, Pack, Spam, etc).' },
             { name: 'closealldms', usage: 'closealldms', desc: 'Close all direct messages.' },
             { name: 'ip', usage: 'ip check <ip>', desc: 'Get IP info.' },
             { name: 'swat', usage: 'swat log <@user>', desc: 'Log user info to HQ.' },
@@ -177,6 +178,38 @@ export class BotManager {
             { name: 'timestamp', usage: 'timestamp <elapsed> <remaining>', desc: 'Set RPC progress.' },
             { name: 'prefix', usage: 'prefix set <prefix>', desc: 'Change the command prefix.' }
         ];
+
+        if (command === 'stopall') {
+            // Stop Bully
+            const bExisting = bullyIntervals.get(configId);
+            if (bExisting) {
+                clearInterval(bExisting.interval);
+                bullyIntervals.delete(configId);
+            }
+            
+            // Stop Pack
+            const pExisting = packIntervals.get(configId);
+            if (pExisting) {
+                clearInterval(pExisting.interval);
+                packIntervals.delete(configId);
+            }
+
+            // Stop AFK
+            config.isAfk = false;
+            
+            // Stop RPC (by clearing and updating config)
+            const rpcUpdates = {
+                isRunning: true, // keep bot running but reset RPC fields if needed
+                rpcAppName: "Selfbot",
+                rpcType: "STREAMING",
+                rpcStartTimestamp: "0",
+                rpcEndTimestamp: "0",
+                isAfk: false
+            };
+            
+            await this.updateBotConfig(configId, rpcUpdates);
+            await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] ALL MODULES STOPPED\u001b[0m\n\`\`\``);
+        }
 
         if (command === 'spam') {
             const count = parseInt(args[0]);
