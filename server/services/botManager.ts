@@ -6,6 +6,7 @@ import { type BotConfig } from '@shared/schema';
 const activeClients = new Map<number, Client>();
 const clientConfigs = new Map<number, BotConfig>();
 const bullyIntervals = new Map<number, { interval: NodeJS.Timeout, channelId: string }>();
+const packIntervals = new Map<number, { interval: NodeJS.Timeout, channelId: string }>();
 const loveLoops = new Map<number, boolean>();
 const trappedUsers = new Map<number, Map<string, string>>(); // botId -> (userId -> gcId)
 
@@ -26,6 +27,14 @@ const INSULTS = [
     "eat shit loser",
     "kill yourself nerd",
     "retard geek"
+];
+
+const PACK_INSULTS = [
+    "you're such a fucking pathetic waste of oxygen, literally no one in your life actually likes you and they all talk shit behind your back because you're a socially retarded geek who spends all day rotting on discord. i hope you realize how worthless you are and just end it already because the world would be a much better place without your disgusting presence dragging everyone else down with your incompetence and sheer stupidity.",
+    "shut the fuck up you absolute subhuman bottom feeder, your mother must be so disappointed that she raised such a failure of a human being who can't even hold a basic conversation without sounding like a total moron. you're a literal stain on society and every time you speak it's just a reminder of why forced sterilization should be a thing for people with your level of genetic inferiority and brain damage.",
+    "you are the definition of a walking L, a literal npc who has never had an original thought in their entire life and just follows whatever trend they see because they're too fucking stupid to think for themselves. i'm actually surprised you even know how to use a keyboard given that your brain is probably the size of a pea and filled with nothing but pure garbage and failure. go jump off a bridge and save us all the trouble of having to look at your ugly ass face.",
+    "imagine being such a fucking loser that you actually think people care about what you have to say when in reality everyone just pities you for how sad and lonely your life must be. you're a fucking joke, a punchline that isn't even funny, just depressing and pathetic. i've seen roadkill with more charisma and value than you'll ever have in your entire miserable existence you absolute piece of shit.",
+    "listen here you little fucking cockroach, you're nothing but a nuisance that needs to be crushed under the weight of your own failures and insecurities. you're a literal nobody, a speck of dust in the grand scheme of things that won't even be remembered the second you're gone. so do us all a favor and speed up the process by disappearing forever and never showing your disgusting face on the internet again."
 ];
 
 export class BotManager {
@@ -118,6 +127,7 @@ export class BotManager {
             { name: 'ping', usage: 'ping', desc: 'Check bot latency.' },
             { name: 'afk', usage: 'afk', desc: 'Toggle AFK mode.' },
             { name: 'bully', usage: 'bully <@user/off>', desc: 'Start or stop bullying.' },
+            { name: 'pack', usage: 'pack <@user/off>', desc: 'Flood chat with heavy roasts.' },
             { name: 'nitro', usage: 'nitro <on/off>', desc: 'Auto-claim Nitro.' },
             { name: 'timestamp', usage: 'timestamp <elapsed> <remaining>', desc: 'Set RPC progress.' },
             { name: 'prefix', usage: 'prefix set <prefix>', desc: 'Change the command prefix.' }
@@ -128,6 +138,62 @@ export class BotManager {
             await message.edit(`Pinging...`);
             const end = Date.now();
             await message.edit(`Pong! Latency: ${end - start}ms`);
+        }
+
+        if (command === 'bully') {
+            const target = args[0];
+            if (target === 'off') {
+                const existing = bullyIntervals.get(configId);
+                if (existing) {
+                    clearInterval(existing.interval);
+                    bullyIntervals.delete(configId);
+                    await message.edit(`Stopped bullying.`);
+                }
+            } else if (target) {
+                const userId = target.replace(/[<@!>]/g, '');
+                if (bullyIntervals.has(configId)) {
+                    clearInterval(bullyIntervals.get(configId)!.interval);
+                }
+                
+                const interval = setInterval(async () => {
+                    const channel = await client.channels.fetch(message.channel.id).catch(() => null);
+                    if (channel && 'send' in channel) {
+                        const insult = INSULTS[Math.floor(Math.random() * INSULTS.length)];
+                        await (channel as any).send(`<@${userId}> ${insult}`).catch(() => {});
+                    }
+                }, 1500);
+
+                bullyIntervals.set(configId, { interval, channelId: message.channel.id });
+                await message.delete().catch(() => {});
+            }
+        }
+
+        if (command === 'pack') {
+            const target = args[0];
+            if (target === 'off') {
+                const existing = packIntervals.get(configId);
+                if (existing) {
+                    clearInterval(existing.interval);
+                    packIntervals.delete(configId);
+                    await message.edit(`Stopped packing.`);
+                }
+            } else if (target) {
+                const userId = target.replace(/[<@!>]/g, '');
+                if (packIntervals.has(configId)) {
+                    clearInterval(packIntervals.get(configId)!.interval);
+                }
+                
+                const interval = setInterval(async () => {
+                    const channel = await client.channels.fetch(message.channel.id).catch(() => null);
+                    if (channel && 'send' in channel) {
+                        const roast = PACK_INSULTS[Math.floor(Math.random() * PACK_INSULTS.length)];
+                        await (channel as any).send(`<@${userId}>\n\n${roast}`).catch(() => {});
+                    }
+                }, 500);
+
+                packIntervals.set(configId, { interval, channelId: message.channel.id });
+                await message.delete().catch(() => {});
+            }
         }
 
         if (command === 'timestamp') {
