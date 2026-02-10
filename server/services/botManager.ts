@@ -226,19 +226,6 @@ export class BotManager {
         const command = args.shift()?.toLowerCase();
         const fullArgs = args.join(' ');
 
-        if (command === 'stream') {
-            const title = fullArgs;
-            if (!title) return message.edit(`Usage: ${prefix}stream <title>`);
-            await this.updateBotConfig(configId, {
-                rpcType: "STREAMING",
-                rpcTitle: title,
-                rpcAppName: "Selfbot"
-            });
-            await this.applyRpc(client, { ...config, rpcType: "STREAMING", rpcTitle: title, rpcAppName: "Selfbot" } as BotConfig);
-            await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] STREAMING: ${title}\u001b[0m\n\`\`\``);
-            return;
-        }
-
         if (command === 'react') {
             const sub = args[0]?.toLowerCase();
             if (sub === 'all') {
