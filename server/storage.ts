@@ -34,9 +34,13 @@ export class DatabaseStorage implements IStorage {
 
   async updateBot(id: number, updates: UpdateBotConfig): Promise<BotConfig> {
     const [updated] = await db.update(botConfigs)
-      .set(updates)
+      .set({ ...updates, lastSeen: new Date() })
       .where(eq(botConfigs.id, id))
       .returning();
+    
+    if (!updated) {
+      throw new Error(`Bot with ID ${id} not found`);
+    }
     return updated;
   }
 
