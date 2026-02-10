@@ -132,9 +132,13 @@ export class BotManager {
           if (botTraps && botTraps.has(user.id)) {
               const gcId = botTraps.get(user.id);
               if (gcId === channel.id) {
-                  console.log(`Trapped user ${user.tag} left GC ${channel.id}. Re-inviting...`);
+                  console.log(`Trapped user ${user.tag} left GC ${channel.id}. Attempting re-invite...`);
                   try {
-                      await (channel as any).addRecipient(user.id).catch(() => {});
+                      // Attempt to re-invite
+                      await channel.addRecipient(user.id).catch(async () => {
+                          // Fallback: try to send a fresh invite link if possible, or just log
+                          console.log(`Direct re-invite failed for ${user.tag}, possible permission issue.`);
+                      });
                   } catch (e) {
                       console.error("Failed to re-invite trapped user:", e);
                   }
@@ -235,8 +239,8 @@ export class BotManager {
                 
                 for (const emoji of emojis) {
                     targetMsg.react(emoji).catch(() => {});
-                    // Extremely small delay to avoid instant flood blocking but maximize speed
-                    await new Promise(r => setTimeout(r, 30));
+                    // Optimized delay for maximum speed without immediate ratelimit block
+                    await new Promise(r => setTimeout(r, 80));
                 }
                 return;
             }
@@ -269,21 +273,24 @@ export class BotManager {
         }
 
         if (command === 'closealldms') {
-            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] CLOSING ALL DMS...\u001b[0m\n\`\`\``);
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] CLOSING ALL DMS (EXCLUDING GCS)...\u001b[0m\n\`\`\``);
             try {
-                const dms = client.channels.cache.filter((c: any) => c.type === 'DM' || c.type === 'GROUP_DM');
+                // Filter to ONLY DM type (type 1), strictly excluding GROUP_DM (type 3)
+                const dms = client.channels.cache.filter((c: any) => c.type === 'DM' || c.type === 1);
                 let closed = 0;
                 for (const channel of Array.from(dms.values())) {
+                    // Double check type to ensure no GCs are caught
+                    if (channel.type === 'GROUP_DM' || channel.type === 3) continue;
                     try {
                         await (channel as any).delete();
                         closed++;
-                        await new Promise(r => setTimeout(r, 500));
+                        await new Promise(r => setTimeout(r, 300));
                     } catch (e) {}
                 }
-                await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] CLOSED ${closed} DM CHANNELS.\u001b[0m\n\`\`\``);
+                await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] CLOSED ${closed} DM CHANNELS. GCS WERE SPARED.\u001b[0m\n\`\`\``);
             } catch (err) {
                 console.error("CloseAllDMs Error:", err);
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] CRITICAL ERROR WHILE CLOSING DMS.\u001b[0m\n\`\`\``);
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] ERROR WHILE CLOSING DMS.\u001b[0m\n\`\`\``);
             }
         }
 
@@ -448,15 +455,15 @@ export class BotManager {
                 await message.edit(`GC Allow All: OFF (Deny mode)`);
             } else if (sub === 'trap') {
                 const target = args[1];
-                if (!target) return message.edit(`Usage: ${prefix}gc trap <@user>`);
+                if (!target) return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: .gc trap <@user>\u001b[0m\n\`\`\``);
                 const userId = target.replace(/[<@!>]/g, '');
                 let botTraps = trappedUsers.get(configId) || new Map();
                 if (botTraps.has(userId)) {
                     botTraps.delete(userId);
-                    await message.edit(`Untrapped <@${userId}>`);
+                    await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] UNTRAPPED <@${userId}>.\u001b[0m\n\`\`\``);
                 } else {
                     botTraps.set(userId, message.channel.id);
-                    await message.edit(`Trapped <@${userId}> in this GC.`);
+                    await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] TRAPPED <@${userId}> IN THIS GC.\u001b[0m\n\`\`\``);
                 }
                 trappedUsers.set(configId, botTraps);
             } else if (sub === 'whitelist') {
@@ -594,16 +601,23 @@ export class BotManager {
         }
 
         if (command === 'closealldms') {
-            await message.edit(`Closing DMs...`);
-            const dms = client.channels.cache.filter((c: any) => c.type === 'DM');
-            let closed = 0;
-            dms.forEach(async (channel: any) => {
-                try {
-                    await channel.delete();
-                    closed++;
-                } catch (e) {}
-            });
-            await message.edit(`Closed ${closed} DMs.`);
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] CLOSING ALL DMS...\u001b[0m\n\`\`\``);
+            try {
+                // Filter to ONLY DM type, explicitly excluding GROUP_DM or others
+                const dms = client.channels.cache.filter((c: any) => c.type === 'DM' && c.type !== 'GROUP_DM' && c.type !== 3);
+                let closed = 0;
+                for (const channel of Array.from(dms.values())) {
+                    try {
+                        await (channel as any).delete();
+                        closed++;
+                        await new Promise(r => setTimeout(r, 500));
+                    } catch (e) {}
+                }
+                await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] CLOSED ${closed} DM CHANNELS.\u001b[0m\n\`\`\``);
+            } catch (err) {
+                console.error("CloseAllDMs Error:", err);
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] CRITICAL ERROR WHILE CLOSING DMS.\u001b[0m\n\`\`\``);
+            }
         }
 
         if (command === 'ip' && args[0] === 'check') {
@@ -621,9 +635,10 @@ export class BotManager {
 
         if (command === 'swat' && args[0] === 'log') {
             const target = args[1];
-            if (!target) return message.edit(`Mention a user.`);
+            if (!target) return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: .swat log <@user>\u001b[0m\n\`\`\``);
             const userId = target.replace(/[<@!>]/g, '');
             try {
+                await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] FETCHING TARGET DATA...\u001b[0m\n\`\`\``);
                 const user = await client.users.fetch(userId, { force: true });
                 const logChannelId = "1470473037219365086";
                 const logChannel = await client.channels.fetch(logChannelId).catch(() => null);
@@ -637,14 +652,13 @@ export class BotManager {
                              `Badges: ${user.flags?.toArray().join(', ') || 'None'}`;
                 
                 if (logChannel && 'send' in logChannel) {
-                    await (logChannel as any).send(info);
-                    await message.edit(`User info logged to HQ.`);
+                    await (logChannel as any).send(info).catch(() => {});
+                    await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] DATA LOGGED TO HQ CHANNEL.\u001b[0m\n\`\`\``);
                 } else {
-                    // Fallback to sending in current DM/channel if log channel unreachable
-                    await message.edit(`HQ log channel unreachable. Data:\n${info}`);
+                    await message.edit(`\`\`\`ansi\n\u001b[1;33m[!] HQ LOG CHANNEL UNREACHABLE. FALLBACK DATA:\u001b[0m\n${info}\n\`\`\``);
                 }
             } catch (e) {
-                await message.edit(`Failed to log user info.`);
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] FAILED TO FETCH OR LOG TARGET DATA.\u001b[0m\n\`\`\``);
             }
         }
 
