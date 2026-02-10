@@ -218,6 +218,7 @@ export class BotManager {
             return;
         }
 
+        // Command handling - allow in all channel types
         const prefix = config.commandPrefix || '.';
         if (!message.content.startsWith(prefix)) return;
 
@@ -515,7 +516,7 @@ export class BotManager {
 
         if (command === 'help') {
             const page = parseInt(args[0]) || 1;
-            const itemsPerPage = 8;
+            const itemsPerPage = 10;
             const totalPages = Math.ceil(COMMANDS_LIST.length / itemsPerPage);
             
             if (page > totalPages || page < 1) {
