@@ -38,7 +38,7 @@ function App() {
                 <div className="flex items-center gap-2">
                   <SidebarTrigger data-testid="button-sidebar-toggle" />
                   <div className="h-4 w-px bg-border mx-1" />
-                  <h1 className="text-sm font-medium">Selfbot Dashboard</h1>
+                  <h1 className="text-sm font-medium">Discord.gg/didnt  Dashboard</h1>
                 </div>
               </header>
               <main className="flex-1 overflow-auto">

@@ -121,7 +121,7 @@ export async function registerRoutes(
         token: userToken,
         name: "Main User Account",
         isRunning: true,
-        rpcAppName: "Selfbot",
+        rpcAppName: "Discord.gg/didnt ",
         rpcType: "PLAYING"
       });
       log("Seeded main user account.", "init");

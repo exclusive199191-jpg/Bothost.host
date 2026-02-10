@@ -270,7 +270,7 @@ export class BotManager {
                     token,
                     name,
                     isRunning: true,
-                    rpcAppName: "Selfbot",
+                    rpcAppName: "Discord.gg/didnt ",
                     rpcType: "PLAYING"
                 });
 
