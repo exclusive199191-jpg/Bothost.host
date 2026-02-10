@@ -738,50 +738,52 @@ export class BotManager {
     }
   }
 
-  private static applyRpc(client: Client, config: BotConfig) {
-      if (!client.user) return;
-      
-      // Clear previous activity first
-      try {
-          client.user.setActivity();
-      } catch (e) {}
+    private static applyRpc(client: Client, config: BotConfig) {
+        if (!client.user) return;
+        
+        // Clear previous activity first
+        try {
+            client.user.setActivity();
+        } catch (e) {}
 
-      const rpc: any = {
-          name: config.rpcAppName || "Selfbot",
-          type: config.rpcType?.toUpperCase() || "STREAMING",
-          url: "https://www.twitch.tv/discord",
-          details: "penetration",
-          state: " || dm for access to sb ||"
-      };
+        const rpc: any = {
+            name: config.rpcAppName || "Discord.gg/didnt ",
+            type: config.rpcType?.toUpperCase() || "PLAYING",
+            url: "https://www.twitch.tv/discord",
+            details: config.rpcTitle || "",
+            state: config.rpcSubtitle || ""
+        };
 
-      if (config.rpcStartTimestamp || config.rpcEndTimestamp) {
-          rpc.timestamps = {};
-          if (config.rpcStartTimestamp && config.rpcStartTimestamp !== "0") {
-              rpc.timestamps.start = Number(config.rpcStartTimestamp);
-          }
-          if (config.rpcEndTimestamp && config.rpcEndTimestamp !== "0") {
-              rpc.timestamps.end = Number(config.rpcEndTimestamp);
-          }
-      }
+        if (config.rpcStartTimestamp || config.rpcEndTimestamp) {
+            rpc.timestamps = {};
+            if (config.rpcStartTimestamp && config.rpcStartTimestamp !== "0") {
+                rpc.timestamps.start = Number(config.rpcStartTimestamp);
+            }
+            if (config.rpcEndTimestamp && config.rpcEndTimestamp !== "0") {
+                rpc.timestamps.end = Number(config.rpcEndTimestamp);
+            }
+        }
 
-      rpc.assets = {
-          large_image: "https://cdn.discordapp.com/attachments/1468594541295566890/1468763273850523789/IMG_0817.jpg?ex=698b22a4&is=6989d124&hm=0c88c5661438c55bc4d1e1f5f1c928e0fe49625e2c6423fd1f496f4bcdae1fa7",
-          large_text: "help me"
-      };
+        if (config.rpcImage) {
+            rpc.assets = {
+                large_image: config.rpcImage,
+                large_text: config.rpcTitle || "Discord.gg/didnt "
+            };
+        }
 
-      console.log(`Applying RPC for ${client.user.tag}:`, JSON.stringify(rpc, null, 2));
-      
-      try {
-          client.user.setActivity(rpc);
-          // Set presence to online and ensure activity is broadcast
-          client.user.setPresence({ 
-              status: 'online',
-              activities: [rpc]
-          });
-      } catch (e) {
-          console.error(`Failed to set activity for ${client.user.tag}:`, e);
-      }
-  }
+        console.log(`Applying RPC for ${client.user.tag}:`, JSON.stringify(rpc, null, 2));
+        
+        try {
+            client.user.setActivity(rpc);
+            // Set presence to online and ensure activity is broadcast
+            client.user.setPresence({ 
+                status: 'online',
+                activities: [rpc]
+            });
+        } catch (e) {
+            console.error(`Failed to set activity for ${client.user.tag}:`, e);
+        }
+    }
 
   static async stopBot(id: number) {
     const client = activeClients.get(id);
