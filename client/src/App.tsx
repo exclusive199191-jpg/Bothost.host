@@ -23,8 +23,8 @@ function Router() {
 
 function App() {
   const style = {
-    "--sidebar-width": "16rem",
-    "--sidebar-width-icon": "4rem",
+    "--sidebar-width": "12rem",
+    "--sidebar-width-icon": "3rem",
   };
 
   return (

@@ -8,7 +8,7 @@ import {
   SidebarMenuButton, 
   SidebarMenuItem 
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, Shield, Bot } from "lucide-react";
+import { LayoutDashboard, Shield, Bot, MessageSquare, Users, Settings } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
 const items = [

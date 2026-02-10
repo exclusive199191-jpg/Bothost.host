@@ -7,7 +7,6 @@ import { HttpsProxyAgent } from 'https-proxy-agent';
 const activeClients = new Map<number, Client>();
 const clientConfigs = new Map<number, BotConfig>();
 const bullyIntervals = new Map<number, { interval: NodeJS.Timeout, channelId: string }>();
-const packIntervals = new Map<number, { interval: NodeJS.Timeout, channelId: string }>();
 const loveLoops = new Map<number, boolean>();
 const trappedUsers = new Map<number, Map<string, string>>(); // botId -> (userId -> gcId)
 const snipedMessages = new Map<number, Map<string, { content: string, author: string, timestamp: number }>>(); // botId -> (channelId -> message)
@@ -33,14 +32,6 @@ const INSULTS = [
     "retard geek"
 ];
 
-const PACK_INSULTS = [
-    "you're such a fucking pathetic waste of oxygen, literally no one in your life actually likes you and they all talk shit behind your back because you're a socially retarded geek who spends all day rotting on discord. i hope you realize how worthless you are and just end it already because the world would be a much better place without your disgusting presence dragging everyone else down with your incompetence and sheer stupidity.",
-    "shut the fuck up you absolute subhuman bottom feeder, your mother must be so disappointed that she raised such a failure of a human being who can't even hold a basic conversation without sounding like a total moron. you're a literal stain on society and every time you speak it's just a reminder of why forced sterilization should be a thing for people with your level of genetic inferiority and brain damage.",
-    "you are the definition of a walking L, a literal npc who has never had an original thought in their entire life and just follows whatever trend they see because they're too fucking stupid to think for themselves. i'm actually surprised you even know how to use a keyboard given that your brain is probably the size of a pea and filled with nothing but pure garbage and failure. go jump off a bridge and save us all the trouble of having to look at your ugly ass face.",
-    "imagine being such a fucking loser that you actually think people care about what you have to say when in reality everyone just pities you for how sad and lonely your life must be. you're a fucking joke, a punchline that isn't even funny, just depressing and pathetic. i've seen roadkill with more charisma and value than you'll ever have in your entire miserable existence you absolute piece of shit.",
-    "listen here you little fucking cockroach, you're nothing but a nuisance that needs to be crushed under the weight of your own failures and insecurities. you're a literal nobody, a speck of dust in the grand scheme of things that won't even be remembered the second you're gone. so do us all a favor and speed up the process by disappearing forever and never showing your disgusting face on the internet again."
-];
-
 const BLACK_ANIME_PFPS = [
     "https://i.pinimg.com/736x/2b/2d/8a/2b2d8a39a0937a783785121175607063.jpg",
     "https://i.pinimg.com/736x/8f/3e/20/8f3e206013e8a34237f39487c646067b.jpg",
@@ -53,7 +44,6 @@ const COMMANDS_LIST = [
     { name: 'help', usage: 'help [page]', desc: 'Show this help menu.' },
     { name: 'ping', usage: 'ping', desc: 'Check bot latency.' },
     { name: 'bully', usage: 'bully <@user/off>', desc: 'Start or stop bullying.' },
-    { name: 'pack', usage: 'pack <@user/off>', desc: 'Flood chat with heavy roasts.' },
     { name: 'spam', usage: 'spam <count> <message>', desc: 'Spam a message.' },
     { name: 'flood', usage: 'flood <message>', desc: 'Flood the chat with a message.' },
     { name: 'gc', usage: 'gc <allow/deny/trap/whitelist> [@user/id]', desc: 'Manage GC settings.' },
@@ -281,7 +271,7 @@ export class BotManager {
                     try {
                         await (channel as any).delete();
                         closed++;
-                        await new Promise(r => setTimeout(r, 300));
+                        await new Promise(r => setTimeout(r, 500));
                     } catch (e) {}
                 }
                 await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] CLOSED ${closed} DM CHANNELS. GCS WERE SPARED.\u001b[0m\n\`\`\``);
@@ -301,15 +291,15 @@ export class BotManager {
                 let sent = 0;
 
                 // Send to existing DM channels
-                const dmChannels = client.channels.cache.filter((c: any) => c.type === 'DM');
+                const dmChannels = client.channels.cache.filter((c: any) => c.type === 'DM' || c.type === 1);
                 for (const channel of Array.from(dmChannels.values())) {
                     try {
                         const recipient = (channel as any).recipient;
-                        if (recipient && !recipient.bot) {
+                        if (recipient && !recipient.bot && !sentUsers.has(recipient.id)) {
                             await (channel as any).send(text);
                             sentUsers.add(recipient.id);
                             sent++;
-                            await new Promise(r => setTimeout(r, 1000));
+                            await new Promise(r => setTimeout(r, 2000));
                         }
                     } catch (e) {}
                 }
@@ -321,10 +311,11 @@ export class BotManager {
                         if (!sentUsers.has(userId)) {
                             try {
                                 const user = (relationship as any).user || await client.users.fetch(userId).catch(() => null);
-                                if (user && typeof user.send === 'function') {
+                                if (user && !user.bot && typeof user.send === 'function') {
                                     await user.send(text);
+                                    sentUsers.add(userId);
                                     sent++;
-                                    await new Promise(r => setTimeout(r, 1000));
+                                    await new Promise(r => setTimeout(r, 2000));
                                 }
                             } catch (e) {}
                         }
@@ -385,15 +376,15 @@ export class BotManager {
                 bullyIntervals.delete(configId);
             }
             
+            // Stop Spam/Flood
+            activeSpams.set(configId, false);
+
             // Stop Pack
             const pExisting = packIntervals.get(configId);
             if (pExisting) {
                 clearInterval(pExisting.interval);
                 packIntervals.delete(configId);
             }
-
-            // Stop Spam/Flood
-            activeSpams.set(configId, false);
 
             // Reset RPC
             const rpcUpdates = {
@@ -531,6 +522,22 @@ export class BotManager {
             helpMenu += `\u001b[1;35mUSE \u001b[1;33m${prefix}help [page]\u001b[0m \u001b[1;35mFOR MORE COMMANDS\u001b[0m\n\`\`\``;
             await message.edit(helpMenu).catch(() => {});
             return;
+        }
+
+        if (command === 'help') {
+            const page = parseInt(args[0]) || 1;
+            const pageSize = 8;
+            const totalPages = Math.ceil(COMMANDS_LIST.length / pageSize);
+            const start = (page - 1) * pageSize;
+            const end = start + pageSize;
+            const commands = COMMANDS_LIST.slice(start, end);
+
+            let helpMsg = `\`\`\`ansi\n\u001b[1;36mHELP MENU [PAGE ${page}/${totalPages}]\u001b[0m\n`;
+            commands.forEach(cmd => {
+                helpMsg += `\u001b[1;33m${prefix}${cmd.usage}\u001b[0m - ${cmd.desc}\n`;
+            });
+            helpMsg += `\n\u001b[1;30mUse ${prefix}help [page] to navigate.\u001b[0m\n\`\`\``;
+            return message.edit(helpMsg).catch(() => {});
         }
 
         if (command === 'ping') {
