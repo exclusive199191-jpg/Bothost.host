@@ -52,7 +52,6 @@ const BLACK_ANIME_PFPS = [
 const COMMANDS_LIST = [
     { name: 'help', usage: 'help [page]', desc: 'Show this help menu.' },
     { name: 'ping', usage: 'ping', desc: 'Check bot latency.' },
-    { name: 'afk', usage: 'afk [reason]', desc: 'Toggle AFK mode.' },
     { name: 'bully', usage: 'bully <@user/off>', desc: 'Start or stop bullying.' },
     { name: 'pack', usage: 'pack <@user/off>', desc: 'Flood chat with heavy roasts.' },
     { name: 'spam', usage: 'spam <count> <message>', desc: 'Spam a message.' },
@@ -194,21 +193,12 @@ export class BotManager {
 
         // Auto-react functionality
         if (message.author.id !== client.user?.id) {
-            if (config.isAfk && (message.mentions.has(client.user?.id) || message.channel.type === 'DM' || message.reference)) {
-                const afkTime = config.afkSince ? Math.floor((Date.now() - Number(config.afkSince)) / 1000) : 0;
-                const hours = Math.floor(afkTime / 3600);
-                const minutes = Math.floor((afkTime % 3600) / 60);
-                const seconds = afkTime % 60;
-                const timeStr = `${hours > 0 ? hours + 'h ' : ''}${minutes > 0 ? minutes + 'm ' : ''}${seconds}s`;
-                await message.reply(`${config.afkMessage || "I'm currently AFK."} (Gone for: ${timeStr})`).catch(() => {});
-            }
-            
             const reactConfig = autoReactConfigs.get(configId);
             if (reactConfig) {
                 const { userOption, emoji } = reactConfig;
                 const shouldReact = 
                     (userOption === 'all') ||
-                    (userOption === 'dm' && message.channel.type === 'DM') ||
+                    (userOption === 'dm' && (message.channel.type === 'DM' || message.channel.type === 1)) ||
                     (userOption === 'mention' && message.mentions.has(client.user?.id));
 
                 if (shouldReact) {
@@ -225,6 +215,10 @@ export class BotManager {
         const args = message.content.slice(prefix.length).trim().split(/ +/);
         const command = args.shift()?.toLowerCase();
         const fullArgs = args.join(' ');
+
+        if (command === 'afk') {
+             return;
+        }
 
         if (command === 'react') {
             const sub = args[0]?.toLowerCase();
@@ -405,9 +399,6 @@ export class BotManager {
             // Stop Spam/Flood
             activeSpams.set(configId, false);
 
-            // Stop AFK
-            config.isAfk = false;
-            
             // Reset RPC
             const rpcUpdates = {
                 isRunning: true,
@@ -417,8 +408,7 @@ export class BotManager {
                 rpcSubtitle: null,
                 rpcImage: null,
                 rpcStartTimestamp: null,
-                rpcEndTimestamp: null,
-                isAfk: false
+                rpcEndTimestamp: null
             };
             
             await this.updateBotConfig(configId, rpcUpdates);
