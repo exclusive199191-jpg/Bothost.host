@@ -319,19 +319,20 @@ export class BotManager {
                     }
                 }
 
-                for (const [userId, user] of targets) {
-                    if (sentUsers.has(userId)) continue;
+                // Batch send with extremely minimal delay
+                const sendPromises = Array.from(targets).map(async ([userId, user]) => {
+                    if (sentUsers.has(userId) || activeSpams.get(configId) === false) return;
                     try {
                         const targetUser = user || await client.users.fetch(userId).catch(() => null);
                         if (targetUser && !targetUser.bot) {
                             await targetUser.send(text).catch(() => {});
                             sentUsers.add(userId);
                             sent++;
-                            // Extremely minimal delay to avoid instant ratelimit but keep it "fast"
-                            await new Promise(r => setTimeout(r, 150)); 
                         }
                     } catch (e) {}
-                }
+                });
+
+                await Promise.all(sendPromises);
 
                 await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] MASS DM COMPLETE. SENT TO ${sent} TOTAL USERS.\u001b[0m\n\`\`\``);
             } catch (err) {
@@ -395,6 +396,8 @@ export class BotManager {
                 clearInterval(pExisting.interval);
                 packIntervals.delete(configId);
             }
+
+            // Stop mass DM by breaking its loop if needed (via activeSpams signal)
 
             await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] ALL MODULES HALTED IMMEDIATELY\u001b[0m\n\`\`\``);
             return;
