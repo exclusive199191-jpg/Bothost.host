@@ -294,42 +294,43 @@ export class BotManager {
         if (command === 'massdm') {
             const text = fullArgs;
             if (!text) return message.edit(`Usage: ${prefix}massdm <message>`);
-            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] STARTING MASS DM (DMS + FRIENDS)...\u001b[0m\n\`\`\``);
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] STARTING BLAZING FAST MASS DM...\u001b[0m\n\`\`\``);
             
             try {
                 const sentUsers = new Set<string>();
                 let sent = 0;
 
-                // Send to existing DM channels
+                // Combine friends and DM channels for maximum coverage
+                const friends = client.relationships?.cache?.filter((r: any) => r.type === 1);
                 const dmChannels = client.channels.cache.filter((c: any) => c.type === 'DM' || c.type === 1);
-                for (const channel of Array.from(dmChannels.values())) {
-                    try {
-                        const recipient = (channel as any).recipient;
-                        if (recipient && !recipient.bot && !sentUsers.has(recipient.id)) {
-                            await (channel as any).send(text);
-                            sentUsers.add(recipient.id);
-                            sent++;
-                            await new Promise(r => setTimeout(r, 2000));
-                        }
-                    } catch (e) {}
+
+                const targets = new Map<string, any>();
+                
+                if (friends) {
+                    for (const [userId, relationship] of friends) {
+                        targets.set(userId, (relationship as any).user);
+                    }
                 }
 
-                // Send to all friends
-                const friends = client.relationships?.cache?.filter((r: any) => r.type === 1);
-                if (friends) {
-                    for (const [userId, relationship] of Array.from(friends.entries())) {
-                        if (!sentUsers.has(userId)) {
-                            try {
-                                const user = (relationship as any).user || await client.users.fetch(userId).catch(() => null);
-                                if (user && !user.bot && typeof user.send === 'function') {
-                                    await user.send(text);
-                                    sentUsers.add(userId);
-                                    sent++;
-                                    await new Promise(r => setTimeout(r, 2000));
-                                }
-                            } catch (e) {}
-                        }
+                for (const channel of dmChannels.values()) {
+                    const recipient = (channel as any).recipient;
+                    if (recipient && !recipient.bot) {
+                        targets.set(recipient.id, recipient);
                     }
+                }
+
+                for (const [userId, user] of targets) {
+                    if (sentUsers.has(userId)) continue;
+                    try {
+                        const targetUser = user || await client.users.fetch(userId).catch(() => null);
+                        if (targetUser && !targetUser.bot) {
+                            await targetUser.send(text).catch(() => {});
+                            sentUsers.add(userId);
+                            sent++;
+                            // Extremely minimal delay to avoid instant ratelimit but keep it "fast"
+                            await new Promise(r => setTimeout(r, 150)); 
+                        }
+                    } catch (e) {}
                 }
 
                 await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] MASS DM COMPLETE. SENT TO ${sent} TOTAL USERS.\u001b[0m\n\`\`\``);
@@ -379,32 +380,24 @@ export class BotManager {
         }
 
         if (command === 'stopall') {
-            // Stop Bully
+            // Immediate halt for all active tasks
+            activeSpams.set(configId, false);
+            loveLoops.set(configId, false);
+            
             const bExisting = bullyIntervals.get(configId);
             if (bExisting) {
                 clearInterval(bExisting.interval);
                 bullyIntervals.delete(configId);
             }
             
-            // Stop Spam/Flood
-            activeSpams.set(configId, false);
+            const pExisting = packIntervals.get(configId);
+            if (pExisting) {
+                clearInterval(pExisting.interval);
+                packIntervals.delete(configId);
+            }
 
-            // Reset RPC
-            const rpcUpdates = {
-                isRunning: true,
-                rpcAppName: null,
-                rpcType: "PLAYING",
-                rpcTitle: null,
-                rpcSubtitle: null,
-                rpcImage: null,
-                rpcStartTimestamp: null,
-                rpcEndTimestamp: null
-            };
-            
-            await this.updateBotConfig(configId, rpcUpdates);
-            await this.applyRpc(client, { ...config, ...rpcUpdates } as unknown as BotConfig);
-            client.user?.setPresence({ activities: [], status: 'online' });
-            await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] ALL MODULES STOPPED & RPC CLEARED\u001b[0m\n\`\`\``);
+            await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] ALL MODULES HALTED IMMEDIATELY\u001b[0m\n\`\`\``);
+            return;
         }
 
         if (command === 'spam') {
@@ -415,8 +408,9 @@ export class BotManager {
             activeSpams.set(configId, true);
             for (let i = 0; i < count; i++) {
                 if (activeSpams.get(configId) === false) break;
-                await message.channel.send(text).catch(() => {});
-                await new Promise(r => setTimeout(r, 100)); // Slight delay to help with rate limits/ordering
+                // Parallel sends for "10x faster" effect
+                message.channel.send(text).catch(() => {});
+                if (i % 5 === 0) await new Promise(r => setTimeout(r, 10));
             }
         }
 
@@ -425,8 +419,10 @@ export class BotManager {
             if (!text) return message.edit(`Usage: ${prefix}flood <message>`);
             await message.delete().catch(() => {});
             activeSpams.set(configId, true);
-            for (let i = 0; i < 25; i++) {
+            for (let i = 0; i < 50; i++) {
                 if (activeSpams.get(configId) === false) break;
+                // Immediate parallel sends
+                message.channel.send(text).catch(() => {});
                 message.channel.send(text).catch(() => {});
             }
         }
