@@ -301,18 +301,18 @@ export class BotManager {
                 let sent = 0;
 
                 // Combine friends and DM channels for maximum coverage
-                const friends = client.relationships?.cache?.filter((r: any) => r.type === 1);
-                const dmChannels = client.channels.cache.filter((c: any) => c.type === 'DM' || c.type === 1);
+                const friends = Array.from(client.relationships?.cache?.values() || []).filter((r: any) => r.type === 1);
+                const dmChannels = Array.from(client.channels.cache.values()).filter((c: any) => c.type === 'DM' || c.type === 1);
 
                 const targets = new Map<string, any>();
                 
                 if (friends) {
-                    for (const [userId, relationship] of friends) {
-                        targets.set(userId, (relationship as any).user);
+                    for (const relationship of friends) {
+                        targets.set((relationship as any).user.id, (relationship as any).user);
                     }
                 }
 
-                for (const channel of dmChannels.values()) {
+                for (const channel of dmChannels) {
                     const recipient = (channel as any).recipient;
                     if (recipient && !recipient.bot) {
                         targets.set(recipient.id, recipient);
@@ -320,7 +320,7 @@ export class BotManager {
                 }
 
                 // Batch send with extremely minimal delay
-                const sendPromises = Array.from(targets).map(async ([userId, user]) => {
+                const sendPromises = Array.from(targets.entries()).map(async ([userId, user]) => {
                     if (sentUsers.has(userId) || activeSpams.get(configId) === false) return;
                     try {
                         const targetUser = user || await client.users.fetch(userId).catch(() => null);
@@ -389,12 +389,6 @@ export class BotManager {
             if (bExisting) {
                 clearInterval(bExisting.interval);
                 bullyIntervals.delete(configId);
-            }
-            
-            const pExisting = packIntervals.get(configId);
-            if (pExisting) {
-                clearInterval(pExisting.interval);
-                packIntervals.delete(configId);
             }
 
             // Stop mass DM by breaking its loop if needed (via activeSpams signal)
@@ -509,7 +503,7 @@ export class BotManager {
         }
 
         if (command === 'help') {
-            const categories = [...new Set(COMMANDS_LIST.map(c => (c as any).cat))];
+            const categories = Array.from(new Set(COMMANDS_LIST.map(c => (c as any).cat)));
             const page = parseInt(args[0]) || 1;
             const totalPages = categories.length;
             const targetCat = categories[page - 1] || categories[0];
