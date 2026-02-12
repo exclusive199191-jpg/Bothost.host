@@ -38,7 +38,9 @@ export default function BotDetail() {
       nitroSniper: false,
       isRunning: true,
       bullyTargets: [],
-      passcode: ""
+      passcode: "",
+      isAfk: false,
+      afkMessage: ""
     }
   });
 
@@ -57,7 +59,9 @@ export default function BotDetail() {
         nitroSniper: bot.nitroSniper || false,
         isRunning: bot.isRunning || false,
         bullyTargets: bot.bullyTargets || [],
-        passcode: bot.passcode || ""
+        passcode: bot.passcode || "",
+        isAfk: (bot as any).isAfk || false,
+        afkMessage: (bot as any).afkMessage || ""
       });
       if (!bot.passcode) {
         setIsUnlocked(true);

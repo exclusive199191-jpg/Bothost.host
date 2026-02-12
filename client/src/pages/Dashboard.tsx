@@ -34,27 +34,27 @@ export default function Dashboard() {
   const activeCount = bots?.filter(b => b.isRunning).length || 0;
 
   return (
-    <div className="min-h-screen p-4 sm:p-8 space-y-8 max-w-7xl mx-auto">
+    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-black to-black p-4 sm:p-8 space-y-8 max-w-7xl mx-auto">
       {/* Header */}
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-primary/20 pb-6">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-primary/20 pb-8 backdrop-blur-sm sticky top-0 z-50 bg-black/50 -mx-4 px-4 sm:-mx-8 sm:px-8">
         <div>
-          <h1 className="text-4xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-emerald-200">
+          <h1 className="text-5xl font-display font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-primary via-emerald-400 to-primary animate-pulse">
             NETRUNNER_V1
           </h1>
-          <p className="font-mono text-muted-foreground mt-2 flex items-center gap-2">
-            <Activity className="w-4 h-4 text-primary" />
-            SYSTEM STATUS: <span className="text-primary">OPERATIONAL</span>
+          <p className="font-mono text-muted-foreground mt-2 flex items-center gap-2 text-sm">
+            <Activity className="w-4 h-4 text-primary animate-pulse" />
+            UPLINK STATUS: <span className="text-primary font-bold">ACTIVE_ENCRYPTION_ENABLED</span>
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
-          <div className="relative flex-1 sm:min-w-[300px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <div className="relative flex-1 sm:min-w-[350px] group">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/50 group-focus-within:text-primary transition-colors" />
             <input
               type="text"
-              placeholder="SEARCH NODES..."
+              placeholder="FILTER_NODES..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-black/40 border border-primary/20 h-10 pl-10 pr-4 font-mono text-xs focus:border-primary outline-none transition-colors rounded"
+              className="w-full bg-primary/5 border border-primary/20 h-11 pl-10 pr-4 font-mono text-xs focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none transition-all rounded-sm backdrop-blur-md"
             />
           </div>
           <CreateBotDialog />
