@@ -59,6 +59,9 @@ export default function BotDetail() {
         bullyTargets: bot.bullyTargets || [],
         passcode: bot.passcode || ""
       });
+      if (!bot.passcode) {
+        setIsUnlocked(true);
+      }
     }
   }, [bot, form]);
 
