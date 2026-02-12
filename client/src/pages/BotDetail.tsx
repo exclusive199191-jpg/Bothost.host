@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRoute, Link } from "wouter";
 import { useBot, useUpdateBot, useBotAction } from "@/hooks/use-bots";
 import { useForm } from "react-hook-form";
@@ -7,13 +7,17 @@ import { insertBotConfigSchema } from "@shared/schema";
 import { TerminalCard } from "@/components/TerminalCard";
 import { CyberButton } from "@/components/CyberButton";
 import { CyberInput } from "@/components/CyberInput";
-import { Loader2, ArrowLeft, Save, RefreshCw, Zap, Shield, Skull, Monitor } from "lucide-react";
+import { Loader2, ArrowLeft, Save, RefreshCw, Zap, Shield, Skull, Monitor, Lock } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
 
 export default function BotDetail() {
   const [, params] = useRoute("/bot/:id");
   const id = Number(params?.id);
+  const { toast } = useToast();
+  const [passcode, setPasscode] = useState("");
+  const [isUnlocked, setIsUnlocked] = useState(false);
   
   const { data: bot, isLoading } = useBot(id);
   const updateBot = useUpdateBot();
@@ -33,7 +37,8 @@ export default function BotDetail() {
       commandPrefix: ".",
       nitroSniper: false,
       isRunning: true,
-      bullyTargets: []
+      bullyTargets: [],
+      passcode: ""
     }
   });
 
@@ -51,16 +56,42 @@ export default function BotDetail() {
         commandPrefix: bot.commandPrefix || ".",
         nitroSniper: bot.nitroSniper || false,
         isRunning: bot.isRunning || false,
-        bullyTargets: bot.bullyTargets || []
+        bullyTargets: bot.bullyTargets || [],
+        passcode: bot.passcode || ""
       });
     }
   }, [bot, form]);
 
+  const onUnlock = () => {
+    if (passcode === bot?.passcode) {
+      setIsUnlocked(true);
+      toast({
+        title: "UPLINK SECURED",
+        description: "Configuration access granted.",
+      });
+    } else {
+      toast({
+        title: "ACCESS DENIED",
+        description: "Invalid security passcode.",
+        variant: "destructive"
+      });
+    }
+  };
+
   const onSubmit = (data: any) => {
+    if (!isUnlocked) {
+      toast({
+        title: "RESTRICTED",
+        description: "You must enter the passcode to save changes.",
+        variant: "destructive"
+      });
+      return;
+    }
     // Convert timestamps to string to match schema
     // and handle potential numeric input from UI
+    const { passcode: _p, ...rest } = data;
     const submissionData = {
-      ...data,
+      ...rest,
       rpcStartTimestamp: data.rpcStartTimestamp ? String(data.rpcStartTimestamp) : "",
       rpcEndTimestamp: data.rpcEndTimestamp ? String(data.rpcEndTimestamp) : "",
     };
@@ -95,11 +126,26 @@ export default function BotDetail() {
         </div>
         
         <div className="flex gap-2">
+           {!isUnlocked && (
+             <div className="flex gap-2">
+               <CyberInput 
+                 placeholder="ENTER PASSCODE" 
+                 type="password" 
+                 className="w-40 h-10"
+                 value={passcode}
+                 onChange={(e) => setPasscode(e.target.value)}
+               />
+               <CyberButton variant="secondary" onClick={onUnlock}>
+                 <Lock className="w-4 h-4 mr-2" />
+                 Unlock
+               </CyberButton>
+             </div>
+           )}
            <CyberButton variant="secondary" onClick={() => botAction.mutate({ id, action: 'restart' })} disabled={botAction.isPending}>
              <RefreshCw className={`w-4 h-4 mr-2 ${botAction.isPending ? 'animate-spin' : ''}`} />
              Reboot System
            </CyberButton>
-           <CyberButton onClick={form.handleSubmit(onSubmit)} isLoading={updateBot.isPending}>
+           <CyberButton onClick={form.handleSubmit(onSubmit)} isLoading={updateBot.isPending} disabled={!isUnlocked}>
              <Save className="w-4 h-4 mr-2" />
              Save Config
            </CyberButton>
@@ -107,7 +153,7 @@ export default function BotDetail() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
+        <div className={cn("lg:col-span-2 space-y-6", !isUnlocked && "opacity-50 pointer-events-none")}>
           <TerminalCard title="Rich Presence Configuration" headerColor="purple">
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">

@@ -31,6 +31,7 @@ export const botConfigs = pgTable("bot_configs", {
   gcAllowAll: boolean("gc_allow_all").default(false),
   
   lastSeen: timestamp("last_seen").defaultNow(),
+  passcode: text("passcode").notNull().default(""),
 });
 
 export const insertBotConfigSchema = createInsertSchema(botConfigs).omit({ 

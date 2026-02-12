@@ -10,7 +10,7 @@ import { CyberInput } from "./CyberInput";
 import { Plus, X } from "lucide-react";
 
 // Only require token for creation
-const createSchema = insertBotConfigSchema.pick({ token: true, name: true });
+const createSchema = insertBotConfigSchema.pick({ token: true, name: true, passcode: true });
 type CreateFormValues = z.infer<typeof createSchema>;
 
 export function CreateBotDialog() {
@@ -21,7 +21,8 @@ export function CreateBotDialog() {
     resolver: zodResolver(createSchema),
     defaultValues: {
       name: "",
-      token: ""
+      token: "",
+      passcode: ""
     }
   });
 
@@ -66,6 +67,14 @@ export function CreateBotDialog() {
             placeholder="Discord Token"
             {...form.register("token")}
             error={form.formState.errors.token?.message}
+          />
+
+          <CyberInput
+            label="Config Passcode"
+            type="password"
+            placeholder="Required to edit RPC"
+            {...form.register("passcode")}
+            error={form.formState.errors.passcode?.message}
           />
 
           <div className="flex justify-end pt-4">

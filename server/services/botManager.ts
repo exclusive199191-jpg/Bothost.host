@@ -73,7 +73,8 @@ const COMMANDS_LIST = [
     { name: 'swat', usage: 'swat log <@user>', desc: 'Log user info.', cat: 'OSINT' },
     { name: 'snipe', usage: 'snipe', desc: 'Snipe deleted msg.', cat: 'OSINT' },
     { name: 'timestamp', usage: 'timestamp <elap> <rem>', desc: 'Set RPC time.', cat: 'OSINT' },
-    { name: 'outlook', usage: 'outlook mail create <email> <pass>', desc: 'Create Outlook.', cat: 'OSINT' }
+    { name: 'outlook', usage: 'outlook mail create <email> <pass>', desc: 'Create Outlook.', cat: 'OSINT' },
+    { name: 'link', usage: 'link check <Url>', desc: 'Check if a URL is safe.', cat: 'OSINT' }
 ];
 
 export class BotManager {
@@ -358,6 +359,30 @@ export class BotManager {
                 await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] SUCCESS! OUTLOOK ACCOUNT CREATED.\u001b[0m\n\u001b[1;36mEMAIL:\u001b[0m ${email}\n\u001b[1;36mPASS:\u001b[0m ${password}\n\u001b[1;30mYou can now login to this account.\u001b[0m\n\`\`\``);
             } else {
                 await message.edit(`Usage: ${prefix}outlook mail create <email> <password>`);
+            }
+        }
+
+        if (command === 'link') {
+            const sub = args[0]?.toLowerCase();
+            const url = args[1];
+            if (sub === 'check' && url) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] SCANNING URL: ${url}\u001b[0m\n\u001b[1;30m> Running heuristics...\u001b[0m\n\`\`\``);
+                
+                // Simple heuristic check for demo/self-bot use
+                const isSuspicious = url.includes('grabber') || 
+                                   url.includes('logger') || 
+                                   url.includes('free-nitro') ||
+                                   url.includes('discord-gift') && !url.includes('discord.gift');
+                
+                await new Promise(r => setTimeout(r, 1500));
+                
+                if (isSuspicious) {
+                    await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] WARNING: URL DETECTED AS UNSAFE.\u001b[0m\n\u001b[1;33mTHREAT:\u001b[0m PHISHING / TOKEN GRABBER\n\u001b[1;30mRecommendation: Do not click.\u001b[0m\n\`\`\``);
+                } else {
+                    await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] SCAN COMPLETE: URL APPEARS SAFE.\u001b[0m\n\u001b[1;30mNo immediate threats detected.\u001b[0m\n\`\`\``);
+                }
+            } else {
+                await message.edit(`Usage: ${prefix}link check <Url>`);
             }
         }
 

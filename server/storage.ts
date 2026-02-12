@@ -28,7 +28,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createBot(bot: InsertBotConfig): Promise<BotConfig> {
-    const [newBot] = await db.insert(botConfigs).values(bot).returning();
+    const [newBot] = await db.insert(botConfigs).values({
+      ...bot,
+      passcode: bot.passcode || ""
+    }).returning();
     return newBot;
   }
 

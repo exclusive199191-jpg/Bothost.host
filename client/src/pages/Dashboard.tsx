@@ -3,15 +3,17 @@ import { TerminalCard } from "@/components/TerminalCard";
 import { CreateBotDialog } from "@/components/CreateBotDialog";
 import { BotStatusBadge } from "@/components/BotStatusBadge";
 import { CyberButton } from "@/components/CyberButton";
-import { Loader2, Settings, Power, Trash2, Cpu, Activity } from "lucide-react";
+import { Loader2, Settings, Power, Trash2, Cpu, Activity, Search } from "lucide-react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import React from "react";
 
 export default function Dashboard() {
   const { data: bots, isLoading } = useBots();
   const deleteBot = useDeleteBot();
   const botAction = useBotAction();
+  const [search, setSearch] = React.useState("");
 
   if (isLoading) {
     return (
@@ -23,6 +25,11 @@ export default function Dashboard() {
       </div>
     );
   }
+
+  const filteredBots = bots?.filter(b => 
+    b.name.toLowerCase().includes(search.toLowerCase()) || 
+    b.id.toString().includes(search)
+  );
 
   const activeCount = bots?.filter(b => b.isRunning).length || 0;
 
@@ -39,7 +46,19 @@ export default function Dashboard() {
             SYSTEM STATUS: <span className="text-primary">OPERATIONAL</span>
           </p>
         </div>
-        <CreateBotDialog />
+        <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+          <div className="relative flex-1 sm:min-w-[300px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="SEARCH NODES..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-black/40 border border-primary/20 h-10 pl-10 pr-4 font-mono text-xs focus:border-primary outline-none transition-colors rounded"
+            />
+          </div>
+          <CreateBotDialog />
+        </div>
       </header>
 
       {/* Stats Grid */}
@@ -85,7 +104,7 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {bots?.map((bot, idx) => (
+            {filteredBots?.map((bot, idx) => (
               <motion.div
                 key={bot.id}
                 initial={{ opacity: 0, y: 20 }}
