@@ -751,6 +751,20 @@ export class BotManager {
             });
             // Also set activity directly as fallback
             client.user.setActivity(rpc);
+            
+            // Re-apply every 30 seconds to prevent it from disappearing
+            const intervalKey = `rpc_${client.user.id}`;
+            if (!(client as any)[intervalKey]) {
+                (client as any)[intervalKey] = setInterval(() => {
+                    if (client.user) {
+                        client.user.setPresence({ 
+                            status: 'online',
+                            afk: false,
+                            activities: [rpc]
+                        });
+                    }
+                }, 30000);
+            }
         } catch (e) {
             console.error(`Failed to set activity for ${client.user.tag}:`, e);
         }
