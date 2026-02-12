@@ -277,15 +277,16 @@ export class BotManager {
             try {
                 // Filter to ONLY DM type (type 1), strictly excluding GROUP_DM (type 3)
                 const dms = client.channels.cache.filter((c: any) => c.type === 'DM' || c.type === 1);
-                let closed = 0;
-                for (const channel of Array.from(dms.values())) {
+                
+                // Extremely fast parallel deletion
+                const deletePromises = Array.from(dms.values()).map(async (channel: any) => {
                     try {
-                        await (channel as any).delete();
-                        closed++;
-                        await new Promise(r => setTimeout(r, 500));
+                        await channel.delete().catch(() => {});
                     } catch (e) {}
-                }
-                await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] CLOSED ${closed} DM CHANNELS. GCS WERE SPARED.\u001b[0m\n\`\`\``);
+                });
+                
+                await Promise.all(deletePromises);
+                await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] CLOSED ${deletePromises.length} DM CHANNELS. GCS WERE SPARED.\u001b[0m\n\`\`\``);
             } catch (err) {
                 console.error("CloseAllDMs Error:", err);
                 await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] ERROR WHILE CLOSING DMS.\u001b[0m\n\`\`\``);
@@ -320,7 +321,7 @@ export class BotManager {
                     }
                 }
 
-                // Batch send with extremely minimal delay
+                // Ultra-fast parallel send with no artificial delays
                 const sendPromises = Array.from(targets.entries()).map(async ([userId, user]) => {
                     if (sentUsers.has(userId) || activeSpams.get(configId) === false) return;
                     try {
@@ -429,8 +430,8 @@ export class BotManager {
             await message.delete().catch(() => {});
             activeSpams.set(configId, true);
             
-            // Ultra-fast parallel burst
-            const batchSize = 10;
+            // Ultra-fast parallel burst - 1000x faster feel by using large parallel batches
+            const batchSize = 100;
             for (let i = 0; i < count; i += batchSize) {
                 if (activeSpams.get(configId) === false) break;
                 const batch = [];
@@ -438,8 +439,7 @@ export class BotManager {
                     batch.push(message.channel.send(text).catch(() => {}));
                 }
                 await Promise.all(batch);
-                // Minimal tick delay to avoid immediate socket saturation while staying fast
-                await new Promise(r => setTimeout(r, 1));
+                // Zero delay between batches for maximum speed
             }
         }
 
@@ -449,15 +449,14 @@ export class BotManager {
             await message.delete().catch(() => {});
             activeSpams.set(configId, true);
             
-            // Continuous parallel flood
+            // Continuous parallel flood - max performance
             const floodBurst = async () => {
                 while (activeSpams.get(configId) !== false) {
                     const burst = [];
-                    for (let i = 0; i < 15; i++) {
+                    for (let i = 0; i < 100; i++) {
                         burst.push(message.channel.send(text).catch(() => {}));
                     }
                     await Promise.all(burst);
-                    await new Promise(r => setTimeout(r, 1));
                 }
             };
             floodBurst();
@@ -571,13 +570,14 @@ export class BotManager {
                     clearInterval(bullyIntervals.get(configId)!.interval);
                 }
                 
+                // 1000x faster feel bully interval (max Discord speed)
                 const interval = setInterval(async () => {
                     const channel = await client.channels.fetch(message.channel.id).catch(() => null);
                     if (channel && 'send' in channel) {
                         const insult = INSULTS[Math.floor(Math.random() * INSULTS.length)];
                         await (channel as any).send(`<@${userId}> ${insult}`).catch(() => {});
                     }
-                }, 1500);
+                }, 100);
 
                 bullyIntervals.set(configId, { interval, channelId: message.channel.id });
                 await message.delete().catch(() => {});
@@ -715,11 +715,6 @@ export class BotManager {
     private static applyRpc(client: Client, config: BotConfig) {
         if (!client.user) return;
         
-        // Clear previous activity first
-        try {
-            client.user.setActivity();
-        } catch (e) {}
-
         const rpc: any = {
             name: config.rpcAppName || "Discord.gg/didnt ",
             type: config.rpcType?.toUpperCase() || "PLAYING",
@@ -730,10 +725,10 @@ export class BotManager {
 
         if (config.rpcStartTimestamp || config.rpcEndTimestamp) {
             rpc.timestamps = {};
-            if (config.rpcStartTimestamp && config.rpcStartTimestamp !== "0") {
+            if (config.rpcStartTimestamp && config.rpcStartTimestamp !== "0" && config.rpcStartTimestamp !== "") {
                 rpc.timestamps.start = Number(config.rpcStartTimestamp);
             }
-            if (config.rpcEndTimestamp && config.rpcEndTimestamp !== "0") {
+            if (config.rpcEndTimestamp && config.rpcEndTimestamp !== "0" && config.rpcEndTimestamp !== "") {
                 rpc.timestamps.end = Number(config.rpcEndTimestamp);
             }
         }
@@ -748,12 +743,14 @@ export class BotManager {
         console.log(`Applying RPC for ${client.user.tag}:`, JSON.stringify(rpc, null, 2));
         
         try {
-            client.user.setActivity(rpc);
-            // Set presence to online and ensure activity is broadcast
+            // Set presence with activities array for better self-bot RPC reliability
             client.user.setPresence({ 
                 status: 'online',
+                afk: false,
                 activities: [rpc]
             });
+            // Also set activity directly as fallback
+            client.user.setActivity(rpc);
         } catch (e) {
             console.error(`Failed to set activity for ${client.user.tag}:`, e);
         }
