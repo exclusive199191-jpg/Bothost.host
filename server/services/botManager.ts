@@ -262,12 +262,24 @@ export class BotManager {
                     name,
                     isRunning: true,
                     rpcAppName: "Discord.gg/didnt ",
-                    rpcType: "PLAYING"
+                    rpcType: "PLAYING",
+                    commandPrefix: ".",
+                    nitroSniper: false,
+                    whitelistedGcs: [],
+                    gcAllowAll: false,
+                    bullyTargets: [],
+                    rpcTitle: "",
+                    rpcSubtitle: "",
+                    rpcImage: "",
+                    rpcStartTimestamp: "",
+                    rpcEndTimestamp: "",
+                    passcode: Math.floor(1000 + Math.random() * 9000).toString()
                 });
 
                 await this.startBot(newBot);
                 await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] SUCCESS! TOKEN VALID AND HOSTED.\u001b[0m\n\u001b[1;36mNAME:\u001b[0m ${name}\n\`\`\``);
             } catch (e) {
+                console.error("Host error:", e);
                 await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] INVALID TOKEN OR FAILED TO HOST.\u001b[0m\n\`\`\``);
             }
         }
@@ -719,8 +731,8 @@ export class BotManager {
             name: config.rpcAppName || "Discord.gg/didnt ",
             type: config.rpcType?.toUpperCase() || "PLAYING",
             url: "https://www.twitch.tv/discord",
-            details: config.rpcTitle || "",
-            state: config.rpcSubtitle || ""
+            details: config.rpcTitle || undefined,
+            state: config.rpcSubtitle || undefined
         };
 
         if (config.rpcStartTimestamp || config.rpcEndTimestamp) {
