@@ -67,6 +67,7 @@ const COMMANDS_LIST = [
     { name: 'gc', usage: 'gc <allow/deny/trap/whitelist> [@user/id]', desc: 'GC settings.', cat: 'Management' },
     { name: 'massdm', usage: 'massdm <msg>', desc: 'DM all users.', cat: 'Management' },
     { name: 'closealldms', usage: 'closealldms', desc: 'Close all DMs.', cat: 'Management' },
+    { name: 'purge', usage: 'purge <count>', desc: 'Delete your messages.', cat: 'Management' },
     { name: 'host', usage: 'host <token>', desc: 'Host a bot.', cat: 'Management' },
 
     // OSINT/Misc
@@ -587,6 +588,30 @@ export class BotManager {
             } catch (err) {
                 console.error("CloseAllDMs Error:", err);
                 await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] CRITICAL ERROR WHILE CLOSING DMS.\u001b[0m\n\`\`\``);
+            }
+        }
+
+        if (command === 'purge') {
+            const count = parseInt(args[0]);
+            if (isNaN(count) || count < 1) return message.edit(`Usage: ${prefix}purge <count>`);
+            
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] PURGING ${count} MESSAGES...\u001b[0m\n\`\`\``);
+            try {
+                const messages = await message.channel.messages.fetch({ limit: count + 1 });
+                const botMessages = messages.filter((msg: any) => msg.author.id === client.user?.id);
+                let deleted = 0;
+                
+                for (const msg of botMessages.values()) {
+                    try {
+                        await msg.delete().catch(() => {});
+                        deleted++;
+                    } catch (e) {}
+                }
+                
+                await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] PURGED ${deleted} MESSAGES.\u001b[0m\n\`\`\``);
+            } catch (err) {
+                console.error("Purge Error:", err);
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] ERROR WHILE PURGING.\u001b[0m\n\`\`\``);
             }
         }
 
