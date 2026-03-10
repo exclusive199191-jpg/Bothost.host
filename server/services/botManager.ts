@@ -110,10 +110,25 @@ export class BotManager {
         console.error(`Bot ${initialConfig.name} encountered an error:`, error.message);
       });
 
+      client.on('disconnect', () => {
+        console.warn(`Bot ${initialConfig.name} disconnected. Attempting reconnect...`);
+        setTimeout(() => {
+          if (!activeClients.has(configId)) {
+            client.login(initialConfig.token).catch(e => {
+              console.error(`Reconnect failed for ${initialConfig.name}:`, e);
+            });
+          }
+        }, 5000);
+      });
+
       client.on('ready', async () => {
-        const config = clientConfigs.get(configId) || initialConfig;
-        console.log(`Bot ${config.name} (${client.user?.tag}) is ready!`);
-        this.applyRpc(client, config);
+        try {
+          const config = clientConfigs.get(configId) || initialConfig;
+          console.log(`Bot ${config.name} (${client.user?.tag}) is ready!`);
+          this.applyRpc(client, config);
+        } catch (e) {
+          console.error(`Error in ready handler for ${initialConfig.name}:`, e);
+        }
       });
 
       client.on('channelCreate', async (channel: any) => {
