@@ -42,3 +42,4 @@ waitForPort = 5000
 
 [userenv.shared]
 DISCORD_TOKEN = "MTQ3Njg1NDAxOTk2NzE1NjM1Nw.GtdXdi.jY0pFdcFBRcTAPHuPR8gyMleuYS3ruGqZ8GZzw"
+DATABASE_URL = "postgres://bbd96ee3aa404a3ee619ba6f072550b742563a2540f7bc0713692ea180d86d44:sk_r02sTpxav4FgwQJRJGlVp@db.prisma.io:5432/postgres?sslmode=require&pool=true"
