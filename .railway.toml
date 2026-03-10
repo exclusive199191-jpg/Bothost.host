@@ -1,0 +1,8 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+numReplicas = 1
+startCommand = "npm run build && npm start"
+healthcheckPath = "/"
+healthcheckTimeout = 30
