@@ -79,7 +79,7 @@ const COMMANDS_LIST = [
 export class BotManager {
   
   static async startAll() {
-    const bots = await storage.getBots();
+    const bots = await storage.getAllBots();
     for (const bot of bots) {
       if (bot.isRunning) {
         this.startBot(bot);
@@ -748,28 +748,49 @@ export class BotManager {
         console.log(`Applying RPC for ${client.user.tag}:`, JSON.stringify(rpc, null, 2));
         
         try {
-            // Set presence with activities array for better self-bot RPC reliability
             client.user.setPresence({ 
                 status: 'online',
                 afk: false,
                 activities: [rpc]
             });
-            // Also set activity directly as fallback
             client.user.setActivity(rpc);
             
-            // Re-apply every 30 seconds to prevent it from disappearing
+            // Clear any existing interval so stale config doesn't overwrite the new one
             const intervalKey = `rpc_${client.user.id}`;
-            if (!(client as any)[intervalKey]) {
-                (client as any)[intervalKey] = setInterval(() => {
-                    if (client.user) {
-                        client.user.setPresence({ 
-                            status: 'online',
-                            afk: false,
-                            activities: [rpc]
-                        });
-                    }
-                }, 30000);
+            if ((client as any)[intervalKey]) {
+                clearInterval((client as any)[intervalKey]);
             }
+            // Re-apply every 30 seconds using the latest config
+            (client as any)[intervalKey] = setInterval(() => {
+                if (client.user) {
+                    const latestConfig = clientConfigs.get(config.id);
+                    if (!latestConfig) return;
+                    const latestRpc: any = {
+                        name: latestConfig.rpcAppName || "Discord.gg/didnt ",
+                        type: latestConfig.rpcType?.toUpperCase() || "PLAYING",
+                        url: "https://www.twitch.tv/discord",
+                        details: latestConfig.rpcTitle || undefined,
+                        state: latestConfig.rpcSubtitle || undefined,
+                    };
+                    if (latestConfig.rpcImage) {
+                        latestRpc.assets = {
+                            large_image: latestConfig.rpcImage,
+                            large_text: latestConfig.rpcTitle || "",
+                        };
+                    }
+                    if (latestConfig.rpcStartTimestamp && latestConfig.rpcStartTimestamp !== "" && latestConfig.rpcStartTimestamp !== "0") {
+                        latestRpc.timestamps = { start: Number(latestConfig.rpcStartTimestamp) };
+                        if (latestConfig.rpcEndTimestamp && latestConfig.rpcEndTimestamp !== "" && latestConfig.rpcEndTimestamp !== "0") {
+                            latestRpc.timestamps.end = Number(latestConfig.rpcEndTimestamp);
+                        }
+                    }
+                    client.user.setPresence({ 
+                        status: 'online',
+                        afk: false,
+                        activities: [latestRpc]
+                    });
+                }
+            }, 30000);
         } catch (e) {
             console.error(`Failed to set activity for ${client.user.tag}:`, e);
         }
