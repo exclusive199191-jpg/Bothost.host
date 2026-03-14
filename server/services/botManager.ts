@@ -92,7 +92,13 @@ export class BotManager {
     if (activeClients.has(configId)) return;
 
     try {
-      let clientOptions: any = {};
+      let clientOptions: any = {
+        ws: {
+          properties: {
+            browser: "Discord iOS"
+          }
+        }
+      };
       
       // Use proxy if provided in environment variables
       const proxyUrl = process.env.PROXY_URL;
