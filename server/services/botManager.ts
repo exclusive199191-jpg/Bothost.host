@@ -44,38 +44,43 @@ const BLACK_ANIME_PFPS = [
 
 const COMMANDS_LIST = [
     // General
-    { name: 'help', usage: 'help [page]', desc: 'Show this menu.', cat: 'General' },
-    { name: 'ping', usage: 'ping', desc: 'Check latency.', cat: 'General' },
-    { name: 'prefix', usage: 'prefix set <prefix>', desc: 'Set prefix.', cat: 'General' },
-    { name: 'stopall', usage: 'stopall', desc: 'Stop all modules.', cat: 'General' },
-    { name: 'server', usage: 'server info', desc: 'Get server info.', cat: 'General' },
-    { name: 'user', usage: 'user info <@user>', desc: 'Get user info.', cat: 'General' },
+    { name: 'help',    usage: 'help [page number]',          desc: 'Show this command list. Use a page number to navigate categories.', cat: 'General' },
+    { name: 'ping',    usage: 'ping',                         desc: 'Check the bot\'s current latency to Discord in milliseconds.', cat: 'General' },
+    { name: 'prefix',  usage: 'prefix set <new prefix>',      desc: 'Change the command prefix. Example: prefix set ! changes it to !.', cat: 'General' },
+    { name: 'stopall', usage: 'stopall',                      desc: 'Immediately stop all running modules — spam, flood, bully loop, and rich presence.', cat: 'General' },
+    { name: 'server',  usage: 'server info',                  desc: 'Display info about the current server: name, ID, owner, member count, and creation date.', cat: 'General' },
+    { name: 'user',    usage: 'user info <@user or user ID>', desc: 'Display info about a user: tag, ID, display name, account age, and badges.', cat: 'General' },
 
     // Fun & Tools
-    { name: 'bully', usage: 'bully <@user/off>', desc: 'Roast target.', cat: 'Fun/Tools' },
-    { name: 'autoreact', usage: 'autoreact <@user> <emoji>', desc: 'Auto-react to user.', cat: 'Fun/Tools' },
-    { name: 'react', usage: 'react all', desc: 'React with emojis.', cat: 'Fun/Tools' },
-    { name: 'pfp', usage: 'pfp <@user>', desc: 'Get user pfp.', cat: 'Fun/Tools' },
-    { name: 'banner', usage: 'banner <@user>', desc: 'Get user banner.', cat: 'Fun/Tools' },
+    { name: 'bully',      usage: 'bully <@user>',                desc: 'Start spamming random insults at the mentioned user every 100ms.', cat: 'Fun/Tools' },
+    { name: 'bully off',  usage: 'bully off',                    desc: 'Stop the active bully loop.', cat: 'Fun/Tools' },
+    { name: 'autoreact',  usage: 'autoreact <@user> <emoji>',    desc: 'Automatically react with an emoji to every message sent by the mentioned user.', cat: 'Fun/Tools' },
+    { name: 'react all',  usage: 'react all',                    desc: 'Reply to a message then run this to react to it with 26+ different emojis.', cat: 'Fun/Tools' },
+    { name: 'pfp',        usage: 'pfp <@user or user ID>',       desc: 'Fetch and display the full-size profile picture URL of any user.', cat: 'Fun/Tools' },
+    { name: 'banner',     usage: 'banner <@user or user ID>',    desc: 'Fetch and display the full-size banner URL of any user (if they have one).', cat: 'Fun/Tools' },
 
     // Automation
-    { name: 'spam', usage: 'spam <count> <msg>', desc: 'Spam message.', cat: 'Automation' },
-    { name: 'flood', usage: 'flood <msg>', desc: 'Flood chat.', cat: 'Automation' },
-    { name: 'spamstop', usage: 'spamstop', desc: 'Stop spam/flood.', cat: 'Automation' },
-    { name: 'nitro', usage: 'nitro <on/off>', desc: 'Auto-claim Nitro.', cat: 'Automation' },
-    { name: 'afk', usage: 'afk [reason]', desc: 'Set AFK status.', cat: 'Automation' },
+    { name: 'spam',     usage: 'spam <count> <message>',   desc: 'Send a message a specified number of times as fast as possible.', cat: 'Automation' },
+    { name: 'flood',    usage: 'flood <message>',           desc: 'Continuously send a message in the channel until you use spamstop.', cat: 'Automation' },
+    { name: 'spamstop', usage: 'spamstop',                  desc: 'Stop any active spam or flood loop immediately.', cat: 'Automation' },
+    { name: 'nitro on', usage: 'nitro on',                  desc: 'Enable the Nitro sniper — automatically attempts to claim any Nitro gift links.', cat: 'Automation' },
+    { name: 'nitro off',usage: 'nitro off',                 desc: 'Disable the Nitro sniper.', cat: 'Automation' },
+    { name: 'afk',      usage: 'afk [optional reason]',    desc: 'Toggle AFK mode on or off. Provide an optional reason that gets shown when toggled on.', cat: 'Automation' },
 
     // Management
-    { name: 'gc', usage: 'gc <allow/deny/trap/whitelist> [@user/id]', desc: 'GC settings.', cat: 'Management' },
-    { name: 'massdm', usage: 'massdm <msg>', desc: 'DM all users.', cat: 'Management' },
-    { name: 'closealldms', usage: 'closealldms', desc: 'Close all DMs.', cat: 'Management' },
-    { name: 'purge', usage: 'purge <count>', desc: 'Delete your messages.', cat: 'Management' },
-    { name: 'host', usage: 'host <token>', desc: 'Host a bot.', cat: 'Management' },
+    { name: 'gc allow',     usage: 'gc allow',                      desc: 'Allow all incoming group chat invites — the bot will no longer leave GCs.', cat: 'Management' },
+    { name: 'gc deny',      usage: 'gc deny',                       desc: 'Deny all incoming group chat invites — the bot will leave any new GC it gets added to.', cat: 'Management' },
+    { name: 'gc trap',      usage: 'gc trap <@user or user ID>',    desc: 'Trap a user in the current GC. If they leave, the bot will automatically re-invite them.', cat: 'Management' },
+    { name: 'gc whitelist', usage: 'gc whitelist [GC ID]',          desc: 'Toggle a GC on the whitelist so it is never auto-left. Omit the ID to use the current GC.', cat: 'Management' },
+    { name: 'massdm',       usage: 'massdm <message>',              desc: 'Send a message to all friends and existing DM contacts as fast as possible.', cat: 'Management' },
+    { name: 'closealldms',  usage: 'closealldms',                   desc: 'Close all open DM channels (does not affect group chats).', cat: 'Management' },
+    { name: 'purge',        usage: 'purge <count>',                 desc: 'Delete your last N messages in the current channel.', cat: 'Management' },
+    { name: 'host',         usage: 'host <discord token>',          desc: 'Validate and host a new Discord account on the platform. The token is verified before adding.', cat: 'Management' },
 
-    // OSINT/Misc
-    { name: 'ip', usage: 'ip check <ip>', desc: 'IP info.', cat: 'OSINT' },
-    { name: 'snipe', usage: 'snipe', desc: 'Snipe deleted msg.', cat: 'OSINT' },
-    { name: 'link', usage: 'link check <Url>', desc: 'Check if a URL is safe.', cat: 'OSINT' }
+    // OSINT
+    { name: 'ip check',   usage: 'ip check <ip address>',  desc: 'Look up location, ISP, and coordinates for any IP address.', cat: 'OSINT' },
+    { name: 'snipe',      usage: 'snipe',                   desc: 'Show the most recently deleted message in the current channel.', cat: 'OSINT' },
+    { name: 'link check', usage: 'link check <url>',        desc: 'Check whether a URL is safe or flagged as a phishing link / token grabber.', cat: 'OSINT' },
 ];
 
 export interface LiveBotInfo {
@@ -566,23 +571,27 @@ export class BotManager {
         }
 
         if (command === 'help') {
-            const categories = Array.from(new Set(COMMANDS_LIST.map(c => (c as any).cat)));
+            const categories = Array.from(new Set(COMMANDS_LIST.map(c => c.cat)));
             const page = parseInt(args[0]) || 1;
             const totalPages = categories.length;
             const targetCat = categories[page - 1] || categories[0];
+            const cmdsOnPage = COMMANDS_LIST.filter(c => c.cat === targetCat);
 
-            let helpMsg = `\`\`\`ansi\n\u001b[1;36mNETRUNNER_V1 | ${targetCat.toUpperCase()} [${page}/${totalPages}]\u001b[0m\n`;
-            helpMsg += `\u001b[1;30m------------------------------------\u001b[0m\n`;
-            
-            COMMANDS_LIST.filter(c => (c as any).cat === targetCat).forEach(cmd => {
-                helpMsg += `\u001b[1;33m${prefix}${cmd.name}\u001b[0m - ${cmd.desc}\n`;
+            let helpMsg = `\`\`\`ansi\n\u001b[1;36mNETRUNNER | ${targetCat.toUpperCase()} [Page ${page}/${totalPages}]\u001b[0m\n`;
+            helpMsg += `\u001b[1;30m${'─'.repeat(42)}\u001b[0m\n`;
+
+            cmdsOnPage.forEach(cmd => {
+                helpMsg += `\u001b[1;33m${prefix}${cmd.usage}\u001b[0m\n`;
+                helpMsg += `\u001b[0;37m  └ ${cmd.desc}\u001b[0m\n`;
             });
-            
-            helpMsg += `\n\u001b[1;30mUse ${prefix}help [page] | Pages:\u001b[0m\n`;
+
+            helpMsg += `\n\u001b[1;30m${'─'.repeat(42)}\u001b[0m\n`;
+            helpMsg += `\u001b[1;30mPages: \u001b[0m`;
             categories.forEach((cat, i) => {
-                helpMsg += `\u001b[1;${i + 1 === page ? '32' : '37'}m${i + 1}.${cat} \u001b[0m`;
+                const active = i + 1 === page;
+                helpMsg += `\u001b[1;${active ? '32' : '37'}m[${i + 1}] ${cat}\u001b[0m `;
             });
-            helpMsg += `\n\`\`\``;
+            helpMsg += `\n\u001b[1;30mType ${prefix}help <page> to switch\u001b[0m\n\`\`\``;
             return message.edit(helpMsg).catch(() => {});
         }
 
