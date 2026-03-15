@@ -43,7 +43,7 @@ export default function Dashboard() {
             <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
               <Zap className="w-4 h-4 text-primary" />
             </div>
-            <span className="font-display font-black text-lg tracking-tight text-white">bothost.host</span>
+            <span className="font-display font-black text-lg tracking-tight text-white">NETRUNNER</span>
           </div>
 
           <div className="flex items-center gap-4">

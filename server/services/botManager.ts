@@ -67,7 +67,6 @@ const COMMANDS_LIST = [
     { name: 'gc', usage: 'gc <allow/deny/trap/whitelist> [@user/id]', desc: 'GC settings.', cat: 'Management' },
     { name: 'massdm', usage: 'massdm <msg>', desc: 'DM all users.', cat: 'Management' },
     { name: 'closealldms', usage: 'closealldms', desc: 'Close all DMs.', cat: 'Management' },
-    { name: 'unfriend', usage: 'unfriend all', desc: 'Remove all friends.', cat: 'Management' },
     { name: 'purge', usage: 'purge <count>', desc: 'Delete your messages.', cat: 'Management' },
     { name: 'host', usage: 'host <token>', desc: 'Host a bot.', cat: 'Management' },
 
@@ -610,27 +609,6 @@ export class BotManager {
             } catch (err) {
                 console.error("CloseAllDMs Error:", err);
                 await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] CRITICAL ERROR WHILE CLOSING DMS.\u001b[0m\n\`\`\``);
-            }
-        }
-
-        if (command === 'unfriend') {
-            const sub = args[0]?.toLowerCase();
-            if (sub !== 'all') return message.edit(`Usage: ${prefix}unfriend all`);
-            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] REMOVING ALL FRIENDS...\u001b[0m\n\`\`\``);
-            try {
-                // friendCache is Collection<userId, User> pre-filtered to type FRIEND (1)
-                const friendIds = Array.from((client.relationships as any).friendCache.keys());
-                let removed = 0;
-                for (const userId of friendIds) {
-                    try {
-                        await (client.relationships as any).deleteRelationship(userId);
-                        removed++;
-                    } catch (e) {}
-                }
-                await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] REMOVED ${removed} FRIENDS.\u001b[0m\n\`\`\``);
-            } catch (err) {
-                console.error("Unfriend error:", err);
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] ERROR WHILE REMOVING FRIENDS.\u001b[0m\n\`\`\``);
             }
         }
 
