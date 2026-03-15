@@ -6,11 +6,11 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
-
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+  // Discord domain verification
+  app.get("/.well-known/discord", (_req, res) => {
+    res.setHeader("Content-Type", "text/plain");
+    res.send("dh=15c0aab2b7489dac2bd89a507c7a0e5432af1cf3");
+  });
 
   return httpServer;
 }
