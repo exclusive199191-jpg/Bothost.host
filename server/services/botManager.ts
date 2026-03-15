@@ -95,6 +95,11 @@ export interface LiveBotInfo {
 
 export class BotManager {
 
+  static isRunning(id: number): boolean {
+    const client = activeClients.get(id);
+    return !!client && !!client.user;
+  }
+
   static async getConnectedBotsInfo(): Promise<LiveBotInfo[]> {
     const allBots = await storage.getAllBots();
     return allBots.map(bot => {

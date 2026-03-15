@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { insertBotConfigSchema, botConfigs } from './schema';
 
+export type InsertBotConfig = z.infer<typeof insertBotConfigSchema>;
+export type UpdateBotConfig = Partial<z.infer<typeof insertBotConfigSchema>>;
+
 export const errorSchemas = {
   validation: z.object({
     message: z.string(),
