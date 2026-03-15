@@ -51,7 +51,10 @@ export class DatabaseStorage {
     return valid ? user : null;
   }
 
-  async getBots(userId: number): Promise<BotConfig[]> {
+  async getBots(userId?: number): Promise<BotConfig[]> {
+    if (userId === undefined) {
+      return await db.select().from(botConfigs);
+    }
     return await db.select().from(botConfigs).where(eq(botConfigs.userId, userId));
   }
 
@@ -69,10 +72,10 @@ export class DatabaseStorage {
     return bot;
   }
 
-  async createBot(bot: InsertBotConfig, userId: number): Promise<BotConfig> {
+  async createBot(bot: InsertBotConfig, userId?: number): Promise<BotConfig> {
     const [newBot] = await db.insert(botConfigs).values({
       ...bot,
-      userId,
+      userId: userId ?? null,
       passcode: bot.passcode || "",
     }).returning();
     return newBot;

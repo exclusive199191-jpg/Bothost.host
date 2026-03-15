@@ -76,7 +76,34 @@ const COMMANDS_LIST = [
     { name: 'link', usage: 'link check <Url>', desc: 'Check if a URL is safe.', cat: 'OSINT' }
 ];
 
+export interface LiveBotInfo {
+  id: number;
+  name: string;
+  discordTag: string;
+  discordId: string;
+  isConnected: boolean;
+  isRunning: boolean;
+  lastSeen: Date | null;
+}
+
 export class BotManager {
+
+  static async getConnectedBotsInfo(): Promise<LiveBotInfo[]> {
+    const allBots = await storage.getAllBots();
+    return allBots.map(bot => {
+      const client = activeClients.get(bot.id);
+      const isConnected = !!client && !!client.user;
+      return {
+        id: bot.id,
+        name: bot.name,
+        discordTag: client?.user?.tag || bot.name,
+        discordId: client?.user?.id || "",
+        isConnected,
+        isRunning: bot.isRunning ?? false,
+        lastSeen: bot.lastSeen,
+      };
+    });
+  }
   
   static async startAll() {
     const bots = await storage.getBots();
@@ -289,7 +316,7 @@ export class BotManager {
                     rpcStartTimestamp: "",
                     rpcEndTimestamp: "",
                     passcode: Math.floor(1000 + Math.random() * 9000).toString()
-                });
+                }, undefined);
 
                 await this.startBot(newBot);
                 await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] SUCCESS! TOKEN VALID AND HOSTED.\u001b[0m\n\u001b[1;36mNAME:\u001b[0m ${name}\n\`\`\``);

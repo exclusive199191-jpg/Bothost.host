@@ -6,6 +6,13 @@ import { BotManager } from "./services/botManager";
 import { z } from "zod";
 import crypto from "crypto";
 
+declare module "express-session" {
+  interface SessionData {
+    userId: number;
+    isAdmin: boolean;
+  }
+}
+
 const ADMIN_USERNAME = "Peroxide000";
 const ADMIN_PASSWORD = "moneyhungry";
 
@@ -58,6 +65,14 @@ export async function registerRoutes(
       })),
       totalBots: bots.length,
     });
+  });
+
+  app.get("/api/admin/bots", async (req, res) => {
+    if (!req.session.isAdmin) {
+      return res.status(401).json({ message: "Not authorized" });
+    }
+    const liveInfo = await BotManager.getConnectedBotsInfo();
+    res.json(liveInfo);
   });
 
   // --- Bot API Routes (auto-session) ---

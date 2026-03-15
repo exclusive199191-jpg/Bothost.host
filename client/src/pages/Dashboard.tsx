@@ -1,7 +1,7 @@
 import { useBots, useDeleteBot, useBotAction } from "@/hooks/use-bots";
 import { CreateBotDialog } from "@/components/CreateBotDialog";
 import { BotStatusBadge } from "@/components/BotStatusBadge";
-import { Loader2, Settings, Power, Trash2, Search, Zap, Plus, Bot, Shield, X, Users, Terminal } from "lucide-react";
+import { Loader2, Settings, Power, Trash2, Search, Zap, Plus, Bot, Shield, X, Users, Terminal, RefreshCw } from "lucide-react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,16 @@ interface AdminData {
   totalBots: number;
 }
 
+interface LiveBotInfo {
+  id: number;
+  name: string;
+  discordTag: string;
+  discordId: string;
+  isConnected: boolean;
+  isRunning: boolean;
+  lastSeen: string | null;
+}
+
 function AdminPanel({ onClose }: { onClose: () => void }) {
   const { toast } = useToast();
   const [step, setStep] = React.useState<"login" | "data">("login");
@@ -27,6 +37,8 @@ function AdminPanel({ onClose }: { onClose: () => void }) {
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [adminData, setAdminData] = React.useState<AdminData | null>(null);
+  const [liveBots, setLiveBots] = React.useState<LiveBotInfo[]>([]);
+  const [activeTab, setActiveTab] = React.useState<"bots" | "users">("bots");
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,9 +54,14 @@ function AdminPanel({ onClose }: { onClose: () => void }) {
         setLoading(false);
         return;
       }
-      const dataRes = await fetch("/api/admin/data");
+      const [dataRes, botsRes] = await Promise.all([
+        fetch("/api/admin/data"),
+        fetch("/api/admin/bots"),
+      ]);
       const data: AdminData = await dataRes.json();
+      const bots: LiveBotInfo[] = await botsRes.json();
       setAdminData(data);
+      setLiveBots(bots);
       setStep("data");
     } catch {
       toast({ title: "Error", description: "Connection failed", variant: "destructive" });
@@ -52,6 +69,15 @@ function AdminPanel({ onClose }: { onClose: () => void }) {
       setLoading(false);
     }
   };
+
+  const refreshBots = async () => {
+    const botsRes = await fetch("/api/admin/bots");
+    if (botsRes.ok) {
+      setLiveBots(await botsRes.json());
+    }
+  };
+
+  const connectedCount = liveBots.filter(b => b.isConnected).length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
@@ -108,47 +134,123 @@ function AdminPanel({ onClose }: { onClose: () => void }) {
             </button>
           </form>
         ) : (
-          <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
-            {/* Summary */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white/3 border border-white/8 rounded-xl p-4">
-                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><Users className="w-3 h-3" /> Total Users</p>
+          <div className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+            {/* Stats row */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-white/3 border border-white/8 rounded-xl p-3">
+                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Users className="w-3 h-3" /> Users</p>
                 <p className="text-2xl font-bold text-white mt-1">{adminData?.users.length || 0}</p>
               </div>
-              <div className="bg-white/3 border border-white/8 rounded-xl p-4">
-                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><Terminal className="w-3 h-3" /> Total Bots</p>
-                <p className="text-2xl font-bold text-primary mt-1">{adminData?.totalBots || 0}</p>
+              <div className="bg-white/3 border border-white/8 rounded-xl p-3">
+                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Terminal className="w-3 h-3" /> Total</p>
+                <p className="text-2xl font-bold text-primary mt-1">{liveBots.length}</p>
+              </div>
+              <div className="bg-white/3 border border-white/8 rounded-xl p-3">
+                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Bot className="w-3 h-3" /> Live</p>
+                <p className="text-2xl font-bold text-green-400 mt-1">{connectedCount}</p>
               </div>
             </div>
 
-            {/* Users table */}
-            <div className="space-y-2">
-              <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">All Users</p>
-              <div className="rounded-xl border border-white/8 overflow-hidden">
-                <table className="w-full text-xs font-mono">
-                  <thead>
-                    <tr className="border-b border-white/8 bg-white/3">
-                      <th className="text-left px-4 py-3 text-muted-foreground font-normal uppercase tracking-wider">ID</th>
-                      <th className="text-left px-4 py-3 text-muted-foreground font-normal uppercase tracking-wider">Session ID</th>
-                      <th className="text-right px-4 py-3 text-muted-foreground font-normal uppercase tracking-wider">Bots</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {adminData?.users.map((u, i) => (
-                      <tr key={u.id} className={cn("border-b border-white/5 last:border-0", i % 2 === 0 ? "bg-transparent" : "bg-white/[0.015]")}>
-                        <td className="px-4 py-3 text-white">#{u.id}</td>
-                        <td className="px-4 py-3 text-muted-foreground truncate max-w-[200px]">{u.username}</td>
-                        <td className="px-4 py-3 text-right">
-                          <span className={cn("font-bold", u.botCount > 0 ? "text-primary" : "text-muted-foreground/50")}>
-                            {u.botCount}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            {/* Tabs */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setActiveTab("bots")}
+                className={cn(
+                  "flex-1 h-9 rounded-lg text-xs font-mono font-bold transition-all",
+                  activeTab === "bots"
+                    ? "bg-primary/10 border border-primary/30 text-primary"
+                    : "bg-white/3 border border-white/8 text-muted-foreground hover:text-white"
+                )}
+              >
+                CONNECTED ACCOUNTS
+              </button>
+              <button
+                onClick={() => setActiveTab("users")}
+                className={cn(
+                  "flex-1 h-9 rounded-lg text-xs font-mono font-bold transition-all",
+                  activeTab === "users"
+                    ? "bg-primary/10 border border-primary/30 text-primary"
+                    : "bg-white/3 border border-white/8 text-muted-foreground hover:text-white"
+                )}
+              >
+                SESSIONS
+              </button>
+              <button
+                onClick={refreshBots}
+                className="w-9 h-9 rounded-lg bg-white/3 border border-white/8 text-muted-foreground hover:text-white flex items-center justify-center transition-all"
+                title="Refresh"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
             </div>
+
+            {activeTab === "bots" ? (
+              <div className="space-y-2">
+                {liveBots.length === 0 ? (
+                  <p className="text-xs text-muted-foreground font-mono text-center py-8">No bots registered yet</p>
+                ) : (
+                  <div className="rounded-xl border border-white/8 overflow-hidden">
+                    <table className="w-full text-xs font-mono">
+                      <thead>
+                        <tr className="border-b border-white/8 bg-white/3">
+                          <th className="text-left px-4 py-3 text-muted-foreground font-normal uppercase tracking-wider">Status</th>
+                          <th className="text-left px-4 py-3 text-muted-foreground font-normal uppercase tracking-wider">Discord Name</th>
+                          <th className="text-left px-4 py-3 text-muted-foreground font-normal uppercase tracking-wider">Discord ID</th>
+                          <th className="text-right px-4 py-3 text-muted-foreground font-normal uppercase tracking-wider">Instance</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {liveBots.map((b, i) => (
+                          <tr key={b.id} className={cn("border-b border-white/5 last:border-0", i % 2 === 0 ? "bg-transparent" : "bg-white/[0.015]")}>
+                            <td className="px-4 py-3">
+                              <span className={cn(
+                                "inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-bold",
+                                b.isConnected
+                                  ? "text-green-400 bg-green-400/10"
+                                  : "text-muted-foreground/60 bg-white/5"
+                              )}>
+                                <span className={cn("w-1.5 h-1.5 rounded-full", b.isConnected ? "bg-green-400" : "bg-muted-foreground/40")} />
+                                {b.isConnected ? "LIVE" : "OFFLINE"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-white font-medium">{b.discordTag}</td>
+                            <td className="px-4 py-3 text-muted-foreground">{b.discordId || "—"}</td>
+                            <td className="px-4 py-3 text-right text-muted-foreground">#{b.id}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="rounded-xl border border-white/8 overflow-hidden">
+                  <table className="w-full text-xs font-mono">
+                    <thead>
+                      <tr className="border-b border-white/8 bg-white/3">
+                        <th className="text-left px-4 py-3 text-muted-foreground font-normal uppercase tracking-wider">ID</th>
+                        <th className="text-left px-4 py-3 text-muted-foreground font-normal uppercase tracking-wider">Session</th>
+                        <th className="text-right px-4 py-3 text-muted-foreground font-normal uppercase tracking-wider">Bots</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adminData?.users.map((u, i) => (
+                        <tr key={u.id} className={cn("border-b border-white/5 last:border-0", i % 2 === 0 ? "bg-transparent" : "bg-white/[0.015]")}>
+                          <td className="px-4 py-3 text-white">#{u.id}</td>
+                          <td className="px-4 py-3 text-muted-foreground truncate max-w-[200px]">{u.username}</td>
+                          <td className="px-4 py-3 text-right">
+                            <span className={cn("font-bold", u.botCount > 0 ? "text-primary" : "text-muted-foreground/50")}>
+                              {u.botCount}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
