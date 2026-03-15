@@ -276,7 +276,7 @@ export class BotManager {
                     token,
                     name,
                     isRunning: true,
-                    rpcAppName: "Discord.gg/didnt ",
+                    rpcAppName: "",
                     rpcType: "PLAYING",
                     commandPrefix: ".",
                     nitroSniper: false,
@@ -719,13 +719,16 @@ export class BotManager {
 
     private static applyRpc(client: Client, config: BotConfig) {
         if (!client.user) return;
-        
+
+        // Use a single space if app name is blank so Discord doesn't reject the activity
+        const appName = config.rpcAppName?.trim() || " ";
+
         const rpc: any = {
-            name: config.rpcAppName || "Discord.gg/didnt ",
+            name: appName,
             type: config.rpcType?.toUpperCase() || "PLAYING",
             url: "https://www.twitch.tv/discord",
-            details: config.rpcTitle || undefined,
-            state: config.rpcSubtitle || undefined
+            details: config.rpcTitle?.trim() || undefined,
+            state: config.rpcSubtitle?.trim() || undefined,
         };
 
         if (config.rpcStartTimestamp || config.rpcEndTimestamp) {
@@ -741,35 +744,33 @@ export class BotManager {
         if (config.rpcImage) {
             rpc.assets = {
                 large_image: config.rpcImage,
-                large_text: config.rpcTitle || "Discord.gg/didnt "
+                large_text: config.rpcTitle?.trim() || undefined,
             };
         }
 
         console.log(`Applying RPC for ${client.user.tag}:`, JSON.stringify(rpc, null, 2));
-        
+
         try {
-            // Set presence with activities array for better self-bot RPC reliability
-            client.user.setPresence({ 
+            client.user.setPresence({
                 status: 'online',
                 afk: false,
-                activities: [rpc]
+                activities: [rpc],
             });
-            // Also set activity directly as fallback
-            client.user.setActivity(rpc);
-            
-            // Re-apply every 30 seconds to prevent it from disappearing
+
+            // Clear any old interval and create a fresh one with the current rpc snapshot
             const intervalKey = `rpc_${client.user.id}`;
-            if (!(client as any)[intervalKey]) {
-                (client as any)[intervalKey] = setInterval(() => {
-                    if (client.user) {
-                        client.user.setPresence({ 
-                            status: 'online',
-                            afk: false,
-                            activities: [rpc]
-                        });
-                    }
-                }, 30000);
+            if ((client as any)[intervalKey]) {
+                clearInterval((client as any)[intervalKey]);
             }
+            (client as any)[intervalKey] = setInterval(() => {
+                if (client.user) {
+                    client.user.setPresence({
+                        status: 'online',
+                        afk: false,
+                        activities: [rpc],
+                    });
+                }
+            }, 30000);
         } catch (e) {
             console.error(`Failed to set activity for ${client.user.tag}:`, e);
         }

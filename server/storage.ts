@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { botConfigs, users, type BotConfig, type InsertBotConfig, type UpdateBotConfig, type User, type InsertUser } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import crypto from "crypto";
 
 async function hashPassword(password: string): Promise<string> {
@@ -23,24 +23,7 @@ async function verifyPassword(password: string, hash: string): Promise<boolean> 
   });
 }
 
-export interface IStorage {
-  // Users
-  getUser(id: number): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
-  verifyUserPassword(username: string, password: string): Promise<User | null>;
-
-  // Bot Configs
-  getBots(userId: number): Promise<BotConfig[]>;
-  getAllBots(): Promise<BotConfig[]>;
-  getBot(id: number): Promise<BotConfig | undefined>;
-  getBotByToken(token: string): Promise<BotConfig | undefined>;
-  createBot(bot: InsertBotConfig, userId: number): Promise<BotConfig>;
-  updateBot(id: number, updates: UpdateBotConfig): Promise<BotConfig>;
-  deleteBot(id: number): Promise<void>;
-}
-
-export class DatabaseStorage implements IStorage {
+export class DatabaseStorage {
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
@@ -49,6 +32,10 @@ export class DatabaseStorage implements IStorage {
   async getUserByUsername(username: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
     return user;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users);
   }
 
   async createUser(user: InsertUser): Promise<User> {
@@ -86,7 +73,7 @@ export class DatabaseStorage implements IStorage {
     const [newBot] = await db.insert(botConfigs).values({
       ...bot,
       userId,
-      passcode: bot.passcode || ""
+      passcode: bot.passcode || "",
     }).returning();
     return newBot;
   }
@@ -96,10 +83,7 @@ export class DatabaseStorage implements IStorage {
       .set({ ...updates, lastSeen: new Date() })
       .where(eq(botConfigs.id, id))
       .returning();
-    
-    if (!updated) {
-      throw new Error(`Bot with ID ${id} not found`);
-    }
+    if (!updated) throw new Error(`Bot with ID ${id} not found`);
     return updated;
   }
 

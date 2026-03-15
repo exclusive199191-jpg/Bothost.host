@@ -1,20 +1,167 @@
 import { useBots, useDeleteBot, useBotAction } from "@/hooks/use-bots";
-import { useAuth, useLogout } from "@/hooks/use-auth";
 import { CreateBotDialog } from "@/components/CreateBotDialog";
 import { BotStatusBadge } from "@/components/BotStatusBadge";
-import { Loader2, Settings, Power, Trash2, Cpu, Activity, Search, LogOut, Zap, Plus, Bot } from "lucide-react";
+import { Loader2, Settings, Power, Trash2, Search, Zap, Plus, Bot, Shield, X, Users, Terminal } from "lucide-react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import React from "react";
+import { useToast } from "@/hooks/use-toast";
+
+interface AdminUser {
+  id: number;
+  username: string;
+  createdAt: string | null;
+  botCount: number;
+}
+
+interface AdminData {
+  users: AdminUser[];
+  totalBots: number;
+}
+
+function AdminPanel({ onClose }: { onClose: () => void }) {
+  const { toast } = useToast();
+  const [step, setStep] = React.useState<"login" | "data">("login");
+  const [username, setUsername] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [adminData, setAdminData] = React.useState<AdminData | null>(null);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!res.ok) {
+        toast({ title: "Access Denied", description: "Invalid credentials", variant: "destructive" });
+        setLoading(false);
+        return;
+      }
+      const dataRes = await fetch("/api/admin/data");
+      const data: AdminData = await dataRes.json();
+      setAdminData(data);
+      setStep("data");
+    } catch {
+      toast({ title: "Error", description: "Connection failed", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="relative w-full max-w-2xl mx-4 bg-[#0a0a0a] border border-white/10 rounded-2xl shadow-[0_0_60px_rgba(34,197,94,0.08)] overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/8">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+              <Shield className="w-3.5 h-3.5 text-primary" />
+            </div>
+            <span className="font-mono text-sm font-bold text-white tracking-widest uppercase">Admin Panel</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg border border-white/10 hover:border-white/20 flex items-center justify-center text-muted-foreground hover:text-white transition-all"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {step === "login" ? (
+          <form onSubmit={handleLogin} className="p-6 space-y-4">
+            <p className="text-xs text-muted-foreground font-mono">AUTHENTICATION REQUIRED</p>
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <label className="font-mono text-xs uppercase text-muted-foreground tracking-wider">Username</label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg h-11 px-4 font-mono text-sm text-white placeholder:text-muted-foreground/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                  placeholder="Enter username"
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="font-mono text-xs uppercase text-muted-foreground tracking-wider">Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg h-11 px-4 font-mono text-sm text-white placeholder:text-muted-foreground/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                  placeholder="Enter password"
+                  required
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full h-11 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-50 text-black text-sm font-bold font-mono flex items-center justify-center gap-2 transition-all shadow-[0_0_15px_rgba(34,197,94,0.3)]"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "AUTHENTICATE"}
+            </button>
+          </form>
+        ) : (
+          <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+            {/* Summary */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white/3 border border-white/8 rounded-xl p-4">
+                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><Users className="w-3 h-3" /> Total Users</p>
+                <p className="text-2xl font-bold text-white mt-1">{adminData?.users.length || 0}</p>
+              </div>
+              <div className="bg-white/3 border border-white/8 rounded-xl p-4">
+                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-1.5"><Terminal className="w-3 h-3" /> Total Bots</p>
+                <p className="text-2xl font-bold text-primary mt-1">{adminData?.totalBots || 0}</p>
+              </div>
+            </div>
+
+            {/* Users table */}
+            <div className="space-y-2">
+              <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">All Users</p>
+              <div className="rounded-xl border border-white/8 overflow-hidden">
+                <table className="w-full text-xs font-mono">
+                  <thead>
+                    <tr className="border-b border-white/8 bg-white/3">
+                      <th className="text-left px-4 py-3 text-muted-foreground font-normal uppercase tracking-wider">ID</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-normal uppercase tracking-wider">Session ID</th>
+                      <th className="text-right px-4 py-3 text-muted-foreground font-normal uppercase tracking-wider">Bots</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminData?.users.map((u, i) => (
+                      <tr key={u.id} className={cn("border-b border-white/5 last:border-0", i % 2 === 0 ? "bg-transparent" : "bg-white/[0.015]")}>
+                        <td className="px-4 py-3 text-white">#{u.id}</td>
+                        <td className="px-4 py-3 text-muted-foreground truncate max-w-[200px]">{u.username}</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className={cn("font-bold", u.botCount > 0 ? "text-primary" : "text-muted-foreground/50")}>
+                            {u.botCount}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard() {
-  const { data: user } = useAuth();
-  const logout = useLogout();
   const { data: bots, isLoading } = useBots();
   const deleteBot = useDeleteBot();
   const botAction = useBotAction();
   const [search, setSearch] = React.useState("");
+  const [adminOpen, setAdminOpen] = React.useState(false);
 
   if (isLoading) {
     return (
@@ -36,29 +183,26 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-black">
+      {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
+
       {/* Top nav */}
-      <header className="sticky top-0 z-50 border-b border-white/5 bg-black/90 backdrop-blur-xl px-6 py-4">
+      <header className="sticky top-0 z-40 border-b border-white/5 bg-black/90 backdrop-blur-xl px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
               <Zap className="w-4 h-4 text-primary" />
             </div>
-            <span className="font-display font-black text-lg tracking-tight text-white">NETRUNNER</span>
+            <span className="font-display font-black text-lg tracking-tight text-white">bothost.host</span>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
-              <span className="w-2 h-2 rounded-full bg-primary shadow-[0_0_6px_rgba(34,197,94,0.8)] animate-pulse" />
-              <span className="font-mono text-xs text-muted-foreground">{user?.username}</span>
-            </div>
-            <button
-              onClick={() => logout.mutate()}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/10 text-muted-foreground hover:text-white hover:border-white/20 transition-colors text-xs font-mono"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Sign Out</span>
-            </button>
-          </div>
+          <button
+            onClick={() => setAdminOpen(true)}
+            data-testid="button-admin-panel"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/10 text-muted-foreground hover:text-white hover:border-primary/30 hover:bg-primary/5 transition-colors text-xs font-mono"
+          >
+            <Shield className="w-3.5 h-3.5" />
+            <span>Admin</span>
+          </button>
         </div>
       </header>
 
@@ -132,7 +276,6 @@ export default function Dashboard() {
                 transition={{ delay: idx * 0.06 }}
               >
                 <div className="group relative bg-white/3 hover:bg-white/5 border border-white/8 hover:border-primary/20 rounded-xl p-5 transition-all duration-200 flex flex-col h-full">
-                  {/* Online indicator */}
                   <div className="absolute top-4 right-4">
                     <BotStatusBadge isRunning={!!bot.isRunning} isAfk={false} />
                   </div>
