@@ -13,7 +13,7 @@ declare module "express-session" {
   }
 }
 
-const ADMIN_USERNAME = "Peroxide000";
+const ADMIN_USERNAME = "peroxide000";
 const ADMIN_PASSWORD = "moneyhungry";
 
 // Auto-create an anonymous session for any visitor on first request
