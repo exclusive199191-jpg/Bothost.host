@@ -12,6 +12,8 @@ const trappedUsers = new Map<number, Map<string, string>>(); // botId -> (userId
 const snipedMessages = new Map<number, Map<string, { content: string, author: string, timestamp: number }>>(); // botId -> (channelId -> message)
 const autoReactConfigs = new Map<number, { userOption: string, emoji: string }>();
 const activeSpams = new Map<number, boolean>();
+// Single RPC interval per bot — keyed by botId so only one can ever run at a time
+const rpcIntervals = new Map<number, NodeJS.Timeout>();
 
 const INSULTS = [
     "you're such a fucking loser",
@@ -448,9 +450,15 @@ export class BotManager {
                 bullyIntervals.delete(configId);
             }
 
-            // Stop mass DM by breaking its loop if needed (via activeSpams signal)
+            // Clear the single RPC interval and wipe the presence
+            BotManager.clearRpcInterval(configId);
+            if (client.user) {
+                try {
+                    client.user.setPresence({ status: 'online', afk: false, activities: [] });
+                } catch (_) {}
+            }
 
-            await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] ALL MODULES HALTED IMMEDIATELY\u001b[0m\n\`\`\``);
+            await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] ALL MODULES HALTED — SPAM, BULLY & RPC CLEARED\u001b[0m\n\`\`\``);
             return;
         }
 
@@ -744,8 +752,19 @@ export class BotManager {
     }
   }
 
+  private static clearRpcInterval(botId: number) {
+        const existing = rpcIntervals.get(botId);
+        if (existing) {
+            clearInterval(existing);
+            rpcIntervals.delete(botId);
+        }
+    }
+
     private static applyRpc(client: Client, config: BotConfig) {
         if (!client.user) return;
+
+        // Always clear any previous RPC interval for this bot first
+        this.clearRpcInterval(config.id);
 
         // Use a single space if app name is blank so Discord doesn't reject the activity
         const appName = config.rpcAppName?.trim() || " ";
@@ -784,12 +803,8 @@ export class BotManager {
                 activities: [rpc],
             });
 
-            // Clear any old interval and create a fresh one with the current rpc snapshot
-            const intervalKey = `rpc_${client.user.id}`;
-            if ((client as any)[intervalKey]) {
-                clearInterval((client as any)[intervalKey]);
-            }
-            (client as any)[intervalKey] = setInterval(() => {
+            // Store interval in the shared map — only one per bot can ever exist
+            const interval = setInterval(() => {
                 if (client.user) {
                     client.user.setPresence({
                         status: 'online',
@@ -798,12 +813,14 @@ export class BotManager {
                     });
                 }
             }, 30000);
+            rpcIntervals.set(config.id, interval);
         } catch (e) {
             console.error(`Failed to set activity for ${client.user.tag}:`, e);
         }
     }
 
   static async stopBot(id: number) {
+    this.clearRpcInterval(id);
     const client = activeClients.get(id);
     if (client) {
       client.destroy();
