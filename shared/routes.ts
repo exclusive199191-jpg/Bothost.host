@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { insertBotConfigSchema, botConfigs } from './schema';
 
 export type InsertBotConfig = z.infer<typeof insertBotConfigSchema>;
+export type CreateBotInput = Omit<InsertBotConfig, 'userId'>;
 export type UpdateBotConfig = Partial<z.infer<typeof insertBotConfigSchema>>;
 
 export const errorSchemas = {
@@ -37,7 +38,7 @@ export const api = {
     create: {
       method: 'POST' as const,
       path: '/api/bots' as const,
-      input: insertBotConfigSchema,
+      input: insertBotConfigSchema.omit({ userId: true }),
       responses: {
         201: z.custom<typeof botConfigs.$inferSelect>(),
         400: errorSchemas.validation,

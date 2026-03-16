@@ -849,6 +849,7 @@ export class BotManager {
 
   static async updateBotConfig(id: number, updates: any) {
     const updated = await storage.updateBot(id, updates);
+    if (!updated) return;
     clientConfigs.set(id, updated);
     const client = activeClients.get(id);
     if (client) {

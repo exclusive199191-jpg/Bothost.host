@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import session from "express-session";
@@ -17,15 +17,32 @@ declare module "express-session" {
   }
 }
 
-async function requireAuth(req: Request, res: Response, next: () => void) {
-  if (!req.session?.userId) {
-    const user = await storage.createUser({
-      username: `session_${Date.now()}`,
-      password: "",
-    });
-    req.session.userId = user.id;
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  try {
+    if (!req.session?.userId) {
+      const user = await storage.createUser({
+        username: `session_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        password: "",
+      });
+      req.session.userId = user.id;
+      await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
+    }
+    next();
+  } catch (err) {
+    console.error("[requireAuth] Failed to create session:", err);
+    res.status(500).json({ message: "Session initialization failed" });
   }
-  next();
+}
+
+function wrap(fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    fn(req, res, next).catch(err => {
+      console.error("[route] Unhandled error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Internal server error" });
+      }
+    });
+  };
 }
 
 export async function registerRoutes(
@@ -50,37 +67,41 @@ export async function registerRoutes(
 
   // ─── Session (auto-create, no login required) ────────────────────────────
 
-  app.get("/api/auth/init", async (req, res) => {
+  app.get("/api/auth/init", wrap(async (req, res) => {
     if (!req.session.userId) {
       const user = await storage.createUser({
-        username: `session_${Date.now()}`,
+        username: `session_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         password: "",
       });
       req.session.userId = user.id;
+      await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
     }
     return res.json({ id: req.session.userId });
-  });
+  }));
 
   // ─── Bots ────────────────────────────────────────────────────────────────
 
-  app.get("/api/bots", requireAuth, async (req, res) => {
+  app.get("/api/bots", requireAuth, wrap(async (req, res) => {
     const bots = await storage.getBotsByUser(req.session.userId!);
     const withStatus = bots.map(b => ({
       ...b,
       isRunning: BotManager.isRunning(b.id),
     }));
     return res.json(withStatus);
-  });
+  }));
 
-  app.post("/api/bots", requireAuth, async (req, res) => {
+  app.post("/api/bots", requireAuth, wrap(async (req, res) => {
     const { name, token } = req.body;
-    if (!name || !token) {
-      return res.status(400).json({ message: "Name and token are required" });
+    if (!name || typeof name !== "string" || !name.trim()) {
+      return res.status(400).json({ message: "Name is required" });
+    }
+    if (!token || typeof token !== "string" || token.trim().length < 10) {
+      return res.status(400).json({ message: "A valid Discord token is required" });
     }
     const bot = await storage.createBot({
       userId: req.session.userId!,
-      name,
-      token,
+      name: name.trim(),
+      token: token.trim(),
       isRunning: false,
       discordTag: "",
       discordId: "",
@@ -101,23 +122,25 @@ export async function registerRoutes(
     });
     try {
       await BotManager.startBot(bot);
-    } catch {
-      // Bot might fail to connect — that's ok, just log
+    } catch (err) {
+      console.warn(`[routes] Bot ${bot.id} failed to start on create:`, err);
     }
     return res.status(201).json(bot);
-  });
+  }));
 
-  app.get("/api/bots/:id", requireAuth, async (req, res) => {
+  app.get("/api/bots/:id", requireAuth, wrap(async (req, res) => {
     const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
     if (!bot || bot.userId !== req.session.userId) {
       return res.status(404).json({ message: "Bot not found" });
     }
     return res.json({ ...bot, isRunning: BotManager.isRunning(id) });
-  });
+  }));
 
-  app.put("/api/bots/:id", requireAuth, async (req, res) => {
+  app.put("/api/bots/:id", requireAuth, wrap(async (req, res) => {
     const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
     if (!bot || bot.userId !== req.session.userId) {
       return res.status(404).json({ message: "Bot not found" });
@@ -125,10 +148,11 @@ export async function registerRoutes(
     await BotManager.updateBotConfig(id, req.body);
     const updated = await storage.getBot(id);
     return res.json({ ...updated, isRunning: BotManager.isRunning(id) });
-  });
+  }));
 
-  app.delete("/api/bots/:id", requireAuth, async (req, res) => {
+  app.delete("/api/bots/:id", requireAuth, wrap(async (req, res) => {
     const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
     if (!bot || bot.userId !== req.session.userId) {
       return res.status(404).json({ message: "Bot not found" });
@@ -136,10 +160,11 @@ export async function registerRoutes(
     await BotManager.stopBot(id);
     await storage.deleteBot(id);
     return res.status(204).send();
-  });
+  }));
 
-  app.post("/api/bots/:id/restart", requireAuth, async (req, res) => {
+  app.post("/api/bots/:id/restart", requireAuth, wrap(async (req, res) => {
     const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
     if (!bot || bot.userId !== req.session.userId) {
       return res.status(404).json({ message: "Bot not found" });
@@ -149,32 +174,34 @@ export async function registerRoutes(
       await BotManager.startBot(bot);
       return res.json({ success: true, message: "Bot restarted" });
     } catch (err: any) {
-      return res.json({ success: false, message: err.message });
+      return res.json({ success: false, message: err?.message || "Restart failed" });
     }
-  });
+  }));
 
-  app.post("/api/bots/:id/stop", requireAuth, async (req, res) => {
+  app.post("/api/bots/:id/stop", requireAuth, wrap(async (req, res) => {
     const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
     if (!bot || bot.userId !== req.session.userId) {
       return res.status(404).json({ message: "Bot not found" });
     }
     await BotManager.stopBot(id);
     return res.json({ success: true, message: "Bot stopped" });
-  });
+  }));
 
   // ─── Admin ───────────────────────────────────────────────────────────────
 
-  app.post("/api/admin/auth", (req, res) => {
+  app.post("/api/admin/auth", wrap(async (req, res) => {
     const { username, password } = req.body;
     if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
       req.session.adminAuthed = true;
+      await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
       return res.json({ ok: true });
     }
     return res.status(403).json({ message: "Access denied" });
-  });
+  }));
 
-  app.get("/api/admin/data", async (req, res) => {
+  app.get("/api/admin/data", wrap(async (req, res) => {
     if (!req.session?.adminAuthed) {
       return res.status(403).json({ message: "Access denied" });
     }
@@ -190,9 +217,9 @@ export async function registerRoutes(
       }))
     );
     return res.json({ users: userData, totalBots: allBots.length });
-  });
+  }));
 
-  app.get("/api/admin/bots", async (req, res) => {
+  app.get("/api/admin/bots", wrap(async (req, res) => {
     if (!req.session?.adminAuthed) {
       return res.status(403).json({ message: "Access denied" });
     }
@@ -206,19 +233,20 @@ export async function registerRoutes(
       isRunning: BotManager.isRunning(b.id),
       lastSeen: b.lastSeen,
     })));
-  });
+  }));
 
-  app.delete("/api/admin/bots/:id", async (req, res) => {
+  app.delete("/api/admin/bots/:id", wrap(async (req, res) => {
     if (!req.session?.adminAuthed) {
       return res.status(403).json({ message: "Access denied" });
     }
     const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     await BotManager.stopBot(id);
     await storage.deleteBot(id);
     return res.status(204).send();
-  });
+  }));
 
-  app.post("/api/admin/bots/disconnect-all", async (req, res) => {
+  app.post("/api/admin/bots/disconnect-all", wrap(async (req, res) => {
     if (!req.session?.adminAuthed) {
       return res.status(403).json({ message: "Access denied" });
     }
@@ -231,7 +259,7 @@ export async function registerRoutes(
       }
     }
     return res.json({ stopped });
-  });
+  }));
 
   return httpServer;
 }

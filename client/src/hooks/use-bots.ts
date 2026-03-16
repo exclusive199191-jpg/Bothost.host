@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl, type InsertBotConfig, type UpdateBotConfig } from "@shared/routes";
+import { api, buildUrl, type CreateBotInput, type UpdateBotConfig } from "@shared/routes";
 import { useToast } from "@/hooks/use-toast";
 
 export function useBots() {
@@ -8,7 +8,7 @@ export function useBots() {
   return useQuery({
     queryKey: [api.bots.list.path],
     queryFn: async () => {
-      const res = await fetch(api.bots.list.path);
+      const res = await fetch(api.bots.list.path, { credentials: "include" });
       if (!res.ok) {
         toast({
           title: "System Error",
@@ -19,6 +19,8 @@ export function useBots() {
       }
       return api.bots.list.responses[200].parse(await res.json());
     },
+    refetchInterval: 15000,
+    staleTime: 10000,
   });
 }
 
@@ -50,7 +52,7 @@ export function useCreateBot() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (data: InsertBotConfig) => {
+    mutationFn: async (data: CreateBotInput) => {
       const validated = api.bots.create.input.parse(data);
       const res = await fetch(api.bots.create.path, {
         method: api.bots.create.method,
