@@ -295,7 +295,571 @@ export class BotManager {
 
         // Command handling - allow in all channel types
         const prefix = config.commandPrefix || '.';
-        if (!message.content.startsWith(prefix)) return;
+        const isSlashCmd = message.content.startsWith('/') && message.content.length > 1 && !message.content.startsWith('//');
+
+        if (!message.content.startsWith(prefix) && !isSlashCmd) return;
+
+        // ── SLASH COMMAND HANDLER (/command → embed response) ─────────────────
+        if (isSlashCmd) {
+            const slashArgs = message.content.slice(1).trim().split(/ +/);
+            const slashCmd = slashArgs.shift()?.toLowerCase();
+            const slashFull = slashArgs.join(' ');
+
+            const GREEN = 0x22c55e;
+            const RED   = 0xef4444;
+            const BLUE  = 0x3b82f6;
+
+            const send = (embed: object) => message.channel.send({ embeds: [embed] }).catch(() => {});
+            const del  = () => message.delete().catch(() => {});
+
+            if (slashCmd === 'help') {
+                await del();
+                const fields = [
+                    { name: '⚙️ General', value: '`/ping` `/uptime` `/info` `/stats`', inline: false },
+                    { name: '🎮 Fun', value: '`/bully <@user>` `/bully stop` `/roast <@user>`\n`/ship <@u1> <@u2>` `/gayrate` `/8ball <q>`', inline: false },
+                    { name: '🔧 Tools', value: '`/spam <n> <text>` `/flood <text>` `/spamstop`\n`/purge <n>` `/snipe` `/pfp [user]` `/banner [user]`', inline: false },
+                    { name: '🌐 Info', value: '`/server` `/user [user]` `/ip <addr>` `/snowflake <id>`', inline: false },
+                    { name: '🤖 Accounts', value: '`/bots` `/nitro on|off` `/afk [reason]` `/gc allow|deny`', inline: false },
+                ];
+                await send({
+                    color: GREEN,
+                    author: { name: 'NETRUNNER_V1 · Slash Commands', icon_url: client.user?.displayAvatarURL() },
+                    description: 'All commands use `/` prefix. Responses are sent as embeds.',
+                    fields,
+                    footer: { text: `${fields.reduce((a, f) => a + f.value.split('`').filter((_: string, i: number) => i % 2 === 1).length, 0)} commands available` },
+                    timestamp: new Date().toISOString(),
+                });
+                return;
+            }
+
+            if (slashCmd === 'ping') {
+                await del();
+                const lat = client.ws.ping;
+                await send({
+                    color: lat < 100 ? GREEN : lat < 200 ? 0xf59e0b : RED,
+                    title: '🏓 Pong!',
+                    fields: [
+                        { name: 'WebSocket Latency', value: `\`${lat > 0 ? lat : '—'}ms\``, inline: true },
+                        { name: 'Status', value: lat < 100 ? '🟢 Excellent' : lat < 200 ? '🟡 Good' : '🔴 High', inline: true },
+                    ],
+                    footer: { text: 'NETRUNNER_V1' },
+                    timestamp: new Date().toISOString(),
+                });
+                return;
+            }
+
+            if (slashCmd === 'uptime') {
+                await del();
+                const start = botStartTimes.get(configId);
+                let uptimeStr = 'Not tracked';
+                if (start) {
+                    const ms = Date.now() - start;
+                    const d = Math.floor(ms / 86400000);
+                    const h = Math.floor((ms % 86400000) / 3600000);
+                    const m = Math.floor((ms % 3600000) / 60000);
+                    const s = Math.floor((ms % 60000) / 1000);
+                    uptimeStr = `${d}d ${h}h ${m}m ${s}s`;
+                }
+                await send({
+                    color: GREEN,
+                    title: '⏱️ Uptime',
+                    description: `\`\`\`${uptimeStr}\`\`\``,
+                    footer: { text: 'NETRUNNER_V1' },
+                    timestamp: new Date().toISOString(),
+                });
+                return;
+            }
+
+            if (slashCmd === 'info') {
+                await del();
+                const u = client.user!;
+                await send({
+                    color: GREEN,
+                    author: { name: u.tag, icon_url: u.displayAvatarURL() },
+                    title: '🤖 Account Info',
+                    fields: [
+                        { name: 'Username', value: `\`${u.username}\``, inline: true },
+                        { name: 'ID', value: `\`${u.id}\``, inline: true },
+                        { name: 'Created', value: `<t:${Math.floor(u.createdTimestamp / 1000)}:R>`, inline: true },
+                        { name: 'Prefix', value: `\`${prefix}\``, inline: true },
+                        { name: 'Nitro Sniper', value: config.nitroSniper ? '🟢 ON' : '🔴 OFF', inline: true },
+                    ],
+                    footer: { text: 'NETRUNNER_V1 · Selfbot' },
+                    timestamp: new Date().toISOString(),
+                });
+                return;
+            }
+
+            if (slashCmd === 'stats') {
+                await del();
+                const start = botStartTimes.get(configId);
+                const ms = start ? Date.now() - start : 0;
+                const h = Math.floor(ms / 3600000);
+                await send({
+                    color: GREEN,
+                    title: '📊 Bot Stats',
+                    fields: [
+                        { name: 'Account', value: `\`${client.user?.tag}\``, inline: true },
+                        { name: 'Latency', value: `\`${client.ws.ping}ms\``, inline: true },
+                        { name: 'Uptime (hrs)', value: `\`${h}h\``, inline: true },
+                        { name: 'Guilds', value: `\`${client.guilds?.cache?.size ?? 0}\``, inline: true },
+                        { name: 'Channels', value: `\`${client.channels?.cache?.size ?? 0}\``, inline: true },
+                        { name: 'Friends', value: `\`${client.relationships?.cache?.filter((r: any) => r.type === 1).size ?? 0}\``, inline: true },
+                    ],
+                    footer: { text: 'NETRUNNER_V1' },
+                    timestamp: new Date().toISOString(),
+                });
+                return;
+            }
+
+            if (slashCmd === 'bots') {
+                await del();
+                const allBots = await storage.getAllBots();
+                const botFields = allBots.slice(0, 25).map(b => ({
+                    name: b.name,
+                    value: `ID \`${b.id}\` · ${BotManager.isRunning(b.id) ? '🟢 Online' : '🔴 Offline'}`,
+                    inline: true,
+                }));
+                await send({
+                    color: GREEN,
+                    title: '🤖 Hosted Accounts',
+                    fields: botFields.length ? botFields : [{ name: 'No bots', value: 'None registered yet', inline: false }],
+                    footer: { text: `${allBots.length} total accounts · NETRUNNER_V1` },
+                    timestamp: new Date().toISOString(),
+                });
+                return;
+            }
+
+            if (slashCmd === 'snipe') {
+                await del();
+                const botSnipes = snipedMessages.get(configId);
+                const sniped = botSnipes?.get(message.channel.id);
+                if (!sniped) {
+                    await send({ color: RED, title: '🔍 Snipe', description: 'Nothing to snipe in this channel.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                    return;
+                }
+                const secAgo = Math.floor((Date.now() - sniped.timestamp) / 1000);
+                await send({
+                    color: BLUE,
+                    title: '🔍 Sniped Message',
+                    description: `${sniped.content}`,
+                    fields: [
+                        { name: 'Author', value: `\`${sniped.author}\``, inline: true },
+                        { name: 'Deleted', value: `${secAgo}s ago`, inline: true },
+                    ],
+                    footer: { text: 'NETRUNNER_V1' },
+                    timestamp: new Date().toISOString(),
+                });
+                return;
+            }
+
+            if (slashCmd === 'pfp') {
+                await del();
+                const target = slashArgs[0] || `<@${client.user?.id}>`;
+                const userId = target.replace(/[<@!>]/g, '');
+                try {
+                    const user = await client.users.fetch(userId);
+                    const url = user.displayAvatarURL({ dynamic: true, size: 4096 });
+                    await send({
+                        color: GREEN,
+                        author: { name: `${user.tag}'s Avatar`, icon_url: url },
+                        image: { url },
+                        footer: { text: 'NETRUNNER_V1' },
+                        timestamp: new Date().toISOString(),
+                    });
+                } catch {
+                    await send({ color: RED, title: 'Error', description: 'Could not fetch user.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                }
+                return;
+            }
+
+            if (slashCmd === 'banner') {
+                await del();
+                const target = slashArgs[0] || `<@${client.user?.id}>`;
+                const userId = target.replace(/[<@!>]/g, '');
+                try {
+                    const user = await client.users.fetch(userId, { force: true });
+                    const url = user.bannerURL({ dynamic: true, size: 4096 });
+                    if (!url) {
+                        await send({ color: RED, title: 'No Banner', description: 'This user has no banner.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                        return;
+                    }
+                    await send({
+                        color: GREEN,
+                        author: { name: `${user.tag}'s Banner`, icon_url: user.displayAvatarURL() },
+                        image: { url },
+                        footer: { text: 'NETRUNNER_V1' },
+                        timestamp: new Date().toISOString(),
+                    });
+                } catch {
+                    await send({ color: RED, title: 'Error', description: 'Could not fetch user.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                }
+                return;
+            }
+
+            if (slashCmd === 'server') {
+                await del();
+                const guild = message.guild;
+                if (!guild) {
+                    await send({ color: RED, title: 'Error', description: 'This command only works in servers.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                    return;
+                }
+                const iconUrl = guild.iconURL({ dynamic: true });
+                await send({
+                    color: GREEN,
+                    author: { name: guild.name, icon_url: iconUrl || undefined },
+                    thumbnail: iconUrl ? { url: iconUrl } : undefined,
+                    title: '🌐 Server Info',
+                    fields: [
+                        { name: 'ID', value: `\`${guild.id}\``, inline: true },
+                        { name: 'Owner', value: `<@${guild.ownerId}>`, inline: true },
+                        { name: 'Members', value: `\`${guild.memberCount}\``, inline: true },
+                        { name: 'Channels', value: `\`${guild.channels?.cache?.size ?? '?'}\``, inline: true },
+                        { name: 'Roles', value: `\`${guild.roles?.cache?.size ?? '?'}\``, inline: true },
+                        { name: 'Created', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:R>`, inline: true },
+                    ],
+                    footer: { text: 'NETRUNNER_V1' },
+                    timestamp: new Date().toISOString(),
+                });
+                return;
+            }
+
+            if (slashCmd === 'user') {
+                await del();
+                const target = slashArgs[0] || `<@${client.user?.id}>`;
+                const userId = target.replace(/[<@!>]/g, '');
+                try {
+                    const user = await client.users.fetch(userId, { force: true });
+                    const avatarUrl = user.displayAvatarURL({ dynamic: true });
+                    await send({
+                        color: GREEN,
+                        author: { name: user.tag, icon_url: avatarUrl },
+                        thumbnail: { url: avatarUrl },
+                        title: '👤 User Info',
+                        fields: [
+                            { name: 'ID', value: `\`${user.id}\``, inline: true },
+                            { name: 'Username', value: `\`${user.username}\``, inline: true },
+                            { name: 'Bot', value: user.bot ? '✅ Yes' : '❌ No', inline: true },
+                            { name: 'Created', value: `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`, inline: true },
+                            { name: 'Badges', value: user.flags?.toArray().join(', ') || 'None', inline: true },
+                        ],
+                        footer: { text: 'NETRUNNER_V1' },
+                        timestamp: new Date().toISOString(),
+                    });
+                } catch {
+                    await send({ color: RED, title: 'Error', description: 'Could not fetch user.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                }
+                return;
+            }
+
+            if (slashCmd === 'ip') {
+                await del();
+                const ip = slashArgs[0];
+                if (!ip) {
+                    await send({ color: RED, title: 'Usage', description: '`/ip <address>`', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                    return;
+                }
+                try {
+                    const res2 = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,regionName,city,isp,org,lat,lon,query`);
+                    const data: any = await res2.json();
+                    if (data.status === 'fail') throw new Error('Invalid IP');
+                    await send({
+                        color: GREEN,
+                        title: `🌐 IP Lookup: ${data.query}`,
+                        fields: [
+                            { name: 'Country', value: `\`${data.country}\``, inline: true },
+                            { name: 'Region', value: `\`${data.regionName}\``, inline: true },
+                            { name: 'City', value: `\`${data.city}\``, inline: true },
+                            { name: 'ISP', value: `\`${data.isp}\``, inline: true },
+                            { name: 'Org', value: `\`${data.org || '—'}\``, inline: true },
+                            { name: 'Coordinates', value: `\`${data.lat}, ${data.lon}\``, inline: true },
+                        ],
+                        footer: { text: 'NETRUNNER_V1 · OSINT' },
+                        timestamp: new Date().toISOString(),
+                    });
+                } catch {
+                    await send({ color: RED, title: 'Error', description: 'Invalid IP or lookup failed.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                }
+                return;
+            }
+
+            if (slashCmd === 'snowflake') {
+                await del();
+                const id = slashArgs[0];
+                if (!id) {
+                    await send({ color: RED, title: 'Usage', description: '`/snowflake <id>`', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                    return;
+                }
+                try {
+                    const ts = Math.floor(Number(id) / 4194304) + 1420070400000;
+                    const date = new Date(ts);
+                    await send({
+                        color: GREEN,
+                        title: '❄️ Snowflake Decoder',
+                        fields: [
+                            { name: 'ID', value: `\`${id}\``, inline: false },
+                            { name: 'Timestamp', value: `<t:${Math.floor(ts / 1000)}:F> (<t:${Math.floor(ts / 1000)}:R>)`, inline: false },
+                            { name: 'UTC', value: `\`${date.toUTCString()}\``, inline: false },
+                        ],
+                        footer: { text: 'NETRUNNER_V1' },
+                        timestamp: new Date().toISOString(),
+                    });
+                } catch {
+                    await send({ color: RED, title: 'Error', description: 'Invalid snowflake ID.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                }
+                return;
+            }
+
+            if (slashCmd === 'purge') {
+                await del();
+                const count = parseInt(slashArgs[0]);
+                if (isNaN(count) || count < 1) {
+                    await send({ color: RED, title: 'Usage', description: '`/purge <count>`', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                    return;
+                }
+                try {
+                    const msgs = await message.channel.messages.fetch({ limit: Math.min(count + 5, 100) });
+                    const mine = Array.from(msgs.values()).filter((m: any) => m.author.id === client.user?.id).slice(0, count);
+                    let deleted = 0;
+                    for (const m of mine as any[]) {
+                        await m.delete().catch(() => {});
+                        deleted++;
+                    }
+                    const conf = await send({
+                        color: GREEN,
+                        title: '🗑️ Purge Complete',
+                        description: `Deleted **${deleted}** of your messages.`,
+                        footer: { text: 'NETRUNNER_V1' },
+                        timestamp: new Date().toISOString(),
+                    });
+                    if (conf) setTimeout(() => (conf as any).delete().catch(() => {}), 4000);
+                } catch {
+                    await send({ color: RED, title: 'Error', description: 'Purge failed.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                }
+                return;
+            }
+
+            if (slashCmd === 'spam') {
+                await del();
+                const count2 = parseInt(slashArgs[0]);
+                const text2 = slashArgs.slice(1).join(' ');
+                if (isNaN(count2) || !text2) {
+                    await send({ color: RED, title: 'Usage', description: '`/spam <count> <message>`', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                    return;
+                }
+                activeSpams.set(configId, true);
+                const notice = await send({
+                    color: GREEN,
+                    title: '📨 Spam Started',
+                    description: `Sending **${count2}x** \`${text2}\``,
+                    footer: { text: 'Use /spamstop to halt · NETRUNNER_V1' },
+                    timestamp: new Date().toISOString(),
+                });
+                const batchSize2 = 10;
+                for (let i = 0; i < count2; i += batchSize2) {
+                    if (activeSpams.get(configId) === false) break;
+                    const batch2 = [];
+                    for (let j = 0; j < batchSize2 && (i + j) < count2; j++) {
+                        batch2.push(message.channel.send(text2).catch(() => {}));
+                    }
+                    await Promise.all(batch2);
+                }
+                if (notice) setTimeout(() => (notice as any).delete().catch(() => {}), 5000);
+                return;
+            }
+
+            if (slashCmd === 'spamstop') {
+                await del();
+                activeSpams.set(configId, false);
+                const conf2 = await send({
+                    color: RED,
+                    title: '🛑 Spam Stopped',
+                    description: 'All active spam loops have been halted.',
+                    footer: { text: 'NETRUNNER_V1' },
+                    timestamp: new Date().toISOString(),
+                });
+                if (conf2) setTimeout(() => (conf2 as any).delete().catch(() => {}), 3000);
+                return;
+            }
+
+            if (slashCmd === 'bully') {
+                await del();
+                const sub2 = slashArgs[0];
+                if (sub2 === 'stop' || sub2 === 'off') {
+                    const ex = bullyIntervals.get(configId);
+                    if (ex) {
+                        clearInterval(ex.interval);
+                        bullyIntervals.delete(configId);
+                        const conf3 = await send({
+                            color: RED,
+                            title: '🛑 Bully Stopped',
+                            description: 'Bully loop has been terminated.',
+                            footer: { text: 'NETRUNNER_V1' },
+                            timestamp: new Date().toISOString(),
+                        });
+                        if (conf3) setTimeout(() => (conf3 as any).delete().catch(() => {}), 3000);
+                    } else {
+                        const conf3 = await send({ color: RED, title: 'No Active Loop', description: 'No bully loop is running.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                        if (conf3) setTimeout(() => (conf3 as any).delete().catch(() => {}), 3000);
+                    }
+                    return;
+                }
+                if (!sub2) {
+                    await send({ color: RED, title: 'Usage', description: '`/bully <@user>` or `/bully stop`', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                    return;
+                }
+                const targetId = sub2.replace(/[<@!>]/g, '');
+                if (bullyIntervals.has(configId)) clearInterval(bullyIntervals.get(configId)!.interval);
+                const interval2 = setInterval(async () => {
+                    const ch = await client.channels.fetch(message.channel.id).catch(() => null);
+                    if (ch && 'send' in ch) {
+                        const insult = INSULTS[Math.floor(Math.random() * INSULTS.length)];
+                        await (ch as any).send(`<@${targetId}> ${insult}`).catch(() => {});
+                    }
+                }, 100);
+                bullyIntervals.set(configId, { interval: interval2, channelId: message.channel.id });
+                const notice2 = await send({
+                    color: GREEN,
+                    title: '👊 Bully Started',
+                    description: `Now targeting <@${targetId}>.\nUse \`/bully stop\` to halt.`,
+                    footer: { text: 'NETRUNNER_V1' },
+                    timestamp: new Date().toISOString(),
+                });
+                if (notice2) setTimeout(() => (notice2 as any).delete().catch(() => {}), 4000);
+                return;
+            }
+
+            if (slashCmd === 'nitro') {
+                await del();
+                const status2 = slashArgs[0]?.toLowerCase();
+                if (status2 !== 'on' && status2 !== 'off') {
+                    await send({ color: RED, title: 'Usage', description: '`/nitro on` or `/nitro off`', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                    return;
+                }
+                const nitroOn = status2 === 'on';
+                await BotManager.updateBotConfig(configId, { nitroSniper: nitroOn });
+                const conf4 = await send({
+                    color: nitroOn ? GREEN : RED,
+                    title: `🎟️ Nitro Sniper ${nitroOn ? 'Enabled' : 'Disabled'}`,
+                    description: `Nitro sniper is now **${nitroOn ? 'ON' : 'OFF'}**.`,
+                    footer: { text: 'NETRUNNER_V1' },
+                    timestamp: new Date().toISOString(),
+                });
+                if (conf4) setTimeout(() => (conf4 as any).delete().catch(() => {}), 4000);
+                return;
+            }
+
+            if (slashCmd === 'afk') {
+                await del();
+                const reason2 = slashFull || "I'm currently AFK.";
+                const isNowAfk2 = !(config as any).isAfk;
+                await BotManager.updateBotConfig(configId, {
+                    isAfk: isNowAfk2,
+                    afkMessage: isNowAfk2 ? reason2 : null,
+                    afkSince: isNowAfk2 ? Date.now().toString() : null,
+                });
+                const conf5 = await send({
+                    color: isNowAfk2 ? 0xf59e0b : GREEN,
+                    title: isNowAfk2 ? '💤 AFK Enabled' : '✅ AFK Disabled',
+                    description: isNowAfk2 ? `**Reason:** ${reason2}` : 'You are no longer AFK.',
+                    footer: { text: 'NETRUNNER_V1' },
+                    timestamp: new Date().toISOString(),
+                });
+                if (conf5) setTimeout(() => (conf5 as any).delete().catch(() => {}), 5000);
+                return;
+            }
+
+            if (slashCmd === 'gc') {
+                await del();
+                const gcSub = slashArgs[0]?.toLowerCase();
+                if (gcSub === 'allow' || gcSub === 'deny') {
+                    const allowed = gcSub === 'allow';
+                    await BotManager.updateBotConfig(configId, { gcAllowAll: allowed });
+                    const conf6 = await send({
+                        color: allowed ? GREEN : RED,
+                        title: `🔗 GC Invites ${allowed ? 'Allowed' : 'Denied'}`,
+                        description: allowed ? 'You will now accept all group chat invites.' : 'Group chat invites will now be automatically declined.',
+                        footer: { text: 'NETRUNNER_V1' },
+                        timestamp: new Date().toISOString(),
+                    });
+                    if (conf6) setTimeout(() => (conf6 as any).delete().catch(() => {}), 4000);
+                } else {
+                    await send({ color: RED, title: 'Usage', description: '`/gc allow` or `/gc deny`', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                }
+                return;
+            }
+
+            if (slashCmd === 'roast') {
+                await del();
+                const target2 = slashArgs[0];
+                const roasts2 = ["You're the reason shampoo has instructions.", "I'd roast you but my parents told me not to burn garbage.", "You're proof that even evolution makes mistakes.", "If brains were dynamite, you couldn't blow your nose.", "You're like a cloud — when you disappear, it's a beautiful day."];
+                await send({
+                    color: RED,
+                    title: '🔥 Roast',
+                    description: `${target2 ? `<@${target2.replace(/[<@!>]/g, '')}> ` : ''}${roasts2[Math.floor(Math.random() * roasts2.length)]}`,
+                    footer: { text: 'NETRUNNER_V1' },
+                    timestamp: new Date().toISOString(),
+                });
+                return;
+            }
+
+            if (slashCmd === 'ship') {
+                await del();
+                const u1id = (slashArgs[0] || '').replace(/[<@!>]/g, '') || 'User1';
+                const u2id = (slashArgs[1] || '').replace(/[<@!>]/g, '') || 'User2';
+                const pct2 = Math.floor(Math.random() * 101);
+                const bar2 = '█'.repeat(Math.floor(pct2 / 10)) + '░'.repeat(10 - Math.floor(pct2 / 10));
+                const emoji2 = pct2 > 75 ? '💞' : pct2 > 40 ? '💛' : '💔';
+                await send({
+                    color: pct2 > 75 ? 0xec4899 : pct2 > 40 ? 0xf59e0b : RED,
+                    title: `${emoji2} Ship Meter`,
+                    description: `**<@${u1id}>** ❤️ **<@${u2id}>**\n\`[${bar2}] ${pct2}%\``,
+                    footer: { text: 'NETRUNNER_V1' },
+                    timestamp: new Date().toISOString(),
+                });
+                return;
+            }
+
+            if (slashCmd === 'gayrate') {
+                await del();
+                const tgt2 = (slashArgs[0] || '').replace(/[<@!>]/g, '') || client.user?.id;
+                const pct3 = Math.floor(Math.random() * 101);
+                const conf7 = await send({
+                    color: 0xa855f7,
+                    title: '🌈 Gay Rate',
+                    description: `<@${tgt2}> is **${pct3}%** gay.\n\`[${'█'.repeat(Math.floor(pct3 / 10))}${'░'.repeat(10 - Math.floor(pct3 / 10))}] ${pct3}%\``,
+                    footer: { text: 'NETRUNNER_V1' },
+                    timestamp: new Date().toISOString(),
+                });
+                return;
+            }
+
+            if (slashCmd === '8ball') {
+                await del();
+                if (!slashFull) {
+                    await send({ color: RED, title: 'Usage', description: '`/8ball <question>`', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
+                    return;
+                }
+                const responses2 = ['It is certain.','It is decidedly so.','Without a doubt.','Yes definitely.','As I see it, yes.','Most likely.','Outlook good.','Signs point to yes.','Reply hazy, try again.','Ask again later.','Cannot predict now.','Don\'t count on it.','My reply is no.','My sources say no.','Very doubtful.'];
+                const answer = responses2[Math.floor(Math.random() * responses2.length)];
+                const positive = ['It is certain.','It is decidedly so.','Without a doubt.','Yes definitely.','As I see it, yes.','Most likely.','Outlook good.','Signs point to yes.'].includes(answer);
+                await send({
+                    color: positive ? GREEN : RED,
+                    title: '🎱 Magic 8-Ball',
+                    fields: [
+                        { name: 'Question', value: slashFull, inline: false },
+                        { name: 'Answer', value: `**${answer}**`, inline: false },
+                    ],
+                    footer: { text: 'NETRUNNER_V1' },
+                    timestamp: new Date().toISOString(),
+                });
+                return;
+            }
+
+            // Unknown slash command — silent ignore
+            return;
+        }
+        // ── END SLASH COMMAND HANDLER ──────────────────────────────────────────
 
         const args = message.content.slice(prefix.length).trim().split(/ +/);
         const command = args.shift()?.toLowerCase();
