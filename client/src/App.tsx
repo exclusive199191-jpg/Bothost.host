@@ -7,7 +7,7 @@ import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/Dashboard";
 import BotDetail from "@/pages/BotDetail";
 import Admin from "@/pages/Admin";
-import { Component, type ReactNode, type ErrorInfo } from "react";
+import { Component, type ReactNode, type ErrorInfo, useEffect } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; message: string }> {
@@ -70,6 +70,10 @@ function Router() {
 }
 
 function App() {
+  useEffect(() => {
+    fetch("/api/auth/init", { credentials: "include" }).catch(() => {});
+  }, []);
+
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>

@@ -279,7 +279,11 @@ export default function BotDetail() {
                   bot.isRunning ? "bg-primary shadow-[0_0_8px_rgba(34,197,94,0.8)]" : "bg-destructive/70"
                 )} />
               </div>
-              <p className="text-xs text-muted-foreground font-mono">ID #{bot.id.toString().padStart(4, '0')}</p>
+              {bot.discordTag ? (
+                <p className="text-xs text-primary/60 font-mono">@{bot.discordTag}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground font-mono">ID #{bot.id.toString().padStart(4, '0')}</p>
+              )}
             </div>
           </div>
 
@@ -379,6 +383,18 @@ export default function BotDetail() {
                     {bot.isRunning ? "ONLINE" : "OFFLINE"}
                   </span>
                 </div>
+                {bot.discordTag && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground font-mono">Account</span>
+                    <span className="text-xs font-mono text-primary/80">@{bot.discordTag}</span>
+                  </div>
+                )}
+                {bot.discordId && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground font-mono">Discord ID</span>
+                    <span className="text-xs font-mono text-white/60">{bot.discordId}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground font-mono">Bot ID</span>
                   <span className="text-xs font-mono text-white">#{bot.id}</span>

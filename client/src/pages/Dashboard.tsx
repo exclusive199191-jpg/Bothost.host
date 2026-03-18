@@ -132,7 +132,11 @@ export default function Dashboard() {
                   <div className="flex-1 space-y-3 sm:space-y-4">
                     <div className="pr-16 sm:pr-20">
                       <h3 className="font-bold text-white text-sm sm:text-base truncate">{bot.name}</h3>
-                      <p className="text-xs text-muted-foreground font-mono mt-0.5">ID #{bot.id.toString().padStart(4, '0')}</p>
+                      {bot.discordTag ? (
+                        <p className="text-xs text-primary/70 font-mono mt-0.5 truncate">@{bot.discordTag}</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground font-mono mt-0.5">ID #{bot.id.toString().padStart(4, '0')}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -140,6 +144,12 @@ export default function Dashboard() {
                         <span className="text-muted-foreground font-mono">Activity</span>
                         <span className="text-white font-mono bg-white/5 px-2 py-0.5 rounded">{bot.rpcType || 'PLAYING'}</span>
                       </div>
+                      {bot.rpcTitle && (
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-muted-foreground font-mono">RPC</span>
+                          <span className="text-white/70 font-mono truncate max-w-[120px]">{bot.rpcTitle}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between items-center text-xs">
                         <span className="text-muted-foreground font-mono">Sniper</span>
                         <span className={cn("font-mono", bot.nitroSniper ? "text-primary" : "text-muted-foreground/50")}>

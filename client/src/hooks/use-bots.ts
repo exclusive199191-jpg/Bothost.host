@@ -57,6 +57,7 @@ export function useCreateBot() {
       const res = await fetch(api.bots.create.path, {
         method: api.bots.create.method,
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(validated),
       });
       
