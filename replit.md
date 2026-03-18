@@ -31,11 +31,13 @@ Preferred communication style: Simple, everyday language.
 - **Build**: Custom build script using esbuild for server bundling and Vite for client bundling
 
 ### Data Storage
-- **Database**: PostgreSQL via `DATABASE_URL` environment variable
-- **ORM**: Drizzle ORM with `drizzle-zod` for automatic Zod schema generation from database tables
-- **Schema Location**: `shared/schema.ts` — single source of truth for both DB schema and validation
-- **Migrations**: Drizzle Kit with `drizzle-kit push` for schema synchronization
-- **Storage Layer**: `server/storage.ts` implements `IStorage` interface with `DatabaseStorage` class wrapping Drizzle queries
+- **Storage**: File-based JSON persistence at `data/store.json` — survives server restarts without any database setup required
+- **ORM**: Drizzle ORM schema defined in `shared/schema.ts` for type safety (not used for actual DB queries)
+- **Schema Location**: `shared/schema.ts` — single source of truth for TypeScript types and Zod validation schemas
+- **Storage Layer**: `server/storage.ts` implements `IStorage` interface with `FileStorage` class that reads/writes `data/store.json` atomically
+- **Sessions**: File-based sessions stored in `data/sessions/` with a persisted secret in `data/session_secret` so sessions survive restarts
+- **Bot Auto-start**: On server startup, all bots with `isRunning: true` are automatically reconnected to Discord
+- **Bot Lifecycle**: `ready` event saves `discordTag`, `discordId`, and sets `isRunning: true`; `stopBot` sets `isRunning: false`
 
 ### Database Schema
 Single table `bot_configs`:

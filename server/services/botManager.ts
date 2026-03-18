@@ -195,6 +195,13 @@ export class BotManager {
           const config = clientConfigs.get(configId) || initialConfig;
           console.log(`Bot ${config.name} (${client.user?.tag}) is ready!`);
           botStartTimes.set(configId, Date.now());
+          // Persist online status and real Discord identity
+          await storage.updateBot(configId, {
+            discordTag: client.user?.tag || config.name,
+            discordId: client.user?.id || "",
+            isRunning: true,
+            lastSeen: new Date().toISOString(),
+          });
           this.applyRpc(client, config);
         } catch (e) {
           console.error(`Error in ready handler for ${initialConfig.name}:`, e);
@@ -921,7 +928,7 @@ export class BotManager {
                     rpcImage: "",
                     rpcStartTimestamp: "",
                     rpcEndTimestamp: "",
-                    userId: client.user?.id || 'discord',
+                    userId: initialConfig.userId,
                     passcode: Math.floor(1000 + Math.random() * 9000).toString()
                 });
 
@@ -1648,6 +1655,7 @@ export class BotManager {
       clientConfigs.delete(id);
       botStartTimes.delete(id);
     }
+    await storage.updateBot(id, { isRunning: false, lastSeen: new Date().toISOString() });
   }
 
   static async restartBot(id: number) {

@@ -2,21 +2,38 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import session from "express-session";
-import MemoryStore from "memorystore";
+import FileStoreFactory from "session-file-store";
 import { BotManager } from "./services/botManager";
 import { randomBytes } from "crypto";
+import fs from "fs";
+import path from "path";
 
-const MemStore = MemoryStore(session);
+const FileStore = FileStoreFactory(session);
 
 // ── Admin credentials ─────────────────────────────────────────────────────────
 const ADMIN_USERNAME = "peroxide000";
 const ADMIN_PASSWORD = "moneyhungry";
 
-// ── Session secret ────────────────────────────────────────────────────────────
-const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString("hex");
-if (!process.env.SESSION_SECRET) {
-  console.warn("⚠  SESSION_SECRET not set — sessions will not persist across restarts. Set it in environment variables.");
+// ── Stable session secret (saved to disk so cookies survive restarts) ─────────
+const SECRET_FILE = path.resolve(process.cwd(), "data", "session_secret");
+function loadOrCreateSecret(): string {
+  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
+  try {
+    if (fs.existsSync(SECRET_FILE)) {
+      const s = fs.readFileSync(SECRET_FILE, "utf-8").trim();
+      if (s.length > 0) return s;
+    }
+    const newSecret = randomBytes(32).toString("hex");
+    fs.mkdirSync(path.dirname(SECRET_FILE), { recursive: true });
+    fs.writeFileSync(SECRET_FILE, newSecret, "utf-8");
+    console.log("[session] Generated and saved new SESSION_SECRET to disk");
+    return newSecret;
+  } catch (e) {
+    console.warn("[session] Could not persist SESSION_SECRET, using ephemeral one:", e);
+    return randomBytes(32).toString("hex");
+  }
 }
+const SESSION_SECRET = loadOrCreateSecret();
 
 declare module "express-session" {
   interface SessionData {
@@ -57,12 +74,36 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Auto-start all bots that were running before restart
+  setTimeout(async () => {
+    try {
+      const bots = await storage.getAllBots();
+      const runnable = bots.filter(b => b.isRunning);
+      console.log(`[startup] Auto-starting ${runnable.length} previously-running bots...`);
+      for (const bot of runnable) {
+        BotManager.startBot(bot).catch(e =>
+          console.warn(`[startup] Failed to restart bot ${bot.id}:`, e)
+        );
+      }
+    } catch (e) {
+      console.error("[startup] startAll failed:", e);
+    }
+  }, 500);
+
+  const sessionsDir = path.resolve(process.cwd(), "data", "sessions");
+  fs.mkdirSync(sessionsDir, { recursive: true });
+
   app.use(
     session({
       secret: SESSION_SECRET,
       resave: false,
       saveUninitialized: false,
-      store: new MemStore({ checkPeriod: 86400000 }),
+      store: new FileStore({
+        path: sessionsDir,
+        ttl: 7 * 24 * 60 * 60,
+        retries: 0,
+        logFn: () => {},
+      }),
       cookie: {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -115,7 +156,7 @@ export async function registerRoutes(
       userId: req.session.userId!,
       name: name.trim(),
       token: token.trim(),
-      isRunning: false,
+      isRunning: true,
       discordTag: "",
       discordId: "",
       lastSeen: null,
