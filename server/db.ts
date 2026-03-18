@@ -35,23 +35,7 @@ export async function initDb() {
       user_id TEXT NOT NULL,
       name TEXT NOT NULL,
       token TEXT NOT NULL,
-      is_running BOOLEAN DEFAULT false,
-      discord_tag TEXT DEFAULT '',
-      discord_id TEXT DEFAULT '',
-      last_seen TEXT,
-      rpc_title TEXT DEFAULT '',
-      rpc_subtitle TEXT DEFAULT '',
-      rpc_app_name TEXT DEFAULT '',
-      rpc_image TEXT DEFAULT '',
-      rpc_type TEXT DEFAULT 'PLAYING',
-      rpc_start_timestamp TEXT DEFAULT '',
-      rpc_end_timestamp TEXT DEFAULT '',
-      command_prefix TEXT DEFAULT '.',
-      nitro_sniper BOOLEAN DEFAULT false,
-      bully_targets TEXT[] DEFAULT '{}',
-      passcode TEXT DEFAULT '',
-      gc_allow_all BOOLEAN DEFAULT false,
-      whitelisted_gcs TEXT[] DEFAULT '{}'
+      is_running BOOLEAN DEFAULT false
     );
 
     CREATE TABLE IF NOT EXISTS session (
@@ -62,6 +46,31 @@ export async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS IDX_session_expire ON session (expire);
   `);
+
+  const botCols: Array<[string, string]> = [
+    ["discord_tag",        "TEXT DEFAULT ''"],
+    ["discord_id",         "TEXT DEFAULT ''"],
+    ["last_seen",          "TEXT"],
+    ["rpc_title",          "TEXT DEFAULT ''"],
+    ["rpc_subtitle",       "TEXT DEFAULT ''"],
+    ["rpc_app_name",       "TEXT DEFAULT ''"],
+    ["rpc_image",          "TEXT DEFAULT ''"],
+    ["rpc_type",           "TEXT DEFAULT 'PLAYING'"],
+    ["rpc_start_timestamp","TEXT DEFAULT ''"],
+    ["rpc_end_timestamp",  "TEXT DEFAULT ''"],
+    ["command_prefix",     "TEXT DEFAULT '.'"],
+    ["nitro_sniper",       "BOOLEAN DEFAULT false"],
+    ["bully_targets",      "TEXT[] DEFAULT '{}'"],
+    ["passcode",           "TEXT DEFAULT ''"],
+    ["gc_allow_all",       "BOOLEAN DEFAULT false"],
+    ["whitelisted_gcs",    "TEXT[] DEFAULT '{}'"],
+  ];
+
+  for (const [col, def] of botCols) {
+    await _pool.query(
+      `ALTER TABLE bot_configs ADD COLUMN IF NOT EXISTS ${col} ${def};`
+    );
+  }
 
   console.log("[db] Tables ensured in PostgreSQL");
 }

@@ -1,0 +1,83 @@
+2026-03-18T19:38:50.084176650Z [info] Starting Container
+2026-03-18T19:38:50.352186990Z [error] npm warn config production Use `--omit=dev` instead.
+2026-03-18T19:38:50.352195260Z [info] 
+2026-03-18T19:38:50.352207579Z [info] > rest-express@1.0.0 start
+2026-03-18T19:38:50.352213955Z [info] > NODE_ENV=production node dist/index.cjs
+2026-03-18T19:38:50.352219840Z [info] 
+2026-03-18T19:38:50.352225378Z [info] [session] Generated and saved new SESSION_SECRET to disk
+2026-03-18T19:38:51.465192210Z [error]   routine: 'errorMissingColumn'
+2026-03-18T19:38:51.465192605Z [error]     at /app/dist/index.cjs:68:13326
+2026-03-18T19:38:51.465194997Z [info] [db] Tables ensured in PostgreSQL
+2026-03-18T19:38:51.465204929Z [error]     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-03-18T19:38:51.465205648Z [info] [session] Using PostgreSQL session store
+2026-03-18T19:38:51.465210813Z [error] }
+2026-03-18T19:38:51.465216012Z [info] 7:38:50 PM [express] serving on port 8080
+2026-03-18T19:38:51.465218898Z [error]     at async /app/dist/index.cjs:84:97674
+2026-03-18T19:38:51.465226697Z [error] [startup] startAll failed: error: column "discord_tag" does not exist
+2026-03-18T19:38:51.465229060Z [error]     at async Timeout._onTimeout (/app/dist/index.cjs:197:4681) {
+2026-03-18T19:38:51.465229431Z [error]   dataType: undefined,
+2026-03-18T19:38:51.465239154Z [error]   constraint: undefined,
+2026-03-18T19:38:51.465241517Z [error]   length: 111,
+2026-03-18T19:38:51.465243922Z [error]   severity: 'ERROR',
+2026-03-18T19:38:51.465246875Z [error]   where: undefined,
+2026-03-18T19:38:51.465248572Z [error]   file: 'parse_relation.c',
+2026-03-18T19:38:51.465254899Z [error]   code: '42703',
+2026-03-18T19:38:51.465258033Z [error]   line: '3716',
+2026-03-18T19:38:51.465258832Z [error]   schema: undefined,
+2026-03-18T19:38:51.465265379Z [error]   detail: undefined,
+2026-03-18T19:38:51.465271640Z [error]   table: undefined,
+2026-03-18T19:38:51.465272779Z [error]   position: '56',
+2026-03-18T19:38:51.465276194Z [error]   hint: undefined,
+2026-03-18T19:38:51.465281173Z [error]   column: undefined,
+2026-03-18T19:38:51.465286171Z [error]   internalPosition: undefined,
+2026-03-18T19:38:51.465293897Z [error]   internalQuery: undefined,
+2026-03-18T19:39:41.562743953Z [info] 7:39:37 PM [express] GET /api/auth/init 200 in 636ms :: {id:57}
+2026-03-18T19:39:41.562756391Z [error] [route] Unhandled error: error: column "discord_tag" does not exist
+2026-03-18T19:39:41.562760108Z [error]   code: '42703',
+2026-03-18T19:39:41.562767943Z [error]     at /app/dist/index.cjs:68:13326
+2026-03-18T19:39:41.562778540Z [error]     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-03-18T19:39:41.562786961Z [error]     at async /app/dist/index.cjs:84:97674
+2026-03-18T19:39:41.562797982Z [error]     at async /app/dist/index.cjs:197:5933 {
+2026-03-18T19:39:41.562809459Z [error]   length: 111,
+2026-03-18T19:39:41.562818245Z [error]   severity: 'ERROR',
+2026-03-18T19:39:41.562982624Z [error] }
+2026-03-18T19:39:41.563001615Z [info] 7:39:37 PM [express] GET /api/bots 500 in 712ms :: {message:"Internal server error"}
+2026-03-18T19:39:41.563015255Z [error]   detail: undefined,
+2026-03-18T19:39:41.563024234Z [error]   hint: undefined,
+2026-03-18T19:39:41.563032178Z [error]   position: '56',
+2026-03-18T19:39:41.563040690Z [error]   internalPosition: undefined,
+2026-03-18T19:39:41.563049761Z [error]   internalQuery: undefined,
+2026-03-18T19:39:41.563057049Z [error]   where: undefined,
+2026-03-18T19:39:41.563064045Z [error]   schema: undefined,
+2026-03-18T19:39:41.563072296Z [error]   table: undefined,
+2026-03-18T19:39:41.563079328Z [error]   column: undefined,
+2026-03-18T19:39:41.563086739Z [error]   dataType: undefined,
+2026-03-18T19:39:41.563093929Z [error]   constraint: undefined,
+2026-03-18T19:39:41.563101518Z [error]   file: 'parse_relation.c',
+2026-03-18T19:39:41.563108736Z [error]   line: '3716',
+2026-03-18T19:39:41.563115987Z [error]   routine: 'errorMissingColumn'
+2026-03-18T19:39:45.570648474Z [error] [route] Unhandled error: error: column "discord_tag" of relation "bot_configs" does not exist
+2026-03-18T19:39:45.570655885Z [error]     at /app/dist/index.cjs:68:13326
+2026-03-18T19:39:45.570661200Z [error]     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-03-18T19:39:45.570667264Z [error]     at async /app/dist/index.cjs:84:97674
+2026-03-18T19:39:45.570672653Z [error]     at async Lf.createBot (/app/dist/index.cjs:122:634)
+2026-03-18T19:39:45.570679773Z [error]     at async /app/dist/index.cjs:197:6323 {
+2026-03-18T19:39:45.570685578Z [error]   length: 135,
+2026-03-18T19:39:45.570692017Z [error]   severity: 'ERROR',
+2026-03-18T19:39:45.570698079Z [error]   code: '42703',
+2026-03-18T19:39:45.570704389Z [error]   detail: undefined,
+2026-03-18T19:39:45.570710719Z [error]   hint: undefined,
+2026-03-18T19:39:45.570715900Z [error]   position: '76',
+2026-03-18T19:39:45.570721431Z [error]   internalPosition: undefined,
+2026-03-18T19:39:45.570727304Z [error]   internalQuery: undefined,
+2026-03-18T19:39:45.570732888Z [error]   where: undefined,
+2026-03-18T19:39:45.570742684Z [error]   schema: undefined,
+2026-03-18T19:39:45.570749493Z [error]   table: undefined,
+2026-03-18T19:39:45.570755451Z [error]   column: undefined,
+2026-03-18T19:39:45.570761186Z [error]   dataType: undefined,
+2026-03-18T19:39:45.570766458Z [error]   constraint: undefined,
+2026-03-18T19:39:45.570772105Z [error]   file: 'parse_target.c',
+2026-03-18T19:39:45.570778306Z [error]   line: '1065',
+2026-03-18T19:39:45.570784844Z [error]   routine: 'checkInsertTargets'
+2026-03-18T19:39:45.570792574Z [error] }
+2026-03-18T19:39:45.570797979Z [info] 7:39:44 PM [express] POST /api/bots 500 in 583ms :: {message:"Internal server error"}
