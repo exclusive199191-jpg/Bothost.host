@@ -1,17 +1,20 @@
 import { useBots, useDeleteBot, useBotAction } from "@/hooks/use-bots";
 import { CreateBotDialog } from "@/components/CreateBotDialog";
 import { BotStatusBadge } from "@/components/BotStatusBadge";
+import { RpcDialog } from "@/components/RpcDialog";
 import { Loader2, Settings, Power, Trash2, Search, Zap, Bot, Shield } from "lucide-react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import React from "react";
+import type { BotConfig } from "@shared/schema";
 
 export default function Dashboard() {
   const { data: bots, isLoading } = useBots();
   const deleteBot = useDeleteBot();
   const botAction = useBotAction();
   const [search, setSearch] = React.useState("");
+  const [rpcBot, setRpcBot] = React.useState<BotConfig | null>(null);
 
   if (isLoading) {
     return (
@@ -151,12 +154,13 @@ export default function Dashboard() {
                   </div>
 
                   <div className="flex gap-2 mt-4 pt-3 sm:mt-5 sm:pt-4 border-t border-white/5">
-                    <Link href={`/bot/${bot.id}`} className="flex-1">
-                      <button className="w-full h-9 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-lg text-xs font-mono text-white transition-all flex items-center justify-center gap-1.5">
-                        <Settings className="w-3.5 h-3.5" />
-                        Configure
-                      </button>
-                    </Link>
+                    <button
+                      onClick={() => setRpcBot(bot)}
+                      className="flex-1 h-9 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-lg text-xs font-mono text-white transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                      Configure
+                    </button>
 
                     <button
                       onClick={() => botAction.mutate({ id: bot.id, action: bot.isRunning ? 'stop' : 'restart' })}
@@ -185,6 +189,14 @@ export default function Dashboard() {
           </div>
         )}
       </main>
+
+      {rpcBot && (
+        <RpcDialog
+          bot={rpcBot}
+          open={!!rpcBot}
+          onOpenChange={(open) => { if (!open) setRpcBot(null); }}
+        />
+      )}
     </div>
   );
 }
