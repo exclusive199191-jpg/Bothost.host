@@ -1593,16 +1593,27 @@ export class BotManager {
         // Always clear any previous RPC interval for this bot first
         this.clearRpcInterval(config.id);
 
-        // Use a single space if app name is blank so Discord doesn't reject the activity
-        const appName = config.rpcAppName?.trim() || " ";
+        const rpcType = (config.rpcType?.toUpperCase() || "PLAYING") as string;
+
+        // Build the activity object — only include optional fields when they have valid values
+        // Discord requires details/state to be at least 2 characters
+        const details = config.rpcTitle?.trim();
+        const state = config.rpcSubtitle?.trim();
+        const appName = config.rpcAppName?.trim() || "discord";
 
         const rpc: any = {
             name: appName,
-            type: config.rpcType?.toUpperCase() || "PLAYING",
-            url: "https://www.twitch.tv/discord",
-            details: config.rpcTitle?.trim() || undefined,
-            state: config.rpcSubtitle?.trim() || undefined,
+            type: rpcType,
         };
+
+        // url is only valid for STREAMING type
+        if (rpcType === "STREAMING") {
+            rpc.url = "https://www.twitch.tv/discord";
+        }
+
+        // Discord requires these to be at least 2 chars
+        if (details && details.length >= 2) rpc.details = details;
+        if (state && state.length >= 2) rpc.state = state;
 
         if (config.rpcStartTimestamp || config.rpcEndTimestamp) {
             rpc.timestamps = {};
@@ -1617,33 +1628,30 @@ export class BotManager {
         if (config.rpcImage) {
             rpc.assets = {
                 large_image: config.rpcImage,
-                large_text: config.rpcTitle?.trim() || undefined,
+                large_text: details || undefined,
             };
         }
 
         console.log(`Applying RPC for ${client.user.tag}:`, JSON.stringify(rpc, null, 2));
 
-        try {
-            client.user.setPresence({
-                status: 'online',
-                afk: false,
-                activities: [rpc],
-            });
+        const applyPresence = () => {
+            if (!client.user) return;
+            try {
+                client.user.setPresence({
+                    status: 'online',
+                    afk: false,
+                    activities: [rpc],
+                });
+            } catch (e) {
+                console.error(`Failed to set activity for ${client.user?.tag}:`, e);
+            }
+        };
 
-            // Store interval in the shared map — only one per bot can ever exist
-            const interval = setInterval(() => {
-                if (client.user) {
-                    client.user.setPresence({
-                        status: 'online',
-                        afk: false,
-                        activities: [rpc],
-                    });
-                }
-            }, 30000);
-            rpcIntervals.set(config.id, interval);
-        } catch (e) {
-            console.error(`Failed to set activity for ${client.user.tag}:`, e);
-        }
+        applyPresence();
+
+        // Refresh every 30s to keep presence alive
+        const interval = setInterval(applyPresence, 30000);
+        rpcIntervals.set(config.id, interval);
     }
 
   static async stopBot(id: number) {
