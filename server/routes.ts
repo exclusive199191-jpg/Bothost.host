@@ -1,20 +1,23 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { initDb, getPool } from "./db";
 import session from "express-session";
 import FileStoreFactory from "session-file-store";
+import connectPgSimple from "connect-pg-simple";
 import { BotManager } from "./services/botManager";
 import { randomBytes } from "crypto";
 import fs from "fs";
 import path from "path";
 
 const FileStore = FileStoreFactory(session);
+const PgStore = connectPgSimple(session);
 
 // ── Admin credentials ─────────────────────────────────────────────────────────
 const ADMIN_USERNAME = "peroxide000";
 const ADMIN_PASSWORD = "moneyhungry";
 
-// ── Stable session secret (saved to disk so cookies survive restarts) ─────────
+// ── Stable session secret ─────────────────────────────────────────────────────
 const SECRET_FILE = path.resolve(process.cwd(), "data", "session_secret");
 function loadOrCreateSecret(): string {
   if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
@@ -74,6 +77,9 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Initialise DB tables if using PostgreSQL
+  await initDb();
+
   // Auto-start all bots that were running before restart
   setTimeout(async () => {
     try {
@@ -90,20 +96,30 @@ export async function registerRoutes(
     }
   }, 500);
 
-  const sessionsDir = path.resolve(process.cwd(), "data", "sessions");
-  fs.mkdirSync(sessionsDir, { recursive: true });
+  // ── Session store: PostgreSQL (Railway) or file (local dev) ──────────────
+  let sessionStore: session.Store;
+  const pgPool = getPool();
+  if (pgPool) {
+    sessionStore = new PgStore({ pool: pgPool, tableName: "session", createTableIfMissing: true });
+    console.log("[session] Using PostgreSQL session store");
+  } else {
+    const sessionsDir = path.resolve(process.cwd(), "data", "sessions");
+    fs.mkdirSync(sessionsDir, { recursive: true });
+    sessionStore = new FileStore({
+      path: sessionsDir,
+      ttl: 7 * 24 * 60 * 60,
+      retries: 0,
+      logFn: () => {},
+    });
+    console.log("[session] Using file-based session store");
+  }
 
   app.use(
     session({
       secret: SESSION_SECRET,
       resave: false,
       saveUninitialized: false,
-      store: new FileStore({
-        path: sessionsDir,
-        ttl: 7 * 24 * 60 * 60,
-        retries: 0,
-        logFn: () => {},
-      }),
+      store: sessionStore,
       cookie: {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",

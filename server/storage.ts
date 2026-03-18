@@ -1,7 +1,9 @@
-import { type User, type InsertUser, type BotConfig, type InsertBotConfig } from "@shared/schema";
+import { type User, type InsertUser, type BotConfig, type InsertBotConfig, users, botConfigs } from "@shared/schema";
 import { randomUUID } from "crypto";
 import fs from "fs";
 import path from "path";
+import { eq } from "drizzle-orm";
+import { getDb } from "./db";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -15,6 +17,65 @@ export interface IStorage {
   deleteBot(id: number): Promise<void>;
   getUserBotCount(userId: string): Promise<number>;
 }
+
+// ── PostgreSQL Storage ────────────────────────────────────────────────────────
+
+export class DatabaseStorage implements IStorage {
+  private get db() {
+    const db = getDb();
+    if (!db) throw new Error("DATABASE_URL is not set");
+    return db;
+  }
+
+  async getUser(id: string): Promise<User | undefined> {
+    const rows = await this.db.select().from(users).where(eq(users.id, id));
+    return rows[0];
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const rows = await this.db.select().from(users).where(eq(users.username, username));
+    return rows[0];
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const rows = await this.db.insert(users).values(insertUser).returning();
+    return rows[0];
+  }
+
+  async getBotsByUser(userId: string): Promise<BotConfig[]> {
+    return this.db.select().from(botConfigs).where(eq(botConfigs.userId, userId));
+  }
+
+  async getAllBots(): Promise<BotConfig[]> {
+    return this.db.select().from(botConfigs);
+  }
+
+  async getBot(id: number): Promise<BotConfig | undefined> {
+    const rows = await this.db.select().from(botConfigs).where(eq(botConfigs.id, id));
+    return rows[0];
+  }
+
+  async createBot(bot: Omit<InsertBotConfig, "id">): Promise<BotConfig> {
+    const rows = await this.db.insert(botConfigs).values(bot).returning();
+    return rows[0];
+  }
+
+  async updateBot(id: number, updates: Partial<BotConfig>): Promise<BotConfig | undefined> {
+    const rows = await this.db.update(botConfigs).set(updates).where(eq(botConfigs.id, id)).returning();
+    return rows[0];
+  }
+
+  async deleteBot(id: number): Promise<void> {
+    await this.db.delete(botConfigs).where(eq(botConfigs.id, id));
+  }
+
+  async getUserBotCount(userId: string): Promise<number> {
+    const bots = await this.getBotsByUser(userId);
+    return bots.length;
+  }
+}
+
+// ── File-based Storage (local dev fallback) ───────────────────────────────────
 
 const DATA_DIR = path.resolve(process.cwd(), "data");
 const STORE_FILE = path.join(DATA_DIR, "store.json");
@@ -139,4 +200,8 @@ export class FileStorage implements IStorage {
   }
 }
 
-export const storage = new FileStorage();
+// ── Export the right storage based on environment ─────────────────────────────
+
+export const storage: IStorage = process.env.DATABASE_URL
+  ? new DatabaseStorage()
+  : new FileStorage();
