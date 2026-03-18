@@ -48,6 +48,7 @@ export async function initDb() {
   `);
 
   const botCols: Array<[string, string]> = [
+    ["user_id",            "TEXT NOT NULL DEFAULT ''"],
     ["discord_tag",        "TEXT DEFAULT ''"],
     ["discord_id",         "TEXT DEFAULT ''"],
     ["last_seen",          "TEXT"],
