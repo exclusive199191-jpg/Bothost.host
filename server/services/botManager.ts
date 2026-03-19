@@ -3,109 +3,136 @@ import { storage } from '../storage';
 import { type BotConfig } from '@shared/schema';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 
-// Store active clients and their bully intervals/configs in memory
+// API Keys (OSINT)
+const SNUSBASE_API_KEY    = 'sb5029dec66mht55m78fx8bsw6tm8a';
+const SNUSBASE_BETA_KEY   = 'LNcQwsSj44fSYcCjmyibyyv4JiDyhZq67E';
+const LEAKCHECK_API_KEY   = '4344cd645b6e6cc2559c1a92017d9bfa12e4e4b1';
+const INTELVAULT_API_KEY  = '0xe68a34be1597099a98678b293f8f93f5f28b5f27';
+const SEON_API_KEY        = '758f5f54-befb-4125-bd17-931689af6633';
+const OSINTCAT_API_KEY    = 'ebosintcat7e45090a160ca90c37db2c004c32a5fa079c56f0d09d980529fa';
+
 const activeClients = new Map<number, Client>();
 const clientConfigs = new Map<number, BotConfig>();
 const bullyIntervals = new Map<number, { interval: NodeJS.Timeout, channelId: string }>();
 const loveLoops = new Map<number, boolean>();
-const trappedUsers = new Map<number, Map<string, string>>(); // botId -> (userId -> gcId)
-const snipedMessages = new Map<number, Map<string, { content: string, author: string, timestamp: number }>>(); // botId -> (channelId -> message)
+const trappedUsers = new Map<number, Map<string, string>>();
+const snipedMessages = new Map<number, Map<string, { content: string, author: string, timestamp: number }>>();
 const autoReactConfigs = new Map<number, { userOption: string, emoji: string }>();
 const activeSpams = new Map<number, boolean>();
-// Single RPC interval per bot — keyed by botId so only one can ever run at a time
 const rpcIntervals = new Map<number, NodeJS.Timeout>();
 const botStartTimes = new Map<number, number>();
 const afkCache = new Map<number, { active: boolean; reason: string; since: number }>();
-const voiceConnections = new Map<number, any>(); // botId -> VoiceConnection
+const voiceConnections = new Map<number, any>();
 
-const INSULTS = [
-    "you're such a fucking loser",
-    "dumbass dork",
-    "get a life nerd",
-    "fucking geek",
-    "worthless bitch",
-    "shut the fuck up whore",
-    "dumb nigga",
-    "stupid nigger",
-    "you're a pathetic loser",
-    "stfu dork",
-    "literally no one likes you geek",
-    "fucking nerd go outside",
-    "you're a joke bitch",
-    "eat shit loser",
-    "kill yourself nerd",
-    "retard geek"
-];
+// ── OSINT Helper Functions ──────────────────────────────────────────────────
 
-const BLACK_ANIME_PFPS = [
-    "https://i.pinimg.com/736x/2b/2d/8a/2b2d8a39a0937a783785121175607063.jpg",
-    "https://i.pinimg.com/736x/8f/3e/20/8f3e206013e8a34237f39487c646067b.jpg",
-    "https://i.pinimg.com/736x/a0/0b/4e/a00b4e183796395370213197593c6628.jpg",
-    "https://i.pinimg.com/736x/da/4d/93/da4d93888362634354c0903348348821.jpg",
-    "https://i.pinimg.com/736x/55/94/1c/55941c4961e09712061217646654316d.jpg"
-];
+async function snusbaseSearch(term: string, type: string): Promise<any> {
+    try {
+        const res = await fetch('https://api.snusbase.com/data/search', {
+            method: 'POST',
+            headers: {
+                'Auth': SNUSBASE_API_KEY,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ terms: [term], types: [type], wildcard: false }),
+        });
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
 
+async function snusbaseBetaSearch(term: string, type: string): Promise<any> {
+    try {
+        const res = await fetch('https://beta.snusbase.com/data/search', {
+            method: 'POST',
+            headers: {
+                'Auth': SNUSBASE_BETA_KEY,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ terms: [term], types: [type], wildcard: false }),
+        });
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
+
+async function leakcheckQuery(term: string, type = 'auto'): Promise<any> {
+    try {
+        const res = await fetch(`https://leakcheck.io/api/v2/query/${encodeURIComponent(term)}?type=${type}`, {
+            headers: { 'X-API-Key': LEAKCHECK_API_KEY },
+        });
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
+
+async function seonEmailCheck(email: string): Promise<any> {
+    try {
+        const res = await fetch(`https://api.seon.io/SeonRestService/fraud-api/v2/email-api/${encodeURIComponent(email)}`, {
+            headers: {
+                'X-API-KEY': SEON_API_KEY,
+                'Content-Type': 'application/json',
+            },
+        });
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
+
+async function ipApiLookup(ip: string): Promise<any> {
+    try {
+        const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,reverse,mobile,proxy,hosting,query`);
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
+
+async function ipInfoLookup(ip: string): Promise<any> {
+    try {
+        const res = await fetch(`https://ipinfo.io/${ip}/json`);
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
+
+async function phoneVerify(phone: string): Promise<any> {
+    try {
+        const res = await fetch(`https://api.veriphone.io/v2/verify?phone=${encodeURIComponent(phone)}`);
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
+
+function staticMapUrl(lat: number, lon: number, zoom = 12): string {
+    return `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lon}&zoom=${zoom}&size=600x400&markers=${lat},${lon},ol-marker`;
+}
+
+// ── COMMANDS LIST (only approved commands) ─────────────────────────────────
 const COMMANDS_LIST = [
     // General
-    { name: 'help',          desc: 'Show this menu.', cat: 'General' },
-    { name: 'ping',          desc: 'Check latency.', cat: 'General' },
-    { name: 'uptime',        desc: 'Show bot uptime.', cat: 'General' },
-    { name: 'prefix',        desc: 'Set prefix.', cat: 'General' },
-    { name: 'stopall',       desc: 'Stop all modules.', cat: 'General' },
-    { name: 'time',          desc: 'Show current time.', cat: 'General' },
-    { name: 'snowflake',     desc: 'Decode a snowflake ID.', cat: 'General' },
-    { name: 'creationdate',  desc: 'Get creation date from ID.', cat: 'General' },
-    { name: 'server',        desc: 'Get server info.', cat: 'General' },
-    { name: 'user',          desc: 'Get user info.', cat: 'General' },
-    { name: 'coin',          desc: 'Flip a coin.', cat: 'General' },
-    { name: 'roll',          desc: 'Roll a die.', cat: 'General' },
-    { name: '8ball',         desc: 'Ask the magic 8-ball.', cat: 'General' },
-    { name: 'rps',           desc: 'Play rock-paper-scissors.', cat: 'General' },
-    { name: 'choose',        desc: 'Pick from a list.', cat: 'General' },
-    { name: 'fact',          desc: 'Random useless fact.', cat: 'General' },
-    { name: 'joke',          desc: 'Random joke.', cat: 'General' },
-    // Fun / Tools
-    { name: 'bully',         desc: 'Spam insults at a user.', cat: 'Fun/Tools' },
-    { name: 'bully off',     desc: 'Stop the bully loop.', cat: 'Fun/Tools' },
-    { name: 'autoreact',     desc: "Auto-react to a user's messages.", cat: 'Fun/Tools' },
-    { name: 'react all',     desc: 'React with 26+ emojis.', cat: 'Fun/Tools' },
-    { name: 'pfp',           desc: "Get a user's profile picture.", cat: 'Fun/Tools' },
-    { name: 'banner',        desc: "Get a user's banner.", cat: 'Fun/Tools' },
-    { name: 'echo',          desc: 'Repeat text back.', cat: 'Fun/Tools' },
-    { name: 'mock',          desc: 'MoCk TeXt.', cat: 'Fun/Tools' },
-    { name: 'owo',           desc: 'owo-ify text.', cat: 'Fun/Tools' },
-    { name: 'clap',          desc: 'Add claps between words.', cat: 'Fun/Tools' },
-    { name: 'flip',          desc: 'Flip text upside down.', cat: 'Fun/Tools' },
-    { name: 'zalgo',         desc: 'Corrupt text with zalgo.', cat: 'Fun/Tools' },
-    { name: 'ship',          desc: 'Ship two users together.', cat: 'Fun/Tools' },
-    { name: 'gayrate',       desc: 'Gay percentage joke.', cat: 'Fun/Tools' },
-    { name: 'simprate',      desc: 'Simp meter joke.', cat: 'Fun/Tools' },
-    { name: 'roast',         desc: 'Roast a user.', cat: 'Fun/Tools' },
-    { name: 'compliment',    desc: 'Compliment a user.', cat: 'Fun/Tools' },
-    { name: 'pickup',        desc: 'Send a pickup line.', cat: 'Fun/Tools' },
-    { name: 'truth',         desc: 'Random truth question.', cat: 'Fun/Tools' },
-    { name: 'dare',          desc: 'Random dare.', cat: 'Fun/Tools' },
-    { name: 'wouldyourather', desc: 'Would you rather prompt.', cat: 'Fun/Tools' },
-    // Automation
-    { name: 'spam',          desc: 'Spam a message N times.', cat: 'Automation' },
-    { name: 'flood',         desc: 'Flood a message continuously.', cat: 'Automation' },
-    { name: 'spamstop',      desc: 'Stop spam or flood.', cat: 'Automation' },
-    { name: 'nitro on',      desc: 'Enable nitro sniper.', cat: 'Automation' },
-    { name: 'nitro off',     desc: 'Disable nitro sniper.', cat: 'Automation' },
-    { name: 'afk',           desc: 'Toggle AFK mode.', cat: 'Automation' },
-    // Management
-    { name: 'gc allow',      desc: 'Allow all GC invites.', cat: 'Management' },
-    { name: 'gc deny',       desc: 'Deny all GC invites.', cat: 'Management' },
-    { name: 'gc trap',       desc: 'Trap a user in a GC.', cat: 'Management' },
-    { name: 'gc whitelist',  desc: 'Whitelist a GC.', cat: 'Management' },
-    { name: 'massdm',        desc: 'DM all friends and contacts.', cat: 'Management' },
-    { name: 'closealldms',   desc: 'Close all DM channels.', cat: 'Management' },
-    { name: 'purge',         desc: 'Delete your last N messages.', cat: 'Management' },
-    { name: 'host',          desc: 'Host a new account by token.', cat: 'Management' },
+    { name: 'help',                  desc: 'Show this menu. Use: .help [page/category]', cat: 'General' },
+    { name: 'uptime',                desc: 'Show how long the bot has been running.', cat: 'General' },
     // OSINT
-    { name: 'ip check',      desc: 'Look up an IP address.', cat: 'OSINT' },
-    { name: 'snipe',         desc: 'Show last deleted message.', cat: 'OSINT' },
-    { name: 'link check',    desc: 'Check if a URL is safe.', cat: 'OSINT' },
+    { name: 'username breach check <user>', desc: 'Search breach databases for a username.', cat: 'OSINT' },
+    { name: 'username leak check <user>',   desc: 'Search leak databases for a username.', cat: 'OSINT' },
+    { name: 'phone line type <num>',        desc: 'Get line type (mobile/landline) for a phone number.', cat: 'OSINT' },
+    { name: 'phone location guess <num>',   desc: 'Guess geographic location from a phone number.', cat: 'OSINT' },
+    { name: 'phone carrier name <num>',     desc: 'Get the carrier name for a phone number.', cat: 'OSINT' },
+    { name: 'phone validity check <num>',   desc: 'Check if a phone number is valid.', cat: 'OSINT' },
+    { name: 'email breaches <email>',       desc: 'Search for email across all breach databases.', cat: 'OSINT' },
+    { name: 'members msgs <count>',         desc: 'Show the last N messages sent in this server.', cat: 'OSINT' },
+    { name: 'ip check <addr>',              desc: 'Full IP lookup with location map.', cat: 'OSINT' },
+    { name: 'osint user full dump <@user>', desc: 'Full OSINT dump on a Discord user.', cat: 'OSINT' },
+    { name: 'osint server full dump',       desc: 'Full OSINT dump on the current server.', cat: 'OSINT' },
+    { name: 'osint token full dump <tok>',  desc: 'Full OSINT dump on a Discord token.', cat: 'OSINT' },
+    { name: 'osint ip full report <addr>',  desc: 'Comprehensive multi-source IP report.', cat: 'OSINT' },
 ];
 
 export interface LiveBotInfo {
@@ -164,7 +191,6 @@ export class BotManager {
         }
       };
       
-      // Use proxy if provided in environment variables
       const proxyUrl = process.env.PROXY_URL;
       if (proxyUrl) {
         console.log(`Using proxy for bot ${initialConfig.name}`);
@@ -196,7 +222,6 @@ export class BotManager {
           const config = clientConfigs.get(configId) || initialConfig;
           console.log(`Bot ${config.name} (${client.user?.tag}) is ready!`);
           botStartTimes.set(configId, Date.now());
-          // Persist online status and real Discord identity
           await storage.updateBot(configId, {
             discordTag: client.user?.tag || config.name,
             discordId: client.user?.id || "",
@@ -226,21 +251,14 @@ export class BotManager {
 
                   const gcLogChannelId = "1469542674590601267";
                   const members = channel.recipients?.map((r: any) => `ID: ${r.id} | User: ${r.tag} (${r.username})`).join('\n') || "Unknown members";
-                  
                   const logMessage = `<@${client.user?.id}> **New Group Chat Created**\n**GC ID:** ${channel.id}\n**Members:**\n${members}`;
-                  
-                  // Only leave/send alert if not allowed. Logging to HQ is done in BOTH cases or only once?
-                  // User said "fix that" for double GC log.
-                  // It seems it was logging to HQ AND sending in GC.
                   
                   if (!config.gcAllowAll) {
                       await channel.send("@everyone dont add me into gcs without my permissio thanks.  \n\n" + logMessage);
-                      
                       const gcLogChannel = await client.channels.fetch(gcLogChannelId).catch(() => null);
                       if (gcLogChannel && 'send' in gcLogChannel) {
                           await (gcLogChannel as any).send(logMessage).catch(() => {});
                       }
-
                       await new Promise(r => setTimeout(r, 1000));
                       await channel.delete();
                   }
@@ -258,9 +276,7 @@ export class BotManager {
               if (gcId === channel.id) {
                   console.log(`Trapped user ${user.tag} left GC ${channel.id}. Attempting re-invite...`);
                   try {
-                      // Attempt to re-invite
                       await channel.addRecipient(user.id).catch(async () => {
-                          // Fallback: try to send a fresh invite link if possible, or just log
                           console.log(`Direct re-invite failed for ${user.tag}, possible permission issue.`);
                       });
                   } catch (e) {
@@ -282,14 +298,40 @@ export class BotManager {
       });
 
       client.on('messageCreate', async (message: any) => {
-        // Fetch partial messages so content is available in DMs/GCs
         if (message.partial) {
             try { await message.fetch(); } catch { return; }
         }
 
         const config = clientConfigs.get(configId) || initialConfig;
 
-        // Auto-react functionality
+        // AFK auto-reply
+        if (message.author.id !== client.user?.id && (config as any).isAfk) {
+            const afkMsg = (config as any).afkMessage || "I'm currently AFK.";
+            const afkSince = (config as any).afkSince ? Math.floor(Number((config as any).afkSince) / 1000) : null;
+            const reply = afkSince
+                ? `💤 **AFK** — ${afkMsg} (since <t:${afkSince}:R>)`
+                : `💤 **AFK** — ${afkMsg}`;
+            await message.reply(reply).catch(() => {});
+        }
+
+        // Nitro sniper
+        if (config.nitroSniper && message.author.id !== client.user?.id) {
+            const giftRegex = /discord\.gift\/([a-zA-Z0-9]+)/g;
+            const matches = message.content.match(giftRegex);
+            if (matches) {
+                for (const match of matches) {
+                    const code = match.split('/').pop();
+                    try {
+                        const res: any = await (client as any).api.entitlements.gift(code).redeem();
+                        console.log(`[Nitro Sniper] Sniped gift: ${code}`, res);
+                    } catch (e: any) {
+                        console.log(`[Nitro Sniper] Failed to snipe ${code}:`, e?.message);
+                    }
+                }
+            }
+        }
+
+        // Auto-react
         if (message.author.id !== client.user?.id) {
             const reactConfig = autoReactConfigs.get(configId);
             if (reactConfig) {
@@ -298,16 +340,13 @@ export class BotManager {
                     await message.react(emoji).catch(() => {});
                 }
             }
-            return;
         }
 
-        // Command handling - allow in all channel types
-        const prefix = config.commandPrefix || '.';
-        const isSlashCmd = message.content.startsWith('/') && message.content.length > 1 && !message.content.startsWith('//');
-
-        if (!message.content.startsWith(prefix) && !isSlashCmd) return;
+        // Only handle own messages for commands
+        if (message.author.id !== client.user?.id) return;
 
         // ── SLASH COMMAND HANDLER (/command → embed response) ─────────────────
+        const isSlashCmd = message.content.startsWith('/') && message.content.length > 1 && !message.content.startsWith('//');
         if (isSlashCmd) {
             const slashArgs = message.content.slice(1).trim().split(/ +/);
             const slashCmd = slashArgs.shift()?.toLowerCase();
@@ -316,6 +355,7 @@ export class BotManager {
             const GREEN = 0x22c55e;
             const RED   = 0xef4444;
             const BLUE  = 0x3b82f6;
+            const CYAN  = 0x06b6d4;
 
             const send = (embed: object) => message.channel.send({ embeds: [embed] }).catch(() => {});
             const del  = () => message.delete().catch(() => {});
@@ -323,33 +363,15 @@ export class BotManager {
             if (slashCmd === 'help') {
                 await del();
                 const fields = [
-                    { name: '⚙️ General', value: '`/ping` `/uptime` `/info` `/stats`', inline: false },
-                    { name: '🎮 Fun', value: '`/bully <@user>` `/bully stop` `/roast <@user>`\n`/ship <@u1> <@u2>` `/gayrate` `/8ball <q>`', inline: false },
-                    { name: '🔧 Tools', value: '`/spam <n> <text>` `/flood <text>` `/spamstop`\n`/purge <n>` `/snipe` `/pfp [user]` `/banner [user]`', inline: false },
-                    { name: '🌐 Info', value: '`/server` `/user [user]` `/ip <addr>` `/snowflake <id>`', inline: false },
-                    { name: '🤖 Accounts', value: '`/bots` `/nitro on|off` `/afk [reason]` `/gc allow|deny`', inline: false },
+                    { name: '⚙️ General',    value: '`/uptime`', inline: false },
+                    { name: '🔍 OSINT',       value: '`/ip <addr>` `/email <email>` `/username <user>`\n`/phone <num>` `/osint user|server|token|ip`', inline: false },
+                    { name: '📋 Members',     value: '`/members msgs <count>`', inline: false },
                 ];
                 await send({
-                    color: GREEN,
-                    author: { name: 'NETRUNNER_V1 · Slash Commands', icon_url: client.user?.displayAvatarURL() },
-                    description: 'All commands use `/` prefix. Responses are sent as embeds.',
+                    color: CYAN,
+                    author: { name: 'NETRUNNER_V1 · Command Reference', icon_url: client.user?.displayAvatarURL() },
+                    description: 'Use `.help` in-chat for the full command list with prefix commands.',
                     fields,
-                    footer: { text: `${fields.reduce((a, f) => a + f.value.split('`').filter((_: string, i: number) => i % 2 === 1).length, 0)} commands available` },
-                    timestamp: new Date().toISOString(),
-                });
-                return;
-            }
-
-            if (slashCmd === 'ping') {
-                await del();
-                const lat = client.ws.ping;
-                await send({
-                    color: lat < 100 ? GREEN : lat < 200 ? 0xf59e0b : RED,
-                    title: '🏓 Pong!',
-                    fields: [
-                        { name: 'WebSocket Latency', value: `\`${lat > 0 ? lat : '—'}ms\``, inline: true },
-                        { name: 'Status', value: lat < 100 ? '🟢 Excellent' : lat < 200 ? '🟡 Good' : '🔴 High', inline: true },
-                    ],
                     footer: { text: 'NETRUNNER_V1' },
                     timestamp: new Date().toISOString(),
                 });
@@ -378,813 +400,24 @@ export class BotManager {
                 return;
             }
 
-            if (slashCmd === 'info') {
-                await del();
-                const u = client.user!;
-                await send({
-                    color: GREEN,
-                    author: { name: u.tag, icon_url: u.displayAvatarURL() },
-                    title: '🤖 Account Info',
-                    fields: [
-                        { name: 'Username', value: `\`${u.username}\``, inline: true },
-                        { name: 'ID', value: `\`${u.id}\``, inline: true },
-                        { name: 'Created', value: `<t:${Math.floor(u.createdTimestamp / 1000)}:R>`, inline: true },
-                        { name: 'Prefix', value: `\`${prefix}\``, inline: true },
-                        { name: 'Nitro Sniper', value: config.nitroSniper ? '🟢 ON' : '🔴 OFF', inline: true },
-                    ],
-                    footer: { text: 'NETRUNNER_V1 · Selfbot' },
-                    timestamp: new Date().toISOString(),
-                });
-                return;
-            }
-
-            if (slashCmd === 'stats') {
-                await del();
-                const start = botStartTimes.get(configId);
-                const ms = start ? Date.now() - start : 0;
-                const h = Math.floor(ms / 3600000);
-                await send({
-                    color: GREEN,
-                    title: '📊 Bot Stats',
-                    fields: [
-                        { name: 'Account', value: `\`${client.user?.tag}\``, inline: true },
-                        { name: 'Latency', value: `\`${client.ws.ping}ms\``, inline: true },
-                        { name: 'Uptime (hrs)', value: `\`${h}h\``, inline: true },
-                        { name: 'Guilds', value: `\`${client.guilds?.cache?.size ?? 0}\``, inline: true },
-                        { name: 'Channels', value: `\`${client.channels?.cache?.size ?? 0}\``, inline: true },
-                        { name: 'Friends', value: `\`${client.relationships?.cache?.filter((r: any) => r.type === 1).size ?? 0}\``, inline: true },
-                    ],
-                    footer: { text: 'NETRUNNER_V1' },
-                    timestamp: new Date().toISOString(),
-                });
-                return;
-            }
-
-            if (slashCmd === 'bots') {
-                await del();
-                const allBots = await storage.getAllBots();
-                const botFields = allBots.slice(0, 25).map(b => ({
-                    name: b.name,
-                    value: `ID \`${b.id}\` · ${BotManager.isRunning(b.id) ? '🟢 Online' : '🔴 Offline'}`,
-                    inline: true,
-                }));
-                await send({
-                    color: GREEN,
-                    title: '🤖 Hosted Accounts',
-                    fields: botFields.length ? botFields : [{ name: 'No bots', value: 'None registered yet', inline: false }],
-                    footer: { text: `${allBots.length} total accounts · NETRUNNER_V1` },
-                    timestamp: new Date().toISOString(),
-                });
-                return;
-            }
-
-            if (slashCmd === 'snipe') {
-                await del();
-                const botSnipes = snipedMessages.get(configId);
-                const sniped = botSnipes?.get(message.channel.id);
-                if (!sniped) {
-                    await send({ color: RED, title: '🔍 Snipe', description: 'Nothing to snipe in this channel.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                    return;
-                }
-                const secAgo = Math.floor((Date.now() - sniped.timestamp) / 1000);
-                await send({
-                    color: BLUE,
-                    title: '🔍 Sniped Message',
-                    description: `${sniped.content}`,
-                    fields: [
-                        { name: 'Author', value: `\`${sniped.author}\``, inline: true },
-                        { name: 'Deleted', value: `${secAgo}s ago`, inline: true },
-                    ],
-                    footer: { text: 'NETRUNNER_V1' },
-                    timestamp: new Date().toISOString(),
-                });
-                return;
-            }
-
-            if (slashCmd === 'pfp') {
-                await del();
-                const target = slashArgs[0] || `<@${client.user?.id}>`;
-                const userId = target.replace(/[<@!>]/g, '');
-                try {
-                    const user = await client.users.fetch(userId);
-                    const url = user.displayAvatarURL({ dynamic: true, size: 4096 });
-                    await send({
-                        color: GREEN,
-                        author: { name: `${user.tag}'s Avatar`, icon_url: url },
-                        image: { url },
-                        footer: { text: 'NETRUNNER_V1' },
-                        timestamp: new Date().toISOString(),
-                    });
-                } catch {
-                    await send({ color: RED, title: 'Error', description: 'Could not fetch user.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                }
-                return;
-            }
-
-            if (slashCmd === 'banner') {
-                await del();
-                const target = slashArgs[0] || `<@${client.user?.id}>`;
-                const userId = target.replace(/[<@!>]/g, '');
-                try {
-                    const user = await client.users.fetch(userId, { force: true });
-                    const url = user.bannerURL({ dynamic: true, size: 4096 });
-                    if (!url) {
-                        await send({ color: RED, title: 'No Banner', description: 'This user has no banner.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                        return;
-                    }
-                    await send({
-                        color: GREEN,
-                        author: { name: `${user.tag}'s Banner`, icon_url: user.displayAvatarURL() },
-                        image: { url },
-                        footer: { text: 'NETRUNNER_V1' },
-                        timestamp: new Date().toISOString(),
-                    });
-                } catch {
-                    await send({ color: RED, title: 'Error', description: 'Could not fetch user.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                }
-                return;
-            }
-
-            if (slashCmd === 'server') {
-                await del();
-                const guild = message.guild;
-                if (!guild) {
-                    await send({ color: RED, title: 'Error', description: 'This command only works in servers.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                    return;
-                }
-                const iconUrl = guild.iconURL({ dynamic: true });
-                await send({
-                    color: GREEN,
-                    author: { name: guild.name, icon_url: iconUrl || undefined },
-                    thumbnail: iconUrl ? { url: iconUrl } : undefined,
-                    title: '🌐 Server Info',
-                    fields: [
-                        { name: 'ID', value: `\`${guild.id}\``, inline: true },
-                        { name: 'Owner', value: `<@${guild.ownerId}>`, inline: true },
-                        { name: 'Members', value: `\`${guild.memberCount}\``, inline: true },
-                        { name: 'Channels', value: `\`${guild.channels?.cache?.size ?? '?'}\``, inline: true },
-                        { name: 'Roles', value: `\`${guild.roles?.cache?.size ?? '?'}\``, inline: true },
-                        { name: 'Created', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:R>`, inline: true },
-                    ],
-                    footer: { text: 'NETRUNNER_V1' },
-                    timestamp: new Date().toISOString(),
-                });
-                return;
-            }
-
-            if (slashCmd === 'user') {
-                await del();
-                const target = slashArgs[0] || `<@${client.user?.id}>`;
-                const userId = target.replace(/[<@!>]/g, '');
-                try {
-                    const user = await client.users.fetch(userId, { force: true });
-                    const avatarUrl = user.displayAvatarURL({ dynamic: true });
-                    await send({
-                        color: GREEN,
-                        author: { name: user.tag, icon_url: avatarUrl },
-                        thumbnail: { url: avatarUrl },
-                        title: '👤 User Info',
-                        fields: [
-                            { name: 'ID', value: `\`${user.id}\``, inline: true },
-                            { name: 'Username', value: `\`${user.username}\``, inline: true },
-                            { name: 'Bot', value: user.bot ? '✅ Yes' : '❌ No', inline: true },
-                            { name: 'Created', value: `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`, inline: true },
-                            { name: 'Badges', value: user.flags?.toArray().join(', ') || 'None', inline: true },
-                        ],
-                        footer: { text: 'NETRUNNER_V1' },
-                        timestamp: new Date().toISOString(),
-                    });
-                } catch {
-                    await send({ color: RED, title: 'Error', description: 'Could not fetch user.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                }
-                return;
-            }
-
-            if (slashCmd === 'ip') {
-                await del();
-                const ip = slashArgs[0];
-                if (!ip) {
-                    await send({ color: RED, title: 'Usage', description: '`/ip <address>`', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                    return;
-                }
-                try {
-                    const res2 = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,regionName,city,isp,org,lat,lon,query`);
-                    const data: any = await res2.json();
-                    if (data.status === 'fail') throw new Error('Invalid IP');
-                    await send({
-                        color: GREEN,
-                        title: `🌐 IP Lookup: ${data.query}`,
-                        fields: [
-                            { name: 'Country', value: `\`${data.country}\``, inline: true },
-                            { name: 'Region', value: `\`${data.regionName}\``, inline: true },
-                            { name: 'City', value: `\`${data.city}\``, inline: true },
-                            { name: 'ISP', value: `\`${data.isp}\``, inline: true },
-                            { name: 'Org', value: `\`${data.org || '—'}\``, inline: true },
-                            { name: 'Coordinates', value: `\`${data.lat}, ${data.lon}\``, inline: true },
-                        ],
-                        footer: { text: 'NETRUNNER_V1 · OSINT' },
-                        timestamp: new Date().toISOString(),
-                    });
-                } catch {
-                    await send({ color: RED, title: 'Error', description: 'Invalid IP or lookup failed.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                }
-                return;
-            }
-
-            if (slashCmd === 'snowflake') {
-                await del();
-                const id = slashArgs[0];
-                if (!id) {
-                    await send({ color: RED, title: 'Usage', description: '`/snowflake <id>`', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                    return;
-                }
-                try {
-                    const ts = Math.floor(Number(id) / 4194304) + 1420070400000;
-                    const date = new Date(ts);
-                    await send({
-                        color: GREEN,
-                        title: '❄️ Snowflake Decoder',
-                        fields: [
-                            { name: 'ID', value: `\`${id}\``, inline: false },
-                            { name: 'Timestamp', value: `<t:${Math.floor(ts / 1000)}:F> (<t:${Math.floor(ts / 1000)}:R>)`, inline: false },
-                            { name: 'UTC', value: `\`${date.toUTCString()}\``, inline: false },
-                        ],
-                        footer: { text: 'NETRUNNER_V1' },
-                        timestamp: new Date().toISOString(),
-                    });
-                } catch {
-                    await send({ color: RED, title: 'Error', description: 'Invalid snowflake ID.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                }
-                return;
-            }
-
-            if (slashCmd === 'purge') {
-                await del();
-                const count = parseInt(slashArgs[0]);
-                if (isNaN(count) || count < 1) {
-                    await send({ color: RED, title: 'Usage', description: '`/purge <count>`', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                    return;
-                }
-                try {
-                    const msgs = await message.channel.messages.fetch({ limit: Math.min(count + 5, 100) });
-                    const mine = Array.from(msgs.values()).filter((m: any) => m.author.id === client.user?.id).slice(0, count);
-                    let deleted = 0;
-                    for (const m of mine as any[]) {
-                        await m.delete().catch(() => {});
-                        deleted++;
-                    }
-                    const conf = await send({
-                        color: GREEN,
-                        title: '🗑️ Purge Complete',
-                        description: `Deleted **${deleted}** of your messages.`,
-                        footer: { text: 'NETRUNNER_V1' },
-                        timestamp: new Date().toISOString(),
-                    });
-                    if (conf) setTimeout(() => (conf as any).delete().catch(() => {}), 4000);
-                } catch {
-                    await send({ color: RED, title: 'Error', description: 'Purge failed.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                }
-                return;
-            }
-
-            if (slashCmd === 'spam') {
-                await del();
-                const count2 = parseInt(slashArgs[0]);
-                const text2 = slashArgs.slice(1).join(' ');
-                if (isNaN(count2) || !text2) {
-                    await send({ color: RED, title: 'Usage', description: '`/spam <count> <message>`', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                    return;
-                }
-                activeSpams.set(configId, true);
-                const notice = await send({
-                    color: GREEN,
-                    title: '📨 Spam Started',
-                    description: `Sending **${count2}x** \`${text2}\``,
-                    footer: { text: 'Use /spamstop to halt · NETRUNNER_V1' },
-                    timestamp: new Date().toISOString(),
-                });
-                const batchSize2 = 10;
-                for (let i = 0; i < count2; i += batchSize2) {
-                    if (activeSpams.get(configId) === false) break;
-                    const batch2 = [];
-                    for (let j = 0; j < batchSize2 && (i + j) < count2; j++) {
-                        batch2.push(message.channel.send(text2).catch(() => {}));
-                    }
-                    await Promise.all(batch2);
-                }
-                if (notice) setTimeout(() => (notice as any).delete().catch(() => {}), 5000);
-                return;
-            }
-
-            if (slashCmd === 'spamstop') {
-                await del();
-                activeSpams.set(configId, false);
-                const conf2 = await send({
-                    color: RED,
-                    title: '🛑 Spam Stopped',
-                    description: 'All active spam loops have been halted.',
-                    footer: { text: 'NETRUNNER_V1' },
-                    timestamp: new Date().toISOString(),
-                });
-                if (conf2) setTimeout(() => (conf2 as any).delete().catch(() => {}), 3000);
-                return;
-            }
-
-            if (slashCmd === 'bully') {
-                await del();
-                const sub2 = slashArgs[0];
-                if (sub2 === 'stop' || sub2 === 'off') {
-                    const ex = bullyIntervals.get(configId);
-                    if (ex) {
-                        clearInterval(ex.interval);
-                        bullyIntervals.delete(configId);
-                        const conf3 = await send({
-                            color: RED,
-                            title: '🛑 Bully Stopped',
-                            description: 'Bully loop has been terminated.',
-                            footer: { text: 'NETRUNNER_V1' },
-                            timestamp: new Date().toISOString(),
-                        });
-                        if (conf3) setTimeout(() => (conf3 as any).delete().catch(() => {}), 3000);
-                    } else {
-                        const conf3 = await send({ color: RED, title: 'No Active Loop', description: 'No bully loop is running.', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                        if (conf3) setTimeout(() => (conf3 as any).delete().catch(() => {}), 3000);
-                    }
-                    return;
-                }
-                if (!sub2) {
-                    await send({ color: RED, title: 'Usage', description: '`/bully <@user>` or `/bully stop`', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                    return;
-                }
-                const targetId = sub2.replace(/[<@!>]/g, '');
-                if (bullyIntervals.has(configId)) clearInterval(bullyIntervals.get(configId)!.interval);
-                const interval2 = setInterval(async () => {
-                    const ch = await client.channels.fetch(message.channel.id).catch(() => null);
-                    if (ch && 'send' in ch) {
-                        const insult = INSULTS[Math.floor(Math.random() * INSULTS.length)];
-                        await (ch as any).send(`<@${targetId}> ${insult}`).catch(() => {});
-                    }
-                }, 100);
-                bullyIntervals.set(configId, { interval: interval2, channelId: message.channel.id });
-                const notice2 = await send({
-                    color: GREEN,
-                    title: '👊 Bully Started',
-                    description: `Now targeting <@${targetId}>.\nUse \`/bully stop\` to halt.`,
-                    footer: { text: 'NETRUNNER_V1' },
-                    timestamp: new Date().toISOString(),
-                });
-                if (notice2) setTimeout(() => (notice2 as any).delete().catch(() => {}), 4000);
-                return;
-            }
-
-            if (slashCmd === 'nitro') {
-                await del();
-                const status2 = slashArgs[0]?.toLowerCase();
-                if (status2 !== 'on' && status2 !== 'off') {
-                    await send({ color: RED, title: 'Usage', description: '`/nitro on` or `/nitro off`', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                    return;
-                }
-                const nitroOn = status2 === 'on';
-                await BotManager.updateBotConfig(configId, { nitroSniper: nitroOn });
-                const conf4 = await send({
-                    color: nitroOn ? GREEN : RED,
-                    title: `🎟️ Nitro Sniper ${nitroOn ? 'Enabled' : 'Disabled'}`,
-                    description: `Nitro sniper is now **${nitroOn ? 'ON' : 'OFF'}**.`,
-                    footer: { text: 'NETRUNNER_V1' },
-                    timestamp: new Date().toISOString(),
-                });
-                if (conf4) setTimeout(() => (conf4 as any).delete().catch(() => {}), 4000);
-                return;
-            }
-
-            if (slashCmd === 'afk') {
-                await del();
-                const reason2 = slashFull || "I'm currently AFK.";
-                const isNowAfk2 = !(config as any).isAfk;
-                await BotManager.updateBotConfig(configId, {
-                    isAfk: isNowAfk2,
-                    afkMessage: isNowAfk2 ? reason2 : null,
-                    afkSince: isNowAfk2 ? Date.now().toString() : null,
-                });
-                const conf5 = await send({
-                    color: isNowAfk2 ? 0xf59e0b : GREEN,
-                    title: isNowAfk2 ? '💤 AFK Enabled' : '✅ AFK Disabled',
-                    description: isNowAfk2 ? `**Reason:** ${reason2}` : 'You are no longer AFK.',
-                    footer: { text: 'NETRUNNER_V1' },
-                    timestamp: new Date().toISOString(),
-                });
-                if (conf5) setTimeout(() => (conf5 as any).delete().catch(() => {}), 5000);
-                return;
-            }
-
-            if (slashCmd === 'gc') {
-                await del();
-                const gcSub = slashArgs[0]?.toLowerCase();
-                if (gcSub === 'allow' || gcSub === 'deny') {
-                    const allowed = gcSub === 'allow';
-                    await BotManager.updateBotConfig(configId, { gcAllowAll: allowed });
-                    const conf6 = await send({
-                        color: allowed ? GREEN : RED,
-                        title: `🔗 GC Invites ${allowed ? 'Allowed' : 'Denied'}`,
-                        description: allowed ? 'You will now accept all group chat invites.' : 'Group chat invites will now be automatically declined.',
-                        footer: { text: 'NETRUNNER_V1' },
-                        timestamp: new Date().toISOString(),
-                    });
-                    if (conf6) setTimeout(() => (conf6 as any).delete().catch(() => {}), 4000);
-                } else {
-                    await send({ color: RED, title: 'Usage', description: '`/gc allow` or `/gc deny`', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                }
-                return;
-            }
-
-            if (slashCmd === 'roast') {
-                await del();
-                const target2 = slashArgs[0];
-                const roasts2 = ["You're the reason shampoo has instructions.", "I'd roast you but my parents told me not to burn garbage.", "You're proof that even evolution makes mistakes.", "If brains were dynamite, you couldn't blow your nose.", "You're like a cloud — when you disappear, it's a beautiful day."];
-                await send({
-                    color: RED,
-                    title: '🔥 Roast',
-                    description: `${target2 ? `<@${target2.replace(/[<@!>]/g, '')}> ` : ''}${roasts2[Math.floor(Math.random() * roasts2.length)]}`,
-                    footer: { text: 'NETRUNNER_V1' },
-                    timestamp: new Date().toISOString(),
-                });
-                return;
-            }
-
-            if (slashCmd === 'ship') {
-                await del();
-                const u1id = (slashArgs[0] || '').replace(/[<@!>]/g, '') || 'User1';
-                const u2id = (slashArgs[1] || '').replace(/[<@!>]/g, '') || 'User2';
-                const pct2 = Math.floor(Math.random() * 101);
-                const bar2 = '█'.repeat(Math.floor(pct2 / 10)) + '░'.repeat(10 - Math.floor(pct2 / 10));
-                const emoji2 = pct2 > 75 ? '💞' : pct2 > 40 ? '💛' : '💔';
-                await send({
-                    color: pct2 > 75 ? 0xec4899 : pct2 > 40 ? 0xf59e0b : RED,
-                    title: `${emoji2} Ship Meter`,
-                    description: `**<@${u1id}>** ❤️ **<@${u2id}>**\n\`[${bar2}] ${pct2}%\``,
-                    footer: { text: 'NETRUNNER_V1' },
-                    timestamp: new Date().toISOString(),
-                });
-                return;
-            }
-
-            if (slashCmd === 'gayrate') {
-                await del();
-                const tgt2 = (slashArgs[0] || '').replace(/[<@!>]/g, '') || client.user?.id;
-                const pct3 = Math.floor(Math.random() * 101);
-                const conf7 = await send({
-                    color: 0xa855f7,
-                    title: '🌈 Gay Rate',
-                    description: `<@${tgt2}> is **${pct3}%** gay.\n\`[${'█'.repeat(Math.floor(pct3 / 10))}${'░'.repeat(10 - Math.floor(pct3 / 10))}] ${pct3}%\``,
-                    footer: { text: 'NETRUNNER_V1' },
-                    timestamp: new Date().toISOString(),
-                });
-                return;
-            }
-
-            if (slashCmd === '8ball') {
-                await del();
-                if (!slashFull) {
-                    await send({ color: RED, title: 'Usage', description: '`/8ball <question>`', footer: { text: 'NETRUNNER_V1' }, timestamp: new Date().toISOString() });
-                    return;
-                }
-                const responses2 = ['It is certain.','It is decidedly so.','Without a doubt.','Yes definitely.','As I see it, yes.','Most likely.','Outlook good.','Signs point to yes.','Reply hazy, try again.','Ask again later.','Cannot predict now.','Don\'t count on it.','My reply is no.','My sources say no.','Very doubtful.'];
-                const answer = responses2[Math.floor(Math.random() * responses2.length)];
-                const positive = ['It is certain.','It is decidedly so.','Without a doubt.','Yes definitely.','As I see it, yes.','Most likely.','Outlook good.','Signs point to yes.'].includes(answer);
-                await send({
-                    color: positive ? GREEN : RED,
-                    title: '🎱 Magic 8-Ball',
-                    fields: [
-                        { name: 'Question', value: slashFull, inline: false },
-                        { name: 'Answer', value: `**${answer}**`, inline: false },
-                    ],
-                    footer: { text: 'NETRUNNER_V1' },
-                    timestamp: new Date().toISOString(),
-                });
-                return;
-            }
-
             // Unknown slash command — silent ignore
             return;
         }
         // ── END SLASH COMMAND HANDLER ──────────────────────────────────────────
 
+        const prefix = config.commandPrefix || '.';
+        if (!message.content.startsWith(prefix)) return;
+
         const args = message.content.slice(prefix.length).trim().split(/ +/);
         const command = args.shift()?.toLowerCase();
         const fullArgs = args.join(' ');
 
-        if (command === 'react') {
-            const sub = args[0]?.toLowerCase();
-            if (sub === 'all') {
-                const reference = message.reference;
-                if (!reference || !reference.messageId) {
-                    return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] PLEASE REPLY TO A MESSAGE TO USE THIS COMMAND.\u001b[0m\n\`\`\``).catch(() => {});
-                }
-
-                let targetMsg;
-                try {
-                    targetMsg = await message.channel.messages.fetch(reference.messageId);
-                } catch (e) {
-                    targetMsg = null;
-                }
-
-                if (!targetMsg) return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] COULD NOT FIND THE REPLIED MESSAGE.\u001b[0m\n\`\`\``).catch(() => {});
-
-                const emojis = ["☠️", "👍", "😭", "🧐", "👈", "‼️", "💸", "🥹", "🫩", "👀", "☹️", "💰", "🤔", "😂", "☝️", "😋", "🙂", "😡", "😳", "👅", "🔫", "🤦", "❤️", "💕", "🔥", "💯", "✅"];
-                
-                await message.delete().catch(() => {});
-                
-                for (const emoji of emojis) {
-                    targetMsg.react(emoji).catch(() => {});
-                    await new Promise(r => setTimeout(r, 80));
-                }
-                return;
-            }
-        }
-
-        if (command === 'host') {
-            const token = args[0];
-            if (!token) return message.edit(`Usage: ${prefix}host <token>`);
-            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] VALIDATING TOKEN...\u001b[0m\n\`\`\``);
-            
-            try {
-                const tempClient = new Client();
-                await tempClient.login(token);
-                const name = tempClient.user?.tag || "New Bot";
-                tempClient.destroy();
-
-                const newBot = await storage.createBot({
-                    token,
-                    name,
-                    isRunning: true,
-                    rpcAppName: "",
-                    rpcType: "PLAYING",
-                    commandPrefix: ".",
-                    nitroSniper: false,
-                    whitelistedGcs: [],
-                    gcAllowAll: false,
-                    bullyTargets: [],
-                    rpcTitle: "",
-                    rpcSubtitle: "",
-                    rpcImage: "",
-                    rpcStartTimestamp: "",
-                    rpcEndTimestamp: "",
-                    userId: initialConfig.userId,
-                    passcode: Math.floor(1000 + Math.random() * 9000).toString()
-                });
-
-                await this.startBot(newBot);
-                await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] SUCCESS! TOKEN VALID AND HOSTED.\u001b[0m\n\u001b[1;36mNAME:\u001b[0m ${name}\n\`\`\``);
-            } catch (e) {
-                console.error("Host error:", e);
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] INVALID TOKEN OR FAILED TO HOST.\u001b[0m\n\`\`\``);
-            }
-        }
-
-        if (command === 'closealldms') {
-            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] CLOSING ALL DMS (EXCLUDING GCS)...\u001b[0m\n\`\`\``);
-            try {
-                // Filter to ONLY DM type (type 1), strictly excluding GROUP_DM (type 3)
-                const dms = client.channels.cache.filter((c: any) => c.type === 'DM' || c.type === 1);
-                
-                // Extremely fast parallel deletion
-                const deletePromises = Array.from(dms.values()).map(async (channel: any) => {
-                    try {
-                        await channel.delete().catch(() => {});
-                    } catch (e) {}
-                });
-                
-                await Promise.all(deletePromises);
-                await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] CLOSED ${deletePromises.length} DM CHANNELS. GCS WERE SPARED.\u001b[0m\n\`\`\``);
-            } catch (err) {
-                console.error("CloseAllDMs Error:", err);
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] ERROR WHILE CLOSING DMS.\u001b[0m\n\`\`\``);
-            }
-        }
-
-        if (command === 'massdm') {
-            const text = fullArgs;
-            if (!text) return message.edit(`Usage: ${prefix}massdm <message>`);
-            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] STARTING BLAZING FAST MASS DM...\u001b[0m\n\`\`\``);
-            
-            try {
-                const sentUsers = new Set<string>();
-                let sent = 0;
-
-                // Combine friends and DM channels for maximum coverage
-                const friends = Array.from(client.relationships?.cache?.values() || []).filter((r: any) => r.type === 1);
-                const dmChannels = Array.from(client.channels.cache.values()).filter((c: any) => c.type === 'DM' || c.type === 1);
-
-                const targets = new Map<string, any>();
-                
-                if (friends) {
-                    for (const relationship of friends) {
-                        targets.set((relationship as any).user.id, (relationship as any).user);
-                    }
-                }
-
-                for (const channel of dmChannels) {
-                    const recipient = (channel as any).recipient;
-                    if (recipient && !recipient.bot) {
-                        targets.set(recipient.id, recipient);
-                    }
-                }
-
-                // Ultra-fast parallel send with no artificial delays
-                const sendPromises = Array.from(targets.entries()).map(async ([userId, user]) => {
-                    if (sentUsers.has(userId) || activeSpams.get(configId) === false) return;
-                    try {
-                        const targetUser = user || await client.users.fetch(userId).catch(() => null);
-                        if (targetUser && !targetUser.bot) {
-                            await targetUser.send(text).catch(() => {});
-                            sentUsers.add(userId);
-                            sent++;
-                        }
-                    } catch (e) {}
-                });
-
-                await Promise.all(sendPromises);
-
-                await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] MASS DM COMPLETE. SENT TO ${sent} TOTAL USERS.\u001b[0m\n\`\`\``);
-            } catch (err) {
-                console.error("MassDM Error:", err);
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] CRITICAL ERROR DURING MASS DM.\u001b[0m\n\`\`\``);
-            }
-        }
-
-        if (command === 'link') {
-            const sub = args[0]?.toLowerCase();
-            const url = args[1];
-            if (sub === 'check' && url) {
-                await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] SCANNING URL: ${url}\u001b[0m\n\u001b[1;30m> Running heuristics...\u001b[0m\n\`\`\``);
-                
-                // Simple heuristic check for demo/self-bot use
-                const isSuspicious = url.includes('grabber') || 
-                                   url.includes('logger') || 
-                                   url.includes('free-nitro') ||
-                                   url.includes('discord-gift') && !url.includes('discord.gift');
-                
-                await new Promise(r => setTimeout(r, 1500));
-                
-                if (isSuspicious) {
-                    await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] WARNING: URL DETECTED AS UNSAFE.\u001b[0m\n\u001b[1;33mTHREAT:\u001b[0m PHISHING / TOKEN GRABBER\n\u001b[1;30mRecommendation: Do not click.\u001b[0m\n\`\`\``);
-                } else {
-                    await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] SCAN COMPLETE: URL APPEARS SAFE.\u001b[0m\n\u001b[1;30mNo immediate threats detected.\u001b[0m\n\`\`\``);
-                }
-            } else {
-                await message.edit(`Usage: ${prefix}link check <Url>`);
-            }
-        }
-
-        if (command === 'autoreact') {
-            const userMention = args[0];
-            const emoji = args[1];
-            if (!userMention || !emoji) {
-                return message.edit(`Usage: ${prefix}autoreact <@user> <emoji>`);
-            }
-            const userId = userMention.replace(/[<@!>]/g, '');
-            autoReactConfigs.set(configId, { userOption: userId, emoji });
-            await message.edit(`Auto-react: ON for <@${userId}> with ${emoji}`);
-        }
-
-        if (command === 'spamstop') {
-            activeSpams.set(configId, false);
-            await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] SPAM STOPPED\u001b[0m\n\`\`\``);
-        }
-
-        if (command === 'stopall') {
-            // Immediate halt for all active tasks
-            activeSpams.set(configId, false);
-            loveLoops.set(configId, false);
-            
-            const bExisting = bullyIntervals.get(configId);
-            if (bExisting) {
-                clearInterval(bExisting.interval);
-                bullyIntervals.delete(configId);
-            }
-
-            // Clear the single RPC interval and wipe the presence
-            BotManager.clearRpcInterval(configId);
-            if (client.user) {
-                try {
-                    client.user.setPresence({ status: 'online', afk: false, activities: [] });
-                } catch (_) {}
-            }
-
-            await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] ALL MODULES HALTED — SPAM, BULLY & RPC CLEARED\u001b[0m\n\`\`\``);
-            return;
-        }
-
-        if (command === 'spam') {
-            const count = parseInt(args[0]);
-            const text = args.slice(1).join(' ');
-            if (isNaN(count) || !text) return message.edit(`Usage: ${prefix}spam <count> <message>`);
-            await message.delete().catch(() => {});
-            activeSpams.set(configId, true);
-            
-            // Ultra-fast parallel burst - 1000x faster feel by using large parallel batches
-            const batchSize = 100;
-            for (let i = 0; i < count; i += batchSize) {
-                if (activeSpams.get(configId) === false) break;
-                const batch = [];
-                for (let j = 0; j < batchSize && (i + j) < count; j++) {
-                    batch.push(message.channel.send(text).catch(() => {}));
-                }
-                await Promise.all(batch);
-                // Zero delay between batches for maximum speed
-            }
-        }
-
-        if (command === 'flood') {
-            const text = fullArgs;
-            if (!text) return message.edit(`Usage: ${prefix}flood <message>`);
-            await message.delete().catch(() => {});
-            activeSpams.set(configId, true);
-            
-            // Continuous parallel flood - max performance
-            const floodBurst = async () => {
-                while (activeSpams.get(configId) !== false) {
-                    const burst = [];
-                    for (let i = 0; i < 100; i++) {
-                        burst.push(message.channel.send(text).catch(() => {}));
-                    }
-                    await Promise.all(burst);
-                }
-            };
-            floodBurst();
-        }
-
-        if (command === 'gc') {
-            const sub = args[0]?.toLowerCase();
-            if (sub === 'allow') {
-                config.gcAllowAll = true;
-                await this.updateBotConfig(configId, { gcAllowAll: true });
-                await message.edit(`GC Allow All: ON`);
-            } else if (sub === 'deny') {
-                config.gcAllowAll = false;
-                await this.updateBotConfig(configId, { gcAllowAll: false });
-                await message.edit(`GC Allow All: OFF (Deny mode)`);
-            } else if (sub === 'trap') {
-                const target = args[1];
-                if (!target) return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: .gc trap <@user>\u001b[0m\n\`\`\``);
-                const userId = target.replace(/[<@!>]/g, '');
-                let botTraps = trappedUsers.get(configId) || new Map();
-                if (botTraps.has(userId)) {
-                    botTraps.delete(userId);
-                    await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] UNTRAPPED <@${userId}>.\u001b[0m\n\`\`\``);
-                } else {
-                    botTraps.set(userId, message.channel.id);
-                    await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] TRAPPED <@${userId}> IN THIS GC.\u001b[0m\n\`\`\``);
-                }
-                trappedUsers.set(configId, botTraps);
-            } else if (sub === 'whitelist') {
-                const gcId = args[1] || message.channel.id;
-                let currentWhitelist = config.whitelistedGcs || [];
-                if (currentWhitelist.includes(gcId)) {
-                    currentWhitelist = currentWhitelist.filter(id => id !== gcId);
-                    await this.updateBotConfig(configId, { whitelistedGcs: currentWhitelist });
-                    await message.edit(`Removed GC ${gcId} from whitelist.`);
-                } else {
-                    currentWhitelist.push(gcId);
-                    await this.updateBotConfig(configId, { whitelistedGcs: currentWhitelist });
-                    await message.edit(`Whitelisted GC: ${gcId}`);
-                }
-            } else {
-                await message.edit(`Usage: ${prefix}gc <allow/deny/trap/whitelist> [@user/id]`);
-            }
-        }
-
-        if (command === 'afk') {
-            const reason = fullArgs || "I'm currently AFK.";
-            const isNowAfk = !(config as any).isAfk;
-            const updates = {
-                isAfk: isNowAfk,
-                afkMessage: isNowAfk ? reason : null,
-                afkSince: isNowAfk ? Date.now().toString() : null
-            };
-            await this.updateBotConfig(configId, updates);
-            await message.edit(`\`\`\`ansi\n\u001b[1;3${isNowAfk ? '2m[+] AFK ON' : '1m[-] AFK OFF'}\u001b[0m\n${isNowAfk ? '\u001b[1;30mREASON: \u001b[0m' + reason : ''}\n\`\`\``).catch(() => {});
-            return;
-        }
-
-        if (command === 'nitro') {
-            const status = args[0]?.toLowerCase();
-            if (status === 'on' || status === 'off') {
-                const nitroSniper = status === 'on';
-                await this.updateBotConfig(configId, { nitroSniper });
-                await message.edit(`Nitro sniper: ${nitroSniper ? 'ON' : 'OFF'}`);
-            } else {
-                await message.edit(`Usage: ${prefix}nitro <on/off>`);
-            }
-        }
-
+        // ── HELP ─────────────────────────────────────────────────────────────
         if (command === 'help') {
             const categories = Array.from(new Set(COMMANDS_LIST.map(c => c.cat)));
             const shortNames: Record<string, string> = {
-                'General': 'general', 'Fun/Tools': 'fun', 'Automation': 'auto',
-                'Management': 'manage', 'OSINT': 'osint'
+                'General': 'general', 'OSINT': 'osint'
             };
-            // Support lookup by page number OR short name
             let page = parseInt(args[0]);
             if (isNaN(page)) {
                 const input = (args[0] || '').toLowerCase();
@@ -1211,416 +444,582 @@ export class BotManager {
             return message.edit(helpMsg).catch(() => {});
         }
 
-        if (command === 'ping') {
-            const start = Date.now();
-            const latency = client.ws.ping; // Real Discord latency
-            const displayLatency = latency > 0 ? latency : (Date.now() - start);
-            await message.edit(`Pong! Latency: ${displayLatency}ms`).catch(() => {});
-            return;
-        }
-
-        if (command === 'bully') {
-            const target = args[0];
-            if (target === 'off' || target === 'stop') {
-                const existing = bullyIntervals.get(configId);
-                if (existing) {
-                    clearInterval(existing.interval);
-                    bullyIntervals.delete(configId);
-                    await message.edit(`Stopped bullying.`);
-                } else {
-                    await message.edit(`No active bully loop to stop.`);
-                }
-            } else if (target) {
-                const userId = target.replace(/[<@!>]/g, '');
-                if (bullyIntervals.has(configId)) {
-                    clearInterval(bullyIntervals.get(configId)!.interval);
-                }
-                
-                // 1000x faster feel bully interval (max Discord speed)
-                const interval = setInterval(async () => {
-                    const channel = await client.channels.fetch(message.channel.id).catch(() => null);
-                    if (channel && 'send' in channel) {
-                        const insult = INSULTS[Math.floor(Math.random() * INSULTS.length)];
-                        await (channel as any).send(`<@${userId}> ${insult}`).catch(() => {});
-                    }
-                }, 100);
-
-                bullyIntervals.set(configId, { interval, channelId: message.channel.id });
-                await message.delete().catch(() => {});
-            }
-        }
-
-        if (command === 'pack') {
-            return message.edit(`\`\`\`diff\n- Command deprecated.\n\`\`\``).catch(() => {});
-        }
-
-        if (command === 'closealldms') {
-            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] CLOSING ALL DMS...\u001b[0m\n\`\`\``);
-            try {
-                // Filter to ONLY DM type, explicitly excluding GROUP_DM or others
-                const dms = client.channels.cache.filter((c: any) => c.type === 'DM' || c.type === 1);
-                let closed = 0;
-                for (const channel of Array.from(dms.values())) {
-                    try {
-                        await (channel as any).delete();
-                        closed++;
-                        await new Promise(r => setTimeout(r, 500));
-                    } catch (e) {}
-                }
-                await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] CLOSED ${closed} DM CHANNELS.\u001b[0m\n\`\`\``);
-            } catch (err) {
-                console.error("CloseAllDMs Error:", err);
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] CRITICAL ERROR WHILE CLOSING DMS.\u001b[0m\n\`\`\``);
-            }
-        }
-
-        if (command === 'purge') {
-            const count = parseInt(args[0]);
-            if (isNaN(count) || count < 1) return message.edit(`Usage: ${prefix}purge <count>`);
-            
-            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] PURGING ${count} MESSAGES...\u001b[0m\n\`\`\``);
-            try {
-                const messages = await message.channel.messages.fetch({ limit: count + 1 });
-                const botMessages = messages.filter((msg: any) => msg.author.id === client.user?.id);
-                let deleted = 0;
-                
-                for (const msg of botMessages.values()) {
-                    try {
-                        await msg.delete().catch(() => {});
-                        deleted++;
-                    } catch (e) {}
-                }
-                
-                await message.edit(`\`\`\`ansi\n\u001b[1;32m[+] PURGED ${deleted} MESSAGES.\u001b[0m\n\`\`\``);
-            } catch (err) {
-                console.error("Purge Error:", err);
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] ERROR WHILE PURGING.\u001b[0m\n\`\`\``);
-            }
-        }
-
-        if (command === 'ip' && args[0] === 'check') {
-            const ip = args[1];
-            if (!ip) return message.edit(`Provide an IP.`);
-            try {
-                const res = await fetch(`http://ip-api.com/json/${ip}`);
-                const data: any = await res.json();
-                if (data.status === 'fail') return message.edit(`Invalid IP.`);
-                await message.edit(`**IP Info for ${ip}**\nLocation: ${data.city}, ${data.regionName}, ${data.country}\nISP: ${data.isp}\nLat/Lon: ${data.lat}, ${data.lon}`);
-            } catch (e) {
-                await message.edit(`Failed to fetch IP info.`);
-            }
-        }
-
-        if (command === 'snipe') {
-            const botSnipes = snipedMessages.get(configId);
-            const sniped = botSnipes?.get(message.channel.id);
-            if (!sniped) return message.edit(`Nothing to snipe.`);
-            await message.edit(`**Last Deleted Message**\nAuthor: ${sniped.author}\nContent: ${sniped.content}`);
-        }
-
-        if (command === 'server') {
-            try {
-                const guild = message.guild;
-                if (!guild) return message.edit(`This command only works in servers.`);
-                await message.edit(`**Server Info**\nName: ${guild.name}\nID: ${guild.id}\nOwner: <@${guild.ownerId}>\nMembers: ${guild.memberCount}\nCreated: <t:${Math.floor(guild.createdTimestamp / 1000)}:R>`);
-            } catch (e) {
-                await message.edit(`Failed to fetch server info.`);
-            }
-        }
-
-        if (command === 'user') {
-            const target = args[0] || `<@${message.author.id}>`;
-            const userId = target.replace(/[<@!>]/g, '');
-            try {
-                const user = await client.users.fetch(userId, { force: true });
-                await message.edit(`**User Info**\nTag: ${user.tag}\nID: ${user.id}\nDisplay Name: ${user.displayName || 'N/A'}\nCreated: <t:${Math.floor(user.createdTimestamp / 1000)}:R>\nBadges: ${user.flags?.toArray().join(', ') || 'None'}`);
-            } catch (e) {
-                await message.edit(`Failed to fetch user info.`);
-            }
-        }
-
-        if (command === 'pfp') {
-            const target = args[0] || `<@${client.user?.id}>`;
-            const userId = target.replace(/[<@!>]/g, '');
-            try {
-                const user = await client.users.fetch(userId);
-                await message.edit(user.displayAvatarURL({ dynamic: true, size: 4096 }));
-            } catch (e) {
-                await message.edit(`Failed to fetch pfp.`);
-            }
-        }
-
-        if (command === 'banner') {
-            const target = args[0] || `<@${client.user?.id}>`;
-            const userId = target.replace(/[<@!>]/g, '');
-            try {
-                const user = await client.users.fetch(userId, { force: true });
-                const banner = user.bannerURL({ dynamic: true, size: 4096 });
-                if (!banner) return message.edit(`User has no banner.`);
-                await message.edit(banner);
-            } catch (e) {
-                await message.edit(`Failed to fetch banner.`);
-            }
-        }
-
-        if (command === 'prefix') {
-            const newPrefix = args[0] === 'set' ? args[1] : args[0];
-            if (newPrefix) {
-                await this.updateBotConfig(configId, { commandPrefix: newPrefix });
-                await message.edit(`Prefix updated to: \`${newPrefix}\``);
-            } else {
-                await message.edit(`Current prefix: \`${prefix}\`\nUsage: ${prefix}prefix <new_prefix>`);
-            }
-        }
-
-        // ── UPTIME ──────────────────────────────────────────────────────────
+        // ── UPTIME ───────────────────────────────────────────────────────────
         if (command === 'uptime') {
             const start = botStartTimes.get(configId);
             if (!start) return message.edit('Uptime not tracked yet.').catch(() => {});
             const ms = Date.now() - start;
             const d = Math.floor(ms / 86400000);
             const h = Math.floor((ms % 86400000) / 3600000);
-            const m = Math.floor((ms % 3600000) / 60000);
+            const m2 = Math.floor((ms % 3600000) / 60000);
             const s = Math.floor((ms % 60000) / 1000);
-            await message.edit(`\`\`\`ansi\n\u001b[1;36mUPTIME\u001b[0m ${d}d ${h}h ${m}m ${s}s\n\`\`\``).catch(() => {});
+            await message.edit(`\`\`\`ansi\n\u001b[1;36mUPTIME\u001b[0m ${d}d ${h}h ${m2}m ${s}s\n\`\`\``).catch(() => {});
+            return;
         }
 
-        // ── TIME ─────────────────────────────────────────────────────────────
-        if (command === 'time') {
-            const now = new Date();
-            await message.edit(`\`\`\`\nLocal : ${now.toLocaleString()}\nUTC   : ${now.toUTCString()}\nUnix  : ${Math.floor(now.getTime()/1000)}\n\`\`\``).catch(() => {});
-        }
+        // ── USERNAME ─────────────────────────────────────────────────────────
+        if (command === 'username') {
+            const sub1 = args[0]?.toLowerCase(); // breach / leak
+            const sub2 = args[1]?.toLowerCase(); // check
+            const query = args[2];
 
-        // ── SNOWFLAKE ────────────────────────────────────────────────────────
-        if (command === 'snowflake' || command === 'creationdate') {
-            const id = args[0];
-            if (!id) return message.edit(`Usage: ${prefix}${command} <snowflake id>`).catch(() => {});
-            try {
-                const ts = Math.floor(Number(id) / 4194304) + 1420070400000;
-                const date = new Date(ts);
-                await message.edit(`\`\`\`\nID    : ${id}\nUnix  : ${Math.floor(ts/1000)}\nDate  : ${date.toUTCString()}\n\`\`\``).catch(() => {});
-            } catch {
-                await message.edit('Invalid snowflake ID.').catch(() => {});
+            if (!query) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}username breach check <username>\u001b[0m\n\`\`\``).catch(() => {});
             }
-        }
 
-        // ── COIN ─────────────────────────────────────────────────────────────
-        if (command === 'coin') {
-            const result = Math.random() < 0.5 ? '🪙 Heads' : '🪙 Tails';
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] SEARCHING BREACH DATABASES FOR: ${query}\u001b[0m\n\u001b[1;30m> Querying Snusbase & LeakCheck...\u001b[0m\n\`\`\``);
+
+            const [snusData, lcData] = await Promise.all([
+                snusbaseSearch(query, 'username'),
+                leakcheckQuery(query, 'username'),
+            ]);
+
+            let result = `\`\`\`ansi\n\u001b[1;36m[NETRUNNER] USERNAME ${(sub1 === 'breach' ? 'BREACH' : 'LEAK')} CHECK: ${query}\u001b[0m\n`;
+            result += `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n`;
+
+            // Snusbase results
+            if (snusData && snusData.results) {
+                const entries = Object.values(snusData.results).flat() as any[];
+                if (entries.length > 0) {
+                    result += `\u001b[1;32m[SNUSBASE] Found ${entries.length} record(s)\u001b[0m\n`;
+                    const shown = entries.slice(0, 5);
+                    shown.forEach((e: any) => {
+                        if (e.email)    result += `  \u001b[1;33mEmail:\u001b[0m    ${e.email}\n`;
+                        if (e.username) result += `  \u001b[1;33mUser:\u001b[0m     ${e.username}\n`;
+                        if (e.password) result += `  \u001b[1;33mPass:\u001b[0m     ${e.password}\n`;
+                        if (e.hash)     result += `  \u001b[1;33mHash:\u001b[0m     ${e.hash}\n`;
+                        if (e.lastip)   result += `  \u001b[1;33mLast IP:\u001b[0m  ${e.lastip}\n`;
+                        if (e.name)     result += `  \u001b[1;33mName:\u001b[0m     ${e.name}\n`;
+                        result += `  \u001b[1;30m──\u001b[0m\n`;
+                    });
+                    if (entries.length > 5) result += `  \u001b[1;30m...and ${entries.length - 5} more records\u001b[0m\n`;
+                } else {
+                    result += `\u001b[1;31m[SNUSBASE] No records found\u001b[0m\n`;
+                }
+            } else {
+                result += `\u001b[1;31m[SNUSBASE] Query failed or no data\u001b[0m\n`;
+            }
+
+            // LeakCheck results
+            if (lcData && lcData.success) {
+                const found = lcData.found || 0;
+                result += `\u001b[1;32m[LEAKCHECK] ${found} breach(es) found\u001b[0m\n`;
+                if (lcData.result && Array.isArray(lcData.result)) {
+                    lcData.result.slice(0, 5).forEach((r: any) => {
+                        if (r.email)  result += `  \u001b[1;33mEmail:\u001b[0m  ${r.email}\n`;
+                        if (r.source) result += `  \u001b[1;33mSource:\u001b[0m ${typeof r.source === 'object' ? r.source.name : r.source}\n`;
+                        result += `  \u001b[1;30m──\u001b[0m\n`;
+                    });
+                }
+            } else {
+                result += `\u001b[1;31m[LEAKCHECK] ${lcData?.message || 'No data returned'}\u001b[0m\n`;
+            }
+
+            result += `\`\`\``;
             await message.edit(result).catch(() => {});
+            return;
         }
 
-        // ── ROLL ─────────────────────────────────────────────────────────────
-        if (command === 'roll') {
-            const sides = parseInt(args[0]) || 6;
-            if (sides < 2) return message.edit('Minimum 2 sides.').catch(() => {});
-            const result = Math.floor(Math.random() * sides) + 1;
-            await message.edit(`🎲 d${sides} → **${result}**`).catch(() => {});
+        // ── PHONE ────────────────────────────────────────────────────────────
+        if (command === 'phone') {
+            const sub1 = args[0]?.toLowerCase();
+            const sub2 = args[1]?.toLowerCase();
+            const number = args[2];
+
+            if (!number) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}phone <line type|location guess|carrier name|validity check> <number>\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] LOOKING UP PHONE: ${number}\u001b[0m\n\`\`\``);
+
+            const phoneData = await phoneVerify(number);
+
+            let result = `\`\`\`ansi\n\u001b[1;36m[NETRUNNER] PHONE LOOKUP: ${number}\u001b[0m\n`;
+            result += `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n`;
+
+            if (phoneData && phoneData.phone_valid !== undefined) {
+                const valid = phoneData.phone_valid;
+
+                if ((sub1 === 'validity' && sub2 === 'check') || (sub1 === 'line' && sub2 === 'type') ||
+                    (sub1 === 'location' && sub2 === 'guess') || (sub1 === 'carrier' && sub2 === 'name')) {
+
+                    if (sub1 === 'validity' && sub2 === 'check') {
+                        result += `\u001b[1;33mValid:\u001b[0m      ${valid ? '\u001b[1;32m✓ YES\u001b[0m' : '\u001b[1;31m✗ NO\u001b[0m'}\n`;
+                        if (phoneData.e164_format) result += `\u001b[1;33mFormatted:\u001b[0m  ${phoneData.e164_format}\n`;
+                        if (phoneData.international_format) result += `\u001b[1;33mIntl:\u001b[0m       ${phoneData.international_format}\n`;
+                        if (phoneData.country) result += `\u001b[1;33mCountry:\u001b[0m    ${phoneData.country}\n`;
+                    } else if (sub1 === 'line' && sub2 === 'type') {
+                        result += `\u001b[1;33mLine Type:\u001b[0m  ${phoneData.phone_type || 'Unknown'}\n`;
+                        result += `\u001b[1;33mValid:\u001b[0m      ${valid ? '\u001b[1;32m✓ YES\u001b[0m' : '\u001b[1;31m✗ NO\u001b[0m'}\n`;
+                    } else if (sub1 === 'location' && sub2 === 'guess') {
+                        result += `\u001b[1;33mCountry:\u001b[0m    ${phoneData.country || 'Unknown'}\n`;
+                        result += `\u001b[1;33mRegion:\u001b[0m     ${phoneData.country_code || 'Unknown'}\n`;
+                        if (phoneData.e164_format) result += `\u001b[1;33mDial Code:\u001b[0m  ${phoneData.phone_region || 'Unknown'}\n`;
+                    } else if (sub1 === 'carrier' && sub2 === 'name') {
+                        result += `\u001b[1;33mCarrier:\u001b[0m    ${phoneData.carrier || 'Unknown'}\n`;
+                        result += `\u001b[1;33mLine Type:\u001b[0m  ${phoneData.phone_type || 'Unknown'}\n`;
+                        result += `\u001b[1;33mCountry:\u001b[0m    ${phoneData.country || 'Unknown'}\n`;
+                    }
+                }
+            } else {
+                // Fallback: parse E.164 format manually
+                const e164 = number.startsWith('+') ? number : `+${number}`;
+                const isValidFormat = /^\+[1-9]\d{6,14}$/.test(e164);
+                result += `\u001b[1;33mNumber:\u001b[0m  ${number}\n`;
+                result += `\u001b[1;33mFormat:\u001b[0m  ${isValidFormat ? '\u001b[1;32m✓ Valid E.164\u001b[0m' : '\u001b[1;31m✗ Invalid format\u001b[0m'}\n`;
+                result += `\u001b[1;31mNote:\u001b[0m    External lookup unavailable\n`;
+            }
+
+            result += `\`\`\``;
+            await message.edit(result).catch(() => {});
+            return;
         }
 
-        // ── 8BALL ─────────────────────────────────────────────────────────────
-        if (command === '8ball') {
-            if (!fullArgs) return message.edit(`Usage: ${prefix}8ball <question>`).catch(() => {});
-            const responses = ['It is certain.','It is decidedly so.','Without a doubt.','Yes definitely.','You may rely on it.','As I see it, yes.','Most likely.','Outlook good.','Yes.','Signs point to yes.','Reply hazy, try again.','Ask again later.','Better not tell you now.','Cannot predict now.','Concentrate and ask again.','Don\'t count on it.','My reply is no.','My sources say no.','Outlook not so good.','Very doubtful.'];
-            await message.edit(`🎱 ${responses[Math.floor(Math.random() * responses.length)]}`).catch(() => {});
+        // ── EMAIL BREACHES ────────────────────────────────────────────────────
+        if (command === 'email' && args[0]?.toLowerCase() === 'breaches') {
+            const email = args[1];
+            if (!email || !email.includes('@')) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}email breaches <email@domain.com>\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] SCANNING BREACHES FOR: ${email}\u001b[0m\n\u001b[1;30m> Querying LeakCheck, Snusbase, SEON...\u001b[0m\n\`\`\``);
+
+            const [lcData, snusData, seonData, betaData] = await Promise.all([
+                leakcheckQuery(email, 'email'),
+                snusbaseSearch(email, 'email'),
+                seonEmailCheck(email),
+                snusbaseBetaSearch(email, 'email'),
+            ]);
+
+            let result = `\`\`\`ansi\n\u001b[1;36m[NETRUNNER] EMAIL BREACH REPORT: ${email}\u001b[0m\n`;
+            result += `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n`;
+
+            // LeakCheck
+            if (lcData && lcData.success) {
+                const found = lcData.found || 0;
+                result += `\u001b[1;32m[LEAKCHECK] ${found} breach(es)\u001b[0m\n`;
+                if (lcData.sources && Array.isArray(lcData.sources)) {
+                    lcData.sources.slice(0, 8).forEach((s: any) => {
+                        result += `  \u001b[1;33m•\u001b[0m ${typeof s === 'string' ? s : s.name || JSON.stringify(s)}\n`;
+                    });
+                }
+                if (lcData.result && Array.isArray(lcData.result)) {
+                    lcData.result.slice(0, 3).forEach((r: any) => {
+                        if (r.password) result += `  \u001b[1;31mPass:\u001b[0m ${r.password}\n`;
+                        if (r.source)   result += `  \u001b[1;33mSrc:\u001b[0m  ${typeof r.source === 'object' ? r.source.name : r.source}\n`;
+                    });
+                }
+            } else {
+                result += `\u001b[1;31m[LEAKCHECK] ${lcData?.message || 'No data'}\u001b[0m\n`;
+            }
+
+            // Snusbase
+            if (snusData && snusData.results) {
+                const entries = Object.values(snusData.results).flat() as any[];
+                result += `\u001b[1;32m[SNUSBASE] ${entries.length} record(s)\u001b[0m\n`;
+                entries.slice(0, 4).forEach((e: any) => {
+                    if (e.password) result += `  \u001b[1;31mPass:\u001b[0m    ${e.password}\n`;
+                    if (e.hash)     result += `  \u001b[1;33mHash:\u001b[0m    ${e.hash}\n`;
+                    if (e.username) result += `  \u001b[1;33mUser:\u001b[0m    ${e.username}\n`;
+                    if (e.name)     result += `  \u001b[1;33mName:\u001b[0m    ${e.name}\n`;
+                    if (e.lastip)   result += `  \u001b[1;33mLast IP:\u001b[0m ${e.lastip}\n`;
+                });
+            } else {
+                result += `\u001b[1;31m[SNUSBASE] No data\u001b[0m\n`;
+            }
+
+            // Beta Snusbase
+            if (betaData && betaData.results) {
+                const bentries = Object.values(betaData.results).flat() as any[];
+                if (bentries.length > 0) {
+                    result += `\u001b[1;32m[SNUSBASE BETA] ${bentries.length} extra record(s)\u001b[0m\n`;
+                    bentries.slice(0, 2).forEach((e: any) => {
+                        if (e.password) result += `  \u001b[1;31mPass:\u001b[0m ${e.password}\n`;
+                        if (e.username) result += `  \u001b[1;33mUser:\u001b[0m ${e.username}\n`;
+                    });
+                }
+            }
+
+            // SEON
+            if (seonData && seonData.data) {
+                const d = seonData.data;
+                result += `\u001b[1;32m[SEON] Email Intelligence\u001b[0m\n`;
+                if (d.deliverable !== undefined) result += `  \u001b[1;33mDeliverable:\u001b[0m ${d.deliverable ? 'Yes' : 'No'}\n`;
+                if (d.domain_details?.registered !== undefined) result += `  \u001b[1;33mDomain Reg:\u001b[0m  ${d.domain_details.registered ? 'Yes' : 'No'}\n`;
+                if (d.account_details) {
+                    const acc = d.account_details;
+                    if (acc.google?.registered !== undefined) result += `  \u001b[1;33mGoogle:\u001b[0m      ${acc.google.registered ? '✓' : '✗'}\n`;
+                    if (acc.facebook?.registered !== undefined) result += `  \u001b[1;33mFacebook:\u001b[0m    ${acc.facebook.registered ? '✓' : '✗'}\n`;
+                    if (acc.twitter?.registered !== undefined) result += `  \u001b[1;33mTwitter:\u001b[0m     ${acc.twitter.registered ? '✓' : '✗'}\n`;
+                    if (acc.spotify?.registered !== undefined) result += `  \u001b[1;33mSpotify:\u001b[0m     ${acc.spotify.registered ? '✓' : '✗'}\n`;
+                }
+                if (d.fraud_score !== undefined) result += `  \u001b[1;31mFraud Score:\u001b[0m ${d.fraud_score}\n`;
+            }
+
+            result += `\`\`\``;
+            await message.edit(result).catch(() => {});
+            return;
         }
 
-        // ── RPS ───────────────────────────────────────────────────────────────
-        if (command === 'rps') {
-            const moves = ['rock','paper','scissors'];
-            const emojis: Record<string,string> = { rock:'🪨', paper:'📄', scissors:'✂️' };
-            const player = args[0]?.toLowerCase();
-            if (!moves.includes(player)) return message.edit(`Usage: ${prefix}rps <rock/paper/scissors>`).catch(() => {});
-            const bot2 = moves[Math.floor(Math.random() * 3)];
-            const wins: Record<string,string> = { rock:'scissors', paper:'rock', scissors:'paper' };
-            const outcome = player === bot2 ? 'Tie! 🤝' : wins[player] === bot2 ? 'You win! 🏆' : 'Bot wins! 🤖';
-            await message.edit(`${emojis[player]} vs ${emojis[bot2]} — ${outcome}`).catch(() => {});
+        // ── MEMBERS MSGS ──────────────────────────────────────────────────────
+        if (command === 'members' && args[0]?.toLowerCase() === 'msgs') {
+            const count = parseInt(args[1]);
+            if (isNaN(count) || count < 1) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}members msgs <count>\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] FETCHING LAST ${count} MEMBER MESSAGES...\u001b[0m\n\`\`\``);
+
+            try {
+                const fetched = await message.channel.messages.fetch({ limit: Math.min(count + 5, 100) });
+                const msgs = Array.from(fetched.values())
+                    .filter((m: any) => !m.author.bot && m.id !== message.id && m.content?.trim())
+                    .slice(0, count);
+
+                if (msgs.length === 0) {
+                    return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] No recent member messages found.\u001b[0m\n\`\`\``).catch(() => {});
+                }
+
+                let result = `\`\`\`ansi\n\u001b[1;36m[NETRUNNER] LAST ${msgs.length} MESSAGES\u001b[0m\n`;
+                result += `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n`;
+
+                msgs.reverse().forEach((m: any) => {
+                    const ts = new Date(m.createdTimestamp).toLocaleTimeString();
+                    const tag = m.author.tag || m.author.username;
+                    const content = m.content.length > 60 ? m.content.slice(0, 60) + '…' : m.content;
+                    result += `\u001b[1;33m[${ts}]\u001b[0m \u001b[1;32m${tag}\u001b[0m: ${content}\n`;
+                });
+
+                result += `\`\`\``;
+                await message.edit(result).catch(() => {});
+            } catch (e) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Failed to fetch messages.\u001b[0m\n\`\`\``).catch(() => {});
+            }
+            return;
         }
 
-        // ── CHOOSE ────────────────────────────────────────────────────────────
-        if (command === 'choose') {
-            const opts = fullArgs.split(',').map((s: string) => s.trim()).filter(Boolean);
-            if (opts.length < 2) return message.edit(`Usage: ${prefix}choose <opt1, opt2, ...>`).catch(() => {});
-            await message.edit(`🎯 ${opts[Math.floor(Math.random() * opts.length)]}`).catch(() => {});
+        // ── IP CHECK (enhanced with map) ──────────────────────────────────────
+        if (command === 'ip' && args[0]?.toLowerCase() === 'check') {
+            const ip = args[1];
+            if (!ip) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}ip check <address>\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] GEOLOCATING: ${ip}\u001b[0m\n\u001b[1;30m> Querying ip-api.com + ipinfo.io...\u001b[0m\n\`\`\``);
+
+            const [main, info] = await Promise.all([
+                ipApiLookup(ip),
+                ipInfoLookup(ip),
+            ]);
+
+            if (!main || main.status === 'fail') {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Invalid IP or lookup failed.\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            const mapUrl = staticMapUrl(main.lat, main.lon, 12);
+            const googleMapsUrl = `https://maps.google.com/?q=${main.lat},${main.lon}`;
+
+            let result = `\`\`\`ansi\n\u001b[1;36m[NETRUNNER] IP REPORT: ${main.query}\u001b[0m\n`;
+            result += `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n`;
+            result += `\u001b[1;33mIP:\u001b[0m        ${main.query}\n`;
+            result += `\u001b[1;33mCountry:\u001b[0m   ${main.country} (${main.countryCode})\n`;
+            result += `\u001b[1;33mRegion:\u001b[0m    ${main.regionName} (${main.region})\n`;
+            result += `\u001b[1;33mCity:\u001b[0m      ${main.city}\n`;
+            result += `\u001b[1;33mZIP:\u001b[0m       ${main.zip || '—'}\n`;
+            result += `\u001b[1;33mTimezone:\u001b[0m  ${main.timezone}\n`;
+            result += `\u001b[1;33mISP:\u001b[0m       ${main.isp}\n`;
+            result += `\u001b[1;33mOrg:\u001b[0m       ${main.org || '—'}\n`;
+            result += `\u001b[1;33mAS:\u001b[0m        ${main.as || '—'}\n`;
+            result += `\u001b[1;33mHostname:\u001b[0m  ${main.reverse || info?.hostname || '—'}\n`;
+            result += `\u001b[1;33mCoords:\u001b[0m    ${main.lat}, ${main.lon}\n`;
+            result += `\u001b[1;33mMobile:\u001b[0m    ${main.mobile ? 'Yes' : 'No'}\n`;
+            result += `\u001b[1;33mProxy/VPN:\u001b[0m ${main.proxy ? '\u001b[1;31mYES\u001b[0m' : 'No'}\n`;
+            result += `\u001b[1;33mHosting:\u001b[0m   ${main.hosting ? 'Yes (Datacenter/VPS)' : 'No'}\n`;
+            if (info?.org) result += `\u001b[1;33mProvider:\u001b[0m  ${info.org}\n`;
+            result += `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n`;
+            result += `\u001b[1;32mMap:\u001b[0m       ${googleMapsUrl}\n`;
+            result += `\`\`\``;
+
+            await message.edit(result).catch(() => {});
+
+            // Send the static map image in the channel
+            await message.channel.send(mapUrl).catch(() => {});
+            return;
         }
 
-        // ── FACT ──────────────────────────────────────────────────────────────
-        if (command === 'fact') {
-            const facts = ['A group of flamingos is called a flamboyance.','Honey never expires — edible after 3,000 years.','Wombats produce cube-shaped poop.','Cleopatra lived closer to the Moon landing than to the construction of the Great Pyramid.','There are more possible chess games than atoms in the observable universe.','A day on Venus is longer than a year on Venus.','Sharks are older than trees.','Octopuses have three hearts.','Oxford University is older than the Aztec Empire.'];
-            await message.edit(`💡 ${facts[Math.floor(Math.random() * facts.length)]}`).catch(() => {});
-        }
+        // ── OSINT FULL DUMPS ──────────────────────────────────────────────────
+        if (command === 'osint') {
+            const sub1 = args[0]?.toLowerCase(); // user / server / token / ip
+            const sub2 = args[1]?.toLowerCase(); // full
+            const sub3 = args[2]?.toLowerCase(); // dump / report
+            const target = args[3];
 
-        // ── JOKE ──────────────────────────────────────────────────────────────
-        if (command === 'joke') {
-            const jokes = ['I told my wife she was drawing her eyebrows too high. She looked surprised.','Why don\'t scientists trust atoms? Because they make up everything.','I asked the librarian if they had books about paranoia. She whispered "They\'re right behind you!"','What do you call a fake noodle? An impasta.','Why did the scarecrow win an award? He was outstanding in his field.','I\'m reading a book about anti-gravity. It\'s impossible to put down.','Did you hear about the mathematician who\'s afraid of negative numbers? He\'ll stop at nothing to avoid them.'];
-            await message.edit(`😄 ${jokes[Math.floor(Math.random() * jokes.length)]}`).catch(() => {});
-        }
+            // .osint user full dump <@user>
+            if (sub1 === 'user' && sub2 === 'full') {
+                const mention = target || args[3];
+                const userId = (mention || '').replace(/[<@!>]/g, '');
+                if (!userId) {
+                    return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}osint user full dump <@user>\u001b[0m\n\`\`\``).catch(() => {});
+                }
 
-        // ── ECHO ─────────────────────────────────────────────────────────────
-        if (command === 'echo') {
-            if (!fullArgs) return message.edit(`Usage: ${prefix}echo <text>`).catch(() => {});
-            await message.edit(fullArgs).catch(() => {});
-        }
+                await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] DUMPING USER: ${userId}\u001b[0m\n\`\`\``);
 
-        // ── MOCK ─────────────────────────────────────────────────────────────
-        if (command === 'mock') {
-            const mentionMatch = fullArgs?.match(/^<@!?(\d+)>/);
-            if (mentionMatch) {
-                const targetId = mentionMatch[1];
                 try {
-                    const fetched = await message.channel.messages.fetch({ limit: 50 });
-                    const targetMsg = fetched.find((m: any) => m.author.id === targetId && m.id !== message.id && m.content?.trim());
-                    if (!targetMsg) return message.edit(`❌ Couldn't find a recent message from that user.`).catch(() => {});
-                    const mocked = targetMsg.content.split('').map((c: string, i: number) => i % 2 === 0 ? c.toLowerCase() : c.toUpperCase()).join('');
-                    await message.edit(`mOcKiNg <@${targetId}>: ${mocked}`).catch(() => {});
-                } catch {
-                    await message.edit(`❌ Failed to fetch messages.`).catch(() => {});
+                    const user = await client.users.fetch(userId, { force: true });
+                    const member = message.guild ? await message.guild.members.fetch(userId).catch(() => null) : null;
+
+                    let result = `\`\`\`ansi\n\u001b[1;36m[NETRUNNER] USER FULL DUMP\u001b[0m\n`;
+                    result += `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n`;
+                    result += `\u001b[1;33mTag:\u001b[0m          ${user.tag}\n`;
+                    result += `\u001b[1;33mUsername:\u001b[0m     ${user.username}\n`;
+                    result += `\u001b[1;33mID:\u001b[0m           ${user.id}\n`;
+                    result += `\u001b[1;33mBot:\u001b[0m          ${user.bot ? 'Yes' : 'No'}\n`;
+                    result += `\u001b[1;33mCreated:\u001b[0m      ${user.createdAt.toUTCString()}\n`;
+                    const tsSeconds = Math.floor(user.createdTimestamp / 1000);
+                    result += `\u001b[1;33mUnix TS:\u001b[0m      ${tsSeconds}\n`;
+
+                    // Snowflake decode
+                    const snowflakeTs = Math.floor(user.createdTimestamp);
+                    const workerBits = (BigInt(userId) >> BigInt(17)) & BigInt(0x1f);
+                    const processBits = (BigInt(userId) >> BigInt(12)) & BigInt(0x1f);
+                    result += `\u001b[1;33mWorker ID:\u001b[0m    ${workerBits}\n`;
+                    result += `\u001b[1;33mProcess ID:\u001b[0m   ${processBits}\n`;
+
+                    if (user.flags) {
+                        const flags = user.flags.toArray();
+                        result += `\u001b[1;33mBadges:\u001b[0m       ${flags.join(', ') || 'None'}\n`;
+                    }
+
+                    const avatarUrl = user.displayAvatarURL({ dynamic: true, size: 4096 });
+                    result += `\u001b[1;33mAvatar:\u001b[0m       ${avatarUrl}\n`;
+
+                    const bannerUrl = user.bannerURL({ dynamic: true, size: 4096 });
+                    if (bannerUrl) result += `\u001b[1;33mBanner:\u001b[0m       ${bannerUrl}\n`;
+                    if ((user as any).accentColor) result += `\u001b[1;33mAccent Color:\u001b[0m #${((user as any).accentColor).toString(16).padStart(6, '0')}\n`;
+
+                    if (member) {
+                        result += `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n`;
+                        result += `\u001b[1;36m[SERVER MEMBER DATA]\u001b[0m\n`;
+                        result += `\u001b[1;33mNickname:\u001b[0m     ${member.nickname || 'None'}\n`;
+                        result += `\u001b[1;33mJoined:\u001b[0m       ${member.joinedAt?.toUTCString() || 'Unknown'}\n`;
+                        const roles = member.roles.cache.filter((r: any) => r.name !== '@everyone').map((r: any) => r.name);
+                        result += `\u001b[1;33mRoles:\u001b[0m        ${roles.slice(0, 10).join(', ') || 'None'}\n`;
+                        result += `\u001b[1;33mBoosting:\u001b[0m     ${member.premiumSince ? `Since ${member.premiumSince.toUTCString()}` : 'No'}\n`;
+                        result += `\u001b[1;33mPending:\u001b[0m      ${member.pending ? 'Yes' : 'No'}\n`;
+                        if (member.communicationDisabledUntil) result += `\u001b[1;31mMuted Until:\u001b[0m  ${member.communicationDisabledUntil.toUTCString()}\n`;
+                    }
+
+                    result += `\`\`\``;
+                    await message.edit(result).catch(() => {});
+                    // Send avatar as image
+                    await message.channel.send(avatarUrl).catch(() => {});
+                } catch (e) {
+                    await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Failed to fetch user data.\u001b[0m\n\`\`\``).catch(() => {});
                 }
-            } else {
-                if (!fullArgs) return message.edit(`Usage: ${prefix}mock <@user> or ${prefix}mock <text>`).catch(() => {});
-                const mocked = fullArgs.split('').map((c: string, i: number) => i % 2 === 0 ? c.toLowerCase() : c.toUpperCase()).join('');
-                await message.edit(mocked).catch(() => {});
+                return;
             }
-        }
 
-        // ── OWO ──────────────────────────────────────────────────────────────
-        if (command === 'owo') {
-            if (!fullArgs) return message.edit(`Usage: ${prefix}owo <text>`).catch(() => {});
-            const owo = fullArgs.replace(/r/g,'w').replace(/R/g,'W').replace(/l/g,'w').replace(/L/g,'W').replace(/n([aeiou])/gi,'ny$1').replace(/ove/g,'uv').replace(/!/g,' UwU!');
-            await message.edit(`${owo} OwO`).catch(() => {});
-        }
-
-        // ── CLAP ─────────────────────────────────────────────────────────────
-        if (command === 'clap') {
-            if (!fullArgs) return message.edit(`Usage: ${prefix}clap <text>`).catch(() => {});
-            await message.edit(fullArgs.split(' ').join(' 👏 ')).catch(() => {});
-        }
-
-        // ── FLIP ─────────────────────────────────────────────────────────────
-        if (command === 'flip') {
-            if (!fullArgs) return message.edit(`Usage: ${prefix}flip <text>`).catch(() => {});
-            const normal = 'abcdefghijklmnopqrstuvwxyz';
-            const flipped = 'ɐqɔpǝɟƃɥıɾʞlɯuodbɹsʇnʌʍxʎz';
-            const result = fullArgs.toLowerCase().split('').map((c: string) => {
-                const i = normal.indexOf(c);
-                return i >= 0 ? flipped[i] : c;
-            }).reverse().join('');
-            await message.edit(`(╯°□°）╯︵ ${result}`).catch(() => {});
-        }
-
-        // ── ZALGO ─────────────────────────────────────────────────────────────
-        if (command === 'zalgo') {
-            if (!fullArgs) return message.edit(`Usage: ${prefix}zalgo <text>`).catch(() => {});
-            const marks = ['̵','̶','̷','̸','͜','͝','͞','̢','̧','̨','̡'];
-            const result = fullArgs.split('').map((c: string) => c + marks.slice(0, Math.floor(Math.random()*4)+1).join('')).join('');
-            await message.edit(result).catch(() => {});
-        }
-
-        // ── SHIP ─────────────────────────────────────────────────────────────
-        if (command === 'ship') {
-            const u1 = args[0]?.replace(/[<@!>]/g,'') || 'User1';
-            const u2 = args[1]?.replace(/[<@!>]/g,'') || 'User2';
-            const pct = Math.floor(Math.random()*101);
-            const bar = '█'.repeat(Math.floor(pct/10)) + '░'.repeat(10 - Math.floor(pct/10));
-            const emoji = pct > 75 ? '💞' : pct > 40 ? '💛' : '💔';
-            await message.edit(`${emoji} **Ship**: <@${u1}> ❤️ <@${u2}>\n\`[${bar}] ${pct}%\``).catch(() => {});
-        }
-
-        // ── GAYRATE ───────────────────────────────────────────────────────────
-        if (command === 'gayrate') {
-            const target = args[0]?.replace(/[<@!>]/g,'');
-            const pct = Math.floor(Math.random()*101);
-            await message.edit(`🌈 <@${target || message.author.id}> is **${pct}%** gay.`).catch(() => {});
-        }
-
-        // ── SIMPRATE ──────────────────────────────────────────────────────────
-        if (command === 'simprate') {
-            const target = args[0]?.replace(/[<@!>]/g,'');
-            const pct = Math.floor(Math.random()*101);
-            await message.edit(`🥺 <@${target || message.author.id}> is **${pct}%** simp.`).catch(() => {});
-        }
-
-        // ── ROAST ─────────────────────────────────────────────────────────────
-        if (command === 'roast') {
-            const target = args[0];
-            const roasts = ['You\'re the reason shampoo has instructions.','I\'d roast you but my parents told me not to burn garbage.','You\'re proof that even evolution makes mistakes.','If brains were dynamite, you couldn\'t blow your nose.','You\'re like a cloud — when you disappear, it\'s a beautiful day.','You have something on your chin... no, the third one down.'];
-            await message.edit(`🔥 ${target || ''} ${roasts[Math.floor(Math.random()*roasts.length)]}`).catch(() => {});
-        }
-
-        // ── COMPLIMENT ────────────────────────────────────────────────────────
-        if (command === 'compliment') {
-            const target = args[0];
-            const compliments = ['You\'re almost not terrible.','Your existence is statistically improbable — yet here you are.','You\'re the best at being mediocre.','Honestly? You\'re not as annoying as people say.','You have the courage to be this clueless — truly inspiring.','You remind me of a participation trophy.'];
-            await message.edit(`💅 ${target || ''} ${compliments[Math.floor(Math.random()*compliments.length)]}`).catch(() => {});
-        }
-
-        // ── PICKUP ────────────────────────────────────────────────────────────
-        if (command === 'pickup') {
-            const target = args[0];
-            const lines = ['Are you a bank loan? Because you have my interest.','Do you have a map? I keep getting lost in your eyes.','Is your name Google? You have everything I\'ve been searching for.','Are you a magician? Every time I look at you, everyone else disappears.','Do you like Star Wars? Because Yoda one for me.'];
-            await message.edit(`😏 ${target || ''} ${lines[Math.floor(Math.random()*lines.length)]}`).catch(() => {});
-        }
-
-        // ── TRUTH ────────────────────────────────────────────────────────────
-        if (command === 'truth') {
-            const truths = ['What\'s the most embarrassing thing you\'ve done online?','What\'s a secret you\'ve never told anyone?','Have you ever fake laughed at someone\'s joke?','What\'s the worst lie you\'ve ever told?','Do you have a secret crush?','What\'s something you pretend to like but actually hate?'];
-            await message.edit(`🤔 Truth: ${truths[Math.floor(Math.random()*truths.length)]}`).catch(() => {});
-        }
-
-        // ── DARE ─────────────────────────────────────────────────────────────
-        if (command === 'dare') {
-            const target = args[0];
-            const dares = ['Send a voice message saying "I am a potato"','Change your status to "I love losing" for 10 minutes','React to the last 10 messages with 🗿','DM someone "you up?" and then immediately unsend it','Post your search history in this channel'];
-            await message.edit(`⚡ ${target || ''} Dare: ${dares[Math.floor(Math.random()*dares.length)]}`).catch(() => {});
-        }
-
-        // ── WOULD YOU RATHER ──────────────────────────────────────────────────
-        if (command === 'wouldyourather') {
-            const parts = fullArgs.split(' or ');
-            if (parts.length >= 2) {
-                await message.edit(`🤷 Would you rather:\n🅰️ **${parts[0].trim()}**\n🅱️ **${parts.slice(1).join(' or ').trim()}**`).catch(() => {});
-            } else {
-                const presets = [['fight 1 horse-sized duck','fight 100 duck-sized horses'],['never eat pizza again','never use the internet again'],['always be 10 minutes late','always be 20 minutes early']];
-                const pick = presets[Math.floor(Math.random()*presets.length)];
-                await message.edit(`🤷 Would you rather:\n🅰️ **${pick[0]}**\n🅱️ **${pick[1]}**`).catch(() => {});
-            }
-        }
-
-        // ── JOIN VC ───────────────────────────────────────────────────────────
-        if (command === 'joinvc') {
-            const channelId = args[0];
-            if (!channelId) return message.edit(`Usage: ${prefix}joinvc <channel_id>`).catch(() => {});
-            try {
-                const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId).catch(() => null);
-                if (!channel) return message.edit(`❌ Channel \`${channelId}\` not found.`).catch(() => {});
-                if (channel.type !== 'GUILD_VOICE' && channel.type !== 'GUILD_STAGE_VOICE') {
-                    return message.edit(`❌ That channel is not a voice channel.`).catch(() => {});
+            // .osint server full dump
+            if (sub1 === 'server' && sub2 === 'full') {
+                const guild = message.guild;
+                if (!guild) {
+                    return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] This command only works in servers.\u001b[0m\n\`\`\``).catch(() => {});
                 }
-                const existing = voiceConnections.get(configId);
-                if (existing) {
-                    try { existing.disconnect(); } catch {}
-                    voiceConnections.delete(configId);
+
+                await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] DUMPING SERVER: ${guild.name}\u001b[0m\n\`\`\``);
+
+                try {
+                    const owner = await guild.fetchOwner().catch(() => null);
+                    const bans = await guild.bans.fetch().catch(() => null);
+                    const invites = await guild.invites.fetch().catch(() => null);
+                    const webhooks = await guild.fetchWebhooks().catch(() => null);
+
+                    let result = `\`\`\`ansi\n\u001b[1;36m[NETRUNNER] SERVER FULL DUMP\u001b[0m\n`;
+                    result += `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n`;
+                    result += `\u001b[1;33mName:\u001b[0m          ${guild.name}\n`;
+                    result += `\u001b[1;33mID:\u001b[0m            ${guild.id}\n`;
+                    result += `\u001b[1;33mOwner:\u001b[0m         ${owner?.user.tag || guild.ownerId}\n`;
+                    result += `\u001b[1;33mOwner ID:\u001b[0m      ${guild.ownerId}\n`;
+                    result += `\u001b[1;33mCreated:\u001b[0m       ${guild.createdAt.toUTCString()}\n`;
+                    result += `\u001b[1;33mMembers:\u001b[0m       ${guild.memberCount}\n`;
+                    result += `\u001b[1;33mChannels:\u001b[0m      ${guild.channels?.cache?.size ?? '?'}\n`;
+                    result += `\u001b[1;33mRoles:\u001b[0m         ${guild.roles?.cache?.size ?? '?'}\n`;
+                    result += `\u001b[1;33mEmojis:\u001b[0m        ${guild.emojis?.cache?.size ?? '?'}\n`;
+                    result += `\u001b[1;33mBoosts:\u001b[0m        ${guild.premiumSubscriptionCount ?? 0} (Tier ${guild.premiumTier || 0})\n`;
+                    result += `\u001b[1;33mVerification:\u001b[0m  ${guild.verificationLevel}\n`;
+                    result += `\u001b[1;33mNSFW Level:\u001b[0m    ${guild.nsfwLevel}\n`;
+                    result += `\u001b[1;33mVanity URL:\u001b[0m    ${guild.vanityURLCode ? `discord.gg/${guild.vanityURLCode}` : 'None'}\n`;
+                    result += `\u001b[1;33mDescription:\u001b[0m   ${guild.description || 'None'}\n`;
+                    if (bans) result += `\u001b[1;33mBans:\u001b[0m          ${bans.size}\n`;
+                    if (invites) result += `\u001b[1;33mActive Invites:\u001b[0m ${invites.size}\n`;
+                    if (webhooks) result += `\u001b[1;33mWebhooks:\u001b[0m      ${webhooks.size}\n`;
+
+                    const features = guild.features;
+                    if (features.length > 0) {
+                        result += `\u001b[1;33mFeatures:\u001b[0m      ${features.join(', ')}\n`;
+                    }
+
+                    const iconUrl = guild.iconURL({ dynamic: true, size: 4096 });
+                    if (iconUrl) result += `\u001b[1;33mIcon:\u001b[0m          ${iconUrl}\n`;
+                    const bannerUrl = guild.bannerURL({ dynamic: true, size: 4096 });
+                    if (bannerUrl) result += `\u001b[1;33mBanner:\u001b[0m        ${bannerUrl}\n`;
+
+                    result += `\`\`\``;
+                    await message.edit(result).catch(() => {});
+                    if (iconUrl) await message.channel.send(iconUrl).catch(() => {});
+                } catch (e) {
+                    await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Failed to dump server data.\u001b[0m\n\`\`\``).catch(() => {});
                 }
-                const connection = await client.voice.joinChannel(channel, { selfDeaf: false, selfMute: false });
-                voiceConnections.set(configId, connection);
-                await message.edit(`🎙️ Joined **${(channel as any).name}** — farming stats!`).catch(() => {});
-            } catch (e: any) {
-                await message.edit(`❌ Failed to join VC: ${e?.message || 'Unknown error'}`).catch(() => {});
+                return;
             }
+
+            // .osint token full dump <token>
+            if (sub1 === 'token' && sub2 === 'full') {
+                const token = target || args[3];
+                if (!token) {
+                    return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}osint token full dump <token>\u001b[0m\n\`\`\``).catch(() => {});
+                }
+
+                await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] ANALYZING TOKEN...\u001b[0m\n\`\`\``);
+
+                try {
+                    // Decode JWT-like token parts (Discord tokens are base64url encoded)
+                    const parts = token.split('.');
+                    let userId = '';
+                    let decodedTs = '';
+                    if (parts.length >= 2) {
+                        try {
+                            userId = Buffer.from(parts[0], 'base64').toString('utf8');
+                            if (parts[1]) {
+                                const tsBytes = Buffer.from(parts[1], 'base64');
+                                if (tsBytes.length >= 4) {
+                                    const tsNum = tsBytes.readUInt32BE(0);
+                                    decodedTs = new Date((tsNum + 1293840000) * 1000).toUTCString();
+                                }
+                            }
+                        } catch {}
+                    }
+
+                    // Validate against Discord API
+                    const discordRes = await fetch('https://discord.com/api/v10/users/@me', {
+                        headers: { Authorization: token }
+                    });
+                    const discordData: any = await discordRes.json();
+
+                    let result = `\`\`\`ansi\n\u001b[1;36m[NETRUNNER] TOKEN FULL DUMP\u001b[0m\n`;
+                    result += `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n`;
+
+                    if (discordData.id) {
+                        result += `\u001b[1;32m[+] TOKEN VALID\u001b[0m\n`;
+                        result += `\u001b[1;33mUsername:\u001b[0m      ${discordData.username}${discordData.discriminator !== '0' ? '#' + discordData.discriminator : ''}\n`;
+                        result += `\u001b[1;33mID:\u001b[0m            ${discordData.id}\n`;
+                        result += `\u001b[1;33mEmail:\u001b[0m         ${discordData.email || 'Not accessible'}\n`;
+                        result += `\u001b[1;33mPhone:\u001b[0m         ${discordData.phone || 'None'}\n`;
+                        result += `\u001b[1;33mMFA Enabled:\u001b[0m   ${discordData.mfa_enabled ? 'Yes' : 'No'}\n`;
+                        result += `\u001b[1;33mVerified:\u001b[0m      ${discordData.verified ? 'Yes' : 'No'}\n`;
+                        result += `\u001b[1;33mNitro:\u001b[0m         ${discordData.premium_type === 2 ? 'Nitro Boost' : discordData.premium_type === 1 ? 'Classic' : 'None'}\n`;
+                        result += `\u001b[1;33mLocale:\u001b[0m        ${discordData.locale || 'Unknown'}\n`;
+                        if (discordData.avatar) {
+                            result += `\u001b[1;33mAvatar:\u001b[0m        https://cdn.discordapp.com/avatars/${discordData.id}/${discordData.avatar}.png\n`;
+                        }
+                        // Fetch billing info
+                        const billingRes = await fetch('https://discord.com/api/v10/users/@me/billing/payment-sources', {
+                            headers: { Authorization: token }
+                        });
+                        const billingData: any = await billingRes.json().catch(() => null);
+                        if (Array.isArray(billingData) && billingData.length > 0) {
+                            result += `\u001b[1;31mPayment Methods: ${billingData.length}\u001b[0m\n`;
+                            billingData.slice(0, 3).forEach((pm: any) => {
+                                result += `  \u001b[1;33m• ${pm.type === 1 ? 'Card' : pm.type === 2 ? 'PayPal' : 'Other'}\u001b[0m`;
+                                if (pm.billing_address?.country) result += ` (${pm.billing_address.country})`;
+                                if (pm.last_4) result += ` ****${pm.last_4}`;
+                                result += `\n`;
+                            });
+                        }
+                        // Guild count
+                        const guildsRes = await fetch('https://discord.com/api/v10/users/@me/guilds', {
+                            headers: { Authorization: token }
+                        });
+                        const guildsData: any = await guildsRes.json().catch(() => null);
+                        if (Array.isArray(guildsData)) {
+                            result += `\u001b[1;33mGuilds:\u001b[0m        ${guildsData.length}\n`;
+                        }
+                    } else {
+                        result += `\u001b[1;31m[!] TOKEN INVALID OR EXPIRED\u001b[0m\n`;
+                        result += `\u001b[1;33mMessage:\u001b[0m ${discordData.message || 'Unknown error'}\n`;
+                    }
+
+                    if (userId) result += `\u001b[1;30mDecoded ID part: ${userId}\u001b[0m\n`;
+                    if (decodedTs) result += `\u001b[1;30mToken issued ~: ${decodedTs}\u001b[0m\n`;
+
+                    result += `\`\`\``;
+                    await message.edit(result).catch(() => {});
+                } catch (e) {
+                    await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Token analysis failed.\u001b[0m\n\`\`\``).catch(() => {});
+                }
+                return;
+            }
+
+            // .osint ip full report <ip>
+            if (sub1 === 'ip' && sub2 === 'full') {
+                const ip = target || args[3];
+                if (!ip) {
+                    return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}osint ip full report <ip>\u001b[0m\n\`\`\``).catch(() => {});
+                }
+
+                await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] RUNNING FULL IP REPORT ON: ${ip}\u001b[0m\n\u001b[1;30m> Querying multiple sources...\u001b[0m\n\`\`\``);
+
+                const [main, info] = await Promise.all([
+                    ipApiLookup(ip),
+                    ipInfoLookup(ip),
+                ]);
+
+                if (!main || main.status === 'fail') {
+                    return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Invalid IP or all lookups failed.\u001b[0m\n\`\`\``).catch(() => {});
+                }
+
+                const mapUrl = staticMapUrl(main.lat, main.lon, 11);
+                const googleMapsUrl = `https://maps.google.com/?q=${main.lat},${main.lon}`;
+
+                let result = `\`\`\`ansi\n\u001b[1;36m[NETRUNNER] FULL IP REPORT: ${main.query}\u001b[0m\n`;
+                result += `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n`;
+                result += `\u001b[1;36m[GEO]\u001b[0m\n`;
+                result += `  \u001b[1;33mIP:\u001b[0m          ${main.query}\n`;
+                result += `  \u001b[1;33mCountry:\u001b[0m     ${main.country} (${main.countryCode})\n`;
+                result += `  \u001b[1;33mRegion:\u001b[0m      ${main.regionName} (${main.region})\n`;
+                result += `  \u001b[1;33mCity:\u001b[0m        ${main.city}\n`;
+                result += `  \u001b[1;33mPostcode:\u001b[0m    ${main.zip || '—'}\n`;
+                result += `  \u001b[1;33mCoords:\u001b[0m      ${main.lat}, ${main.lon}\n`;
+                result += `  \u001b[1;33mTimezone:\u001b[0m    ${main.timezone}\n`;
+                result += `\u001b[1;30m──\u001b[0m\n`;
+                result += `\u001b[1;36m[NETWORK]\u001b[0m\n`;
+                result += `  \u001b[1;33mISP:\u001b[0m         ${main.isp}\n`;
+                result += `  \u001b[1;33mOrg:\u001b[0m         ${main.org || '—'}\n`;
+                result += `  \u001b[1;33mAS:\u001b[0m          ${main.as || '—'}\n`;
+                result += `  \u001b[1;33mASName:\u001b[0m      ${main.asname || '—'}\n`;
+                result += `  \u001b[1;33mHostname:\u001b[0m    ${main.reverse || info?.hostname || '—'}\n`;
+                if (info?.org) result += `  \u001b[1;33mProvider:\u001b[0m    ${info.org}\n`;
+                result += `\u001b[1;30m──\u001b[0m\n`;
+                result += `\u001b[1;36m[FLAGS]\u001b[0m\n`;
+                result += `  \u001b[1;33mMobile:\u001b[0m      ${main.mobile ? '\u001b[1;31mYES\u001b[0m' : 'No'}\n`;
+                result += `  \u001b[1;33mProxy/VPN:\u001b[0m   ${main.proxy ? '\u001b[1;31mYES\u001b[0m' : 'No'}\n`;
+                result += `  \u001b[1;33mHosting/DC:\u001b[0m  ${main.hosting ? '\u001b[1;31mYES\u001b[0m' : 'No'}\n`;
+                result += `\u001b[1;30m──\u001b[0m\n`;
+                result += `\u001b[1;36m[MAP]\u001b[0m\n`;
+                result += `  ${googleMapsUrl}\n`;
+                result += `\`\`\``;
+
+                await message.edit(result).catch(() => {});
+                // Send the map as image
+                await message.channel.send(mapUrl).catch(() => {});
+                return;
+            }
+
+            // Unknown osint subcommand
+            await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Unknown osint command. Use ${prefix}help osint\u001b[0m\n\`\`\``).catch(() => {});
+            return;
         }
 
-        // ── LEAVE VC ──────────────────────────────────────────────────────────
-        if (command === 'leavevc') {
-            const connection = voiceConnections.get(configId);
-            if (!connection) return message.edit(`❌ Not in a voice channel.`).catch(() => {});
-            try {
-                connection.disconnect();
-                voiceConnections.delete(configId);
-                await message.edit(`👋 Left voice channel.`).catch(() => {});
-            } catch (e: any) {
-                await message.edit(`❌ Failed to leave VC: ${e?.message || 'Unknown error'}`).catch(() => {});
-            }
-        }
       });
 
       await client.login(initialConfig.token);
@@ -1628,7 +1027,6 @@ export class BotManager {
       return { success: true };
     } catch (e: any) {
       console.error(`Failed to start bot ${initialConfig.name}:`, e);
-      // Mark as offline in storage so the DB stays consistent
       await storage.updateBot(configId, { isRunning: false }).catch(() => {});
       const msg = e?.message || String(e);
       const friendly = msg.includes('TOKEN_INVALID') || msg.includes('token')
@@ -1639,95 +1037,89 @@ export class BotManager {
   }
 
   private static clearRpcInterval(botId: number) {
-        const existing = rpcIntervals.get(botId);
-        if (existing) {
-            clearInterval(existing);
-            rpcIntervals.delete(botId);
+    const existing = rpcIntervals.get(botId);
+    if (existing) {
+        clearInterval(existing);
+        rpcIntervals.delete(botId);
+    }
+  }
+
+  private static applyRpc(client: Client, config: BotConfig) {
+    if (!client.user) return;
+
+    this.clearRpcInterval(config.id);
+
+    const details = config.rpcTitle?.trim();
+    const state = config.rpcSubtitle?.trim();
+    const appName = config.rpcAppName?.trim();
+    const hasRpc = appName || (details && details.length >= 2) || (state && state.length >= 2);
+
+    if (!hasRpc) {
+        try {
+            client.user.setPresence({ status: 'online', afk: false, activities: [] });
+        } catch (_) {}
+        return;
+    }
+
+    const typeMap: Record<string, number> = {
+        PLAYING: 0,
+        STREAMING: 1,
+        LISTENING: 2,
+        WATCHING: 3,
+        COMPETING: 5,
+    };
+    const rpcTypeStr = (config.rpcType?.toUpperCase() || "PLAYING");
+    const rpcTypeNum = typeMap[rpcTypeStr] ?? 0;
+
+    const rpc: any = {
+        name: appName || "discord",
+        type: rpcTypeNum,
+    };
+
+    if (rpcTypeNum === 1) {
+        rpc.url = "https://www.twitch.tv/discord";
+    }
+
+    if (details && details.length >= 2) rpc.details = details;
+    if (state && state.length >= 2) rpc.state = state;
+
+    if (config.rpcStartTimestamp || config.rpcEndTimestamp) {
+        rpc.timestamps = {};
+        if (config.rpcStartTimestamp && config.rpcStartTimestamp !== "0" && config.rpcStartTimestamp !== "") {
+            rpc.timestamps.start = Number(config.rpcStartTimestamp);
+        }
+        if (config.rpcEndTimestamp && config.rpcEndTimestamp !== "0" && config.rpcEndTimestamp !== "") {
+            rpc.timestamps.end = Number(config.rpcEndTimestamp);
         }
     }
 
-    private static applyRpc(client: Client, config: BotConfig) {
+    if (config.rpcImage) {
+        rpc.assets = {
+            large_image: config.rpcImage,
+            large_text: details || undefined,
+        };
+    }
+
+    console.log(`[RPC] Applying for ${client.user.tag}:`, JSON.stringify(rpc));
+
+    const applyPresence = () => {
         if (!client.user) return;
-
-        // Always clear any previous RPC interval for this bot first
-        this.clearRpcInterval(config.id);
-
-        const details = config.rpcTitle?.trim();
-        const state = config.rpcSubtitle?.trim();
-        const appName = config.rpcAppName?.trim();
-        const hasRpc = appName || (details && details.length >= 2) || (state && state.length >= 2);
-
-        // Nothing configured — clear presence and return
-        if (!hasRpc) {
-            try {
-                client.user.setPresence({ status: 'online', afk: false, activities: [] });
-            } catch (_) {}
-            return;
+        try {
+            client.user.setPresence({
+                status: 'online',
+                afk: false,
+                activities: [rpc],
+            });
+        } catch (e) {
+            console.error(`[RPC] Failed to set activity for ${client.user?.tag}:`, e);
         }
+    };
 
-        // Map string type → numeric ActivityType (discord.js-selfbot-v13 requirement)
-        const typeMap: Record<string, number> = {
-            PLAYING: 0,
-            STREAMING: 1,
-            LISTENING: 2,
-            WATCHING: 3,
-            COMPETING: 5,
-        };
-        const rpcTypeStr = (config.rpcType?.toUpperCase() || "PLAYING");
-        const rpcTypeNum = typeMap[rpcTypeStr] ?? 0;
+    applyPresence();
 
-        const rpc: any = {
-            name: appName || "discord",
-            type: rpcTypeNum,
-        };
-
-        // url is required for STREAMING type
-        if (rpcTypeNum === 1) {
-            rpc.url = "https://www.twitch.tv/discord";
-        }
-
-        // Discord requires details/state to be at least 2 chars
-        if (details && details.length >= 2) rpc.details = details;
-        if (state && state.length >= 2) rpc.state = state;
-
-        if (config.rpcStartTimestamp || config.rpcEndTimestamp) {
-            rpc.timestamps = {};
-            if (config.rpcStartTimestamp && config.rpcStartTimestamp !== "0" && config.rpcStartTimestamp !== "") {
-                rpc.timestamps.start = Number(config.rpcStartTimestamp);
-            }
-            if (config.rpcEndTimestamp && config.rpcEndTimestamp !== "0" && config.rpcEndTimestamp !== "") {
-                rpc.timestamps.end = Number(config.rpcEndTimestamp);
-            }
-        }
-
-        if (config.rpcImage) {
-            rpc.assets = {
-                large_image: config.rpcImage,
-                large_text: details || undefined,
-            };
-        }
-
-        console.log(`[RPC] Applying for ${client.user.tag}:`, JSON.stringify(rpc));
-
-        const applyPresence = () => {
-            if (!client.user) return;
-            try {
-                client.user.setPresence({
-                    status: 'online',
-                    afk: false,
-                    activities: [rpc],
-                });
-            } catch (e) {
-                console.error(`[RPC] Failed to set activity for ${client.user?.tag}:`, e);
-            }
-        };
-
-        applyPresence();
-
-        // Refresh every 30s to keep presence alive (Discord clears it after inactivity)
-        const interval = setInterval(applyPresence, 30000);
-        rpcIntervals.set(config.id, interval);
-    }
+    const interval = setInterval(applyPresence, 30000);
+    rpcIntervals.set(config.id, interval);
+  }
 
   static async stopBot(id: number) {
     this.clearRpcInterval(id);
@@ -1762,7 +1154,6 @@ export class BotManager {
     const isCurrentlyRunning = activeClients.has(id);
     const wantsRunning = updates.isRunning;
 
-    // Handle isRunning toggle: start or stop the bot as needed
     if (wantsRunning === true && !isCurrentlyRunning) {
       console.log(`[manager] Starting bot ${id} due to isRunning=true`);
       this.startBot(updated).catch(e => console.error(`[manager] Failed to start bot ${id}:`, e));
@@ -1770,7 +1161,6 @@ export class BotManager {
       console.log(`[manager] Stopping bot ${id} due to isRunning=false`);
       this.stopBot(id).catch(e => console.error(`[manager] Failed to stop bot ${id}:`, e));
     } else {
-      // No start/stop needed — just re-apply RPC if running
       const client = activeClients.get(id);
       if (client) {
         console.log(`[manager] Config updated for bot ${id}, re-applying RPC...`);
