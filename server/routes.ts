@@ -37,6 +37,9 @@ function loadOrCreateSecret(): string {
   }
 }
 const SESSION_SECRET = loadOrCreateSecret();
+if (!process.env.SESSION_SECRET) {
+  console.warn("[session] WARNING: SESSION_SECRET env var not set. Sessions will not survive restarts/redeploys. Set SESSION_SECRET on Railway for production stability.");
+}
 
 declare module "express-session" {
   interface SessionData {

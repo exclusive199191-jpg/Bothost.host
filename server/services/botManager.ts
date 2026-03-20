@@ -435,29 +435,57 @@ export class BotManager {
             const shortNames: Record<string, string> = {
                 'General': 'general', 'Automation': 'auto', 'OSINT': 'osint'
             };
+            const BAR = '═'.repeat(44);
+            const DIM  = '\u001b[1;30m';
+            const CYAN = '\u001b[1;36m';
+            const YEL  = '\u001b[1;33m';
+            const GRN  = '\u001b[1;32m';
+            const WHT  = '\u001b[1;37m';
+            const RST  = '\u001b[0m';
+
+            // No args → overview of all categories
+            if (!args[0]) {
+                let msg = `\`\`\`ansi\n`;
+                msg += `${CYAN}  NETRUNNER_V1  ·  COMMAND OVERVIEW${RST}\n`;
+                msg += `${DIM}${BAR}${RST}\n`;
+                categories.forEach((cat, i) => {
+                    const count = COMMANDS_LIST.filter(c => c.cat === cat).length;
+                    const sn = shortNames[cat];
+                    msg += `${YEL}  [${i + 1}] ${cat.padEnd(13)}${RST}${DIM}· ${count} commands   ${WHT}${prefix}help ${sn}${RST}\n`;
+                });
+                msg += `${DIM}${BAR}${RST}\n`;
+                msg += `${DIM}Tip: ${RST}${WHT}${prefix}help <name or number> ${RST}${DIM}to view a category${RST}\n`;
+                msg += `\`\`\``;
+                return message.edit(msg).catch(() => {});
+            }
+
             let page = parseInt(args[0]);
             if (isNaN(page)) {
-                const input = (args[0] || '').toLowerCase();
+                const input = args[0].toLowerCase();
                 const idx = categories.findIndex(c => shortNames[c] === input || c.toLowerCase().startsWith(input));
                 page = idx >= 0 ? idx + 1 : 1;
             }
             page = Math.max(1, Math.min(page, categories.length));
             const totalPages = categories.length;
             const targetCat = categories[page - 1];
+            const cmds = COMMANDS_LIST.filter(c => c.cat === targetCat);
 
-            let helpMsg = `\`\`\`ansi\n\u001b[1;36mNETRUNNER_V1 | ${targetCat.toUpperCase()} [${page}/${totalPages}]\u001b[0m\n`;
-            helpMsg += `\u001b[1;30m------------------------------------\u001b[0m\n`;
-
-            COMMANDS_LIST.filter(c => c.cat === targetCat).forEach(cmd => {
-                helpMsg += `\u001b[1;33m${prefix}${cmd.name}\u001b[0m - ${cmd.desc}\n`;
+            let helpMsg = `\`\`\`ansi\n`;
+            helpMsg += `${CYAN}  NETRUNNER_V1  ·  ${targetCat.toUpperCase()}  [${page}/${totalPages}]${RST}\n`;
+            helpMsg += `${DIM}${BAR}${RST}\n`;
+            cmds.forEach(cmd => {
+                helpMsg += `${YEL}  ${prefix}${cmd.name}${RST}\n`;
+                helpMsg += `${DIM}    › ${RST}${cmd.desc}\n`;
             });
-
-            helpMsg += `\n\u001b[1;30m${prefix}help\u001b[0m`;
+            helpMsg += `${DIM}${BAR}${RST}\n`;
+            helpMsg += `${DIM}Pages:${RST}`;
             categories.forEach((cat, i) => {
                 const sn = shortNames[cat];
-                helpMsg += ` \u001b[1;${i + 1 === page ? '32' : '37'}m${sn}(${i + 1})\u001b[0m`;
+                const active = i + 1 === page;
+                helpMsg += `  ${active ? GRN : DIM}${sn}(${i + 1})${RST}`;
             });
-            helpMsg += `\n\`\`\``;
+            helpMsg += `   ${DIM}${prefix}help${RST}${DIM} for overview${RST}\n`;
+            helpMsg += `\`\`\``;
             return message.edit(helpMsg).catch(() => {});
         }
 
