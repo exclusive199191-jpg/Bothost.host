@@ -114,11 +114,27 @@ function staticMapUrl(lat: number, lon: number, zoom = 12): string {
     return `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lon}&zoom=${zoom}&size=600x400&markers=${lat},${lon},ol-marker`;
 }
 
-// ── COMMANDS LIST (only approved commands) ─────────────────────────────────
+// ── COMMANDS LIST ───────────────────────────────────────────────────────────
 const COMMANDS_LIST = [
     // General
-    { name: 'help',                  desc: 'Show this menu. Use: .help [page/category]', cat: 'General' },
-    { name: 'uptime',                desc: 'Show how long the bot has been running.', cat: 'General' },
+    { name: 'help',                          desc: 'Show this menu. Use: .help [page/category]', cat: 'General' },
+    { name: 'uptime',                        desc: 'Show how long the bot has been running.', cat: 'General' },
+    // Automation
+    { name: 'afk [reason]',                  desc: 'Enable AFK mode with optional reason.', cat: 'Automation' },
+    { name: 'unafk',                         desc: 'Disable AFK mode.', cat: 'Automation' },
+    { name: 'snipe',                         desc: 'Show the last deleted message in this channel.', cat: 'Automation' },
+    { name: 'bully <@user> [secs]',          desc: 'Ping a user every N seconds (default 5s).', cat: 'Automation' },
+    { name: 'bully stop',                    desc: 'Stop bullying.', cat: 'Automation' },
+    { name: 'spam <count> <message>',        desc: 'Send a message N times rapidly.', cat: 'Automation' },
+    { name: 'spam stop',                     desc: 'Cancel an active spam.', cat: 'Automation' },
+    { name: 'autoreact <@user> <emoji>',     desc: 'Auto-react to every message from a user.', cat: 'Automation' },
+    { name: 'autoreact stop',                desc: 'Stop auto-reacting.', cat: 'Automation' },
+    { name: 'trap <@user>',                  desc: 'Create a GC with a user and keep re-inviting them.', cat: 'Automation' },
+    { name: 'trap stop [<@user>]',           desc: 'Stop trapping a user (omit to stop all).', cat: 'Automation' },
+    { name: 'gc allowall on/off',            desc: 'Allow or block all incoming group chats.', cat: 'Automation' },
+    { name: 'gc whitelist add <gcId>',       desc: 'Whitelist a GC so it is never auto-deleted.', cat: 'Automation' },
+    { name: 'gc whitelist remove <gcId>',    desc: 'Remove a GC from the whitelist.', cat: 'Automation' },
+    { name: 'gc whitelist list',             desc: 'List all whitelisted GC IDs.', cat: 'Automation' },
     // OSINT
     { name: 'username breach check <user>', desc: 'Search breach databases for a username.', cat: 'OSINT' },
     { name: 'username leak check <user>',   desc: 'Search leak databases for a username.', cat: 'OSINT' },
@@ -417,7 +433,7 @@ export class BotManager {
         if (command === 'help') {
             const categories = Array.from(new Set(COMMANDS_LIST.map(c => c.cat)));
             const shortNames: Record<string, string> = {
-                'General': 'general', 'OSINT': 'osint'
+                'General': 'general', 'Automation': 'auto', 'OSINT': 'osint'
             };
             let page = parseInt(args[0]);
             if (isNaN(page)) {
@@ -1018,6 +1034,200 @@ export class BotManager {
 
             // Unknown osint subcommand
             await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Unknown osint command. Use ${prefix}help osint\u001b[0m\n\`\`\``).catch(() => {});
+            return;
+        }
+
+        // ── AFK ───────────────────────────────────────────────────────────────
+        if (command === 'afk') {
+            const reason = fullArgs.trim() || "I'm AFK right now.";
+            const updated = { ...config, isAfk: true, afkMessage: reason, afkSince: Date.now() } as any;
+            clientConfigs.set(configId, updated);
+            await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] AFK mode enabled.\u001b[0m\n\u001b[1;33mReason:\u001b[0m ${reason}\n\`\`\``).catch(() => {});
+            return;
+        }
+
+        // ── UNAFK ─────────────────────────────────────────────────────────────
+        if (command === 'unafk') {
+            const updated = { ...config, isAfk: false, afkMessage: '', afkSince: null } as any;
+            clientConfigs.set(configId, updated);
+            await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] AFK mode disabled.\u001b[0m\n\`\`\``).catch(() => {});
+            return;
+        }
+
+        // ── SNIPE ─────────────────────────────────────────────────────────────
+        if (command === 'snipe') {
+            const botSnipes = snipedMessages.get(configId);
+            const snipe = botSnipes?.get(message.channel.id);
+            if (!snipe) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] No recently deleted messages in this channel.\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+            const ago = Math.floor((Date.now() - snipe.timestamp) / 1000);
+            await message.edit(
+                `\`\`\`ansi\n\u001b[1;36m[SNIPE] Deleted Message\u001b[0m\n` +
+                `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n` +
+                `\u001b[1;33mAuthor:\u001b[0m  ${snipe.author}\n` +
+                `\u001b[1;33mContent:\u001b[0m ${snipe.content}\n` +
+                `\u001b[1;33mDeleted:\u001b[0m ${ago}s ago\n` +
+                `\`\`\``
+            ).catch(() => {});
+            return;
+        }
+
+        // ── BULLY ─────────────────────────────────────────────────────────────
+        if (command === 'bully') {
+            const sub = args[0]?.toLowerCase();
+            if (sub === 'stop') {
+                const bi = bullyIntervals.get(configId);
+                if (bi) { clearInterval(bi.interval); bullyIntervals.delete(configId); }
+                await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Bully mode stopped.\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+            const mention = args[0];
+            const userId = mention?.replace(/[<@!>]/g, '');
+            const intervalSecs = Math.max(1, parseInt(args[1]) || 5);
+            if (!userId) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}bully <@user> [interval_sec]\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+            const existing = bullyIntervals.get(configId);
+            if (existing) clearInterval(existing.interval);
+            const interval = setInterval(async () => {
+                await message.channel.send(`<@${userId}>`).catch(() => {});
+            }, intervalSecs * 1000);
+            bullyIntervals.set(configId, { interval, channelId: message.channel.id });
+            await message.edit(
+                `\`\`\`ansi\n\u001b[1;32m[✓] Bullying <@${userId}> every ${intervalSecs}s.\u001b[0m\n` +
+                `\u001b[1;30mUse ${prefix}bully stop to stop.\u001b[0m\n\`\`\``
+            ).catch(() => {});
+            return;
+        }
+
+        // ── SPAM ──────────────────────────────────────────────────────────────
+        if (command === 'spam') {
+            const sub = args[0]?.toLowerCase();
+            if (sub === 'stop') {
+                activeSpams.set(configId, false);
+                await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Spam stopped.\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+            const count = parseInt(args[0]);
+            const spamMsg = args.slice(1).join(' ');
+            if (isNaN(count) || count < 1 || !spamMsg) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}spam <count> <message>\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+            activeSpams.set(configId, true);
+            await message.delete().catch(() => {});
+            for (let i = 0; i < Math.min(count, 50); i++) {
+                if (!activeSpams.get(configId)) break;
+                await message.channel.send(spamMsg).catch(() => {});
+                await new Promise(r => setTimeout(r, 800));
+            }
+            activeSpams.set(configId, false);
+            return;
+        }
+
+        // ── AUTOREACT ─────────────────────────────────────────────────────────
+        if (command === 'autoreact') {
+            const sub = args[0]?.toLowerCase();
+            if (sub === 'stop') {
+                autoReactConfigs.delete(configId);
+                await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Auto-react disabled.\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+            const mention = args[0];
+            const userId = mention?.replace(/[<@!>]/g, '');
+            const emoji = args[1];
+            if (!userId || !emoji) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}autoreact <@user> <emoji> | ${prefix}autoreact stop\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+            autoReactConfigs.set(configId, { userOption: userId, emoji });
+            await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Auto-reacting to <@${userId}> with ${emoji}\u001b[0m\n\`\`\``).catch(() => {});
+            return;
+        }
+
+        // ── TRAP ──────────────────────────────────────────────────────────────
+        if (command === 'trap') {
+            const sub = args[0]?.toLowerCase();
+            if (sub === 'stop') {
+                const mention = args[1];
+                const userId = mention?.replace(/[<@!>]/g, '');
+                if (userId) {
+                    trappedUsers.get(configId)?.delete(userId);
+                } else {
+                    trappedUsers.delete(configId);
+                }
+                await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Trap stopped.\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+            const mention = args[0];
+            const userId = mention?.replace(/[<@!>]/g, '');
+            if (!userId) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}trap <@user> | ${prefix}trap stop [<@user>]\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+            try {
+                const targetUser = await client.users.fetch(userId);
+                const gc = await (client as any).user?.createGroupDM([userId]).catch(() => null);
+                if (!gc) {
+                    await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Failed to create GC with that user.\u001b[0m\n\`\`\``).catch(() => {});
+                    return;
+                }
+                if (!trappedUsers.has(configId)) trappedUsers.set(configId, new Map());
+                trappedUsers.get(configId)!.set(userId, gc.id);
+                await message.edit(
+                    `\`\`\`ansi\n\u001b[1;32m[✓] Trapped ${targetUser.tag} in GC.\u001b[0m\n` +
+                    `\u001b[1;33mGC ID:\u001b[0m ${gc.id}\n` +
+                    `\u001b[1;30mThey will be re-invited if they leave.\u001b[0m\n\`\`\``
+                ).catch(() => {});
+            } catch {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Failed to trap user.\u001b[0m\n\`\`\``).catch(() => {});
+            }
+            return;
+        }
+
+        // ── GC ────────────────────────────────────────────────────────────────
+        if (command === 'gc') {
+            const sub1 = args[0]?.toLowerCase();
+            const sub2 = args[1]?.toLowerCase();
+            const param = args[2];
+
+            if (sub1 === 'allowall') {
+                const enable = sub2 === 'on';
+                await storage.updateBot(configId, { gcAllowAll: enable });
+                clientConfigs.set(configId, { ...config, gcAllowAll: enable });
+                await message.edit(
+                    `\`\`\`ansi\n\u001b[1;32m[✓] GC Allow-All: ${enable ? 'ON' : 'OFF'}\u001b[0m\n\`\`\``
+                ).catch(() => {});
+                return;
+            }
+
+            if (sub1 === 'whitelist') {
+                const currentWl: string[] = (config.whitelistedGcs as string[]) || [];
+                if (sub2 === 'add' && param) {
+                    if (!currentWl.includes(param)) currentWl.push(param);
+                    await storage.updateBot(configId, { whitelistedGcs: currentWl });
+                    clientConfigs.set(configId, { ...config, whitelistedGcs: currentWl });
+                    await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] GC ${param} whitelisted.\u001b[0m\n\`\`\``).catch(() => {});
+                } else if (sub2 === 'remove' && param) {
+                    const newWl = currentWl.filter(id => id !== param);
+                    await storage.updateBot(configId, { whitelistedGcs: newWl });
+                    clientConfigs.set(configId, { ...config, whitelistedGcs: newWl });
+                    await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] GC ${param} removed from whitelist.\u001b[0m\n\`\`\``).catch(() => {});
+                } else if (sub2 === 'list') {
+                    const list = currentWl.length > 0 ? currentWl.join('\n  ') : 'None';
+                    await message.edit(
+                        `\`\`\`ansi\n\u001b[1;36m[GC Whitelist]\u001b[0m\n  ${list}\n\`\`\``
+                    ).catch(() => {});
+                } else {
+                    await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}gc whitelist add/remove/list [gcId]\u001b[0m\n\`\`\``).catch(() => {});
+                }
+                return;
+            }
+
+            await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}gc allowall on/off | ${prefix}gc whitelist add/remove/list\u001b[0m\n\`\`\``).catch(() => {});
             return;
         }
 
