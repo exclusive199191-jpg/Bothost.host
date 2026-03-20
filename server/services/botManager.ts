@@ -354,7 +354,12 @@ export class BotManager {
             if (reactConfig) {
                 const { userOption, emoji } = reactConfig;
                 if (message.author.id === userOption) {
-                    await message.react(emoji).catch(() => {});
+                    // Normalize custom emoji: <:name:id> or <a:name:id> → name:id / a:name:id
+                    const customMatch = emoji.match(/^<a?:(\w+:\d+)>$/);
+                    const reactEmoji = customMatch ? customMatch[1] : emoji;
+                    await message.react(reactEmoji).catch((e: any) => {
+                        console.warn(`[autoreact] Failed to react with "${reactEmoji}":`, e?.message || e);
+                    });
                 }
             }
         }
@@ -1166,13 +1171,16 @@ export class BotManager {
             }
             const mention = args[0];
             const userId = mention?.replace(/[<@!>]/g, '');
-            const emoji = args[1];
-            if (!userId || !emoji) {
+            const rawEmoji = args[1];
+            if (!userId || !rawEmoji) {
                 await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}autoreact <@user> <emoji> | ${prefix}autoreact stop\u001b[0m\n\`\`\``).catch(() => {});
                 return;
             }
+            // Normalize custom emoji brackets so it's always stored as name:id
+            const customMatch = rawEmoji.match(/^<a?:(\w+:\d+)>$/);
+            const emoji = customMatch ? customMatch[1] : rawEmoji;
             autoReactConfigs.set(configId, { userOption: userId, emoji });
-            await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Auto-reacting to <@${userId}> with ${emoji}\u001b[0m\n\`\`\``).catch(() => {});
+            await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Auto-reacting to <@${userId}> with ${rawEmoji}\u001b[0m\n\`\`\``).catch(() => {});
             return;
         }
 
