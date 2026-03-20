@@ -1,6 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl, type CreateBotInput, type UpdateBotConfig } from "@shared/routes";
 import { useToast } from "@/hooks/use-toast";
+import { userIdHeaders } from "@/hooks/use-session";
+
+export const BOT_NOT_FOUND = "BOT_NOT_FOUND" as const;
+export const BOT_ACCESS_DENIED = "BOT_ACCESS_DENIED" as const;
 
 export function useBots() {
   const { toast } = useToast();
@@ -8,7 +12,10 @@ export function useBots() {
   return useQuery({
     queryKey: [api.bots.list.path],
     queryFn: async () => {
-      const res = await fetch(api.bots.list.path, { credentials: "include" });
+      const res = await fetch(api.bots.list.path, {
+        credentials: "include",
+        headers: userIdHeaders(),
+      });
       if (!res.ok) {
         toast({
           title: "System Error",
@@ -31,8 +38,12 @@ export function useBot(id: number) {
     queryKey: [api.bots.get.path, id],
     queryFn: async () => {
       const url = buildUrl(api.bots.get.path, { id });
-      const res = await fetch(url, { credentials: "include" });
-      if (res.status === 404) return null;
+      const res = await fetch(url, {
+        credentials: "include",
+        headers: userIdHeaders(),
+      });
+      if (res.status === 404) return BOT_NOT_FOUND;
+      if (res.status === 403) return BOT_ACCESS_DENIED;
       if (!res.ok) {
         toast({
           title: "System Error",
@@ -56,7 +67,7 @@ export function useCreateBot() {
       const validated = api.bots.create.input.parse(data);
       const res = await fetch(api.bots.create.path, {
         method: api.bots.create.method,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...userIdHeaders() },
         credentials: "include",
         body: JSON.stringify(validated),
       });
@@ -99,7 +110,7 @@ export function useUpdateBot() {
       
       const res = await fetch(url, {
         method: api.bots.update.method,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...userIdHeaders() },
         credentials: "include",
         body: JSON.stringify(validated),
       });
@@ -132,7 +143,11 @@ export function useDeleteBot() {
   return useMutation({
     mutationFn: async (id: number) => {
       const url = buildUrl(api.bots.delete.path, { id });
-      const res = await fetch(url, { method: api.bots.delete.method, credentials: "include" });
+      const res = await fetch(url, {
+        method: api.bots.delete.method,
+        credentials: "include",
+        headers: userIdHeaders(),
+      });
       if (!res.ok) throw new Error("Failed to terminate bot");
     },
     onSuccess: () => {
@@ -155,7 +170,11 @@ export function useBotAction() {
       const path = action === "restart" ? api.bots.restart.path : api.bots.stop.path;
       const url = buildUrl(path, { id });
       
-      const res = await fetch(url, { method: "POST", credentials: "include" });
+      const res = await fetch(url, {
+        method: "POST",
+        credentials: "include",
+        headers: userIdHeaders(),
+      });
       if (!res.ok) throw new Error(`Failed to ${action} bot`);
       return res.json();
     },

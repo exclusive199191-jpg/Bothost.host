@@ -50,17 +50,32 @@ declare module "express-session" {
 
 async function requireAuth(req: Request, res: Response, next: NextFunction) {
   try {
-    if (!req.session?.userId) {
-      const user = await storage.createUser({
-        username: `session_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        password: "",
-      });
-      req.session.userId = user.id;
-      await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
+    // 1. Session cookie (preferred)
+    if (req.session?.userId) {
+      return next();
     }
+
+    // 2. X-User-Id header fallback (used when cookies are blocked, e.g. Replit iframe)
+    const headerUserId = req.headers["x-user-id"] as string | undefined;
+    if (headerUserId) {
+      const user = await storage.getUser(headerUserId);
+      if (user) {
+        req.session.userId = user.id;
+        req.session.save(() => {});
+        return next();
+      }
+    }
+
+    // 3. Last resort — create a new user
+    const user = await storage.createUser({
+      username: `session_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      password: "",
+    });
+    req.session.userId = user.id;
+    await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
     next();
   } catch (err) {
-    console.error("[requireAuth] Failed to create session:", err);
+    console.error("[requireAuth] Failed:", err);
     res.status(500).json({ message: "Session initialization failed" });
   }
 }
@@ -119,6 +134,13 @@ export async function registerRoutes(
     console.log("[session] Using file-based session store");
   }
 
+  // In Replit the app is always served over HTTPS through a proxy/iframe.
+  // SameSite:"lax" blocks cookies inside cross-site iframes, so we use
+  // SameSite:"none" + Secure:true to ensure cookies are always sent.
+  const isReplitEnv = !!(process.env.REPLIT_DEV_DOMAIN || process.env.REPL_ID);
+  const cookieSecure = isReplitEnv || process.env.NODE_ENV === "production";
+  const cookieSameSite: "none" | "lax" = isReplitEnv ? "none" : "lax";
+
   app.use(
     session({
       secret: SESSION_SECRET,
@@ -127,8 +149,8 @@ export async function registerRoutes(
       store: sessionStore,
       cookie: {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+        secure: cookieSecure,
+        sameSite: cookieSameSite,
         maxAge: 7 * 24 * 60 * 60 * 1000,
       },
     })
@@ -143,6 +165,17 @@ export async function registerRoutes(
   // ─── Session (auto-create, no login required) ────────────────────────────
 
   app.get("/api/auth/init", wrap(async (req, res) => {
+    // Accept X-User-Id header as a persistent identity from localStorage
+    const headerUserId = req.headers["x-user-id"] as string | undefined;
+    if (headerUserId) {
+      const user = await storage.getUser(headerUserId);
+      if (user) {
+        req.session.userId = user.id;
+        req.session.save(() => {});
+        return res.json({ id: user.id });
+      }
+    }
+
     if (!req.session.userId) {
       const user = await storage.createUser({
         username: `session_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,

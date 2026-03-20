@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useRoute, Link } from "wouter";
-import { useBot, useUpdateBot, useBotAction } from "@/hooks/use-bots";
+import { useBot, useUpdateBot, useBotAction, BOT_NOT_FOUND, BOT_ACCESS_DENIED } from "@/hooks/use-bots";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertBotConfigSchema } from "@shared/schema";
 import { CyberInput } from "@/components/CyberInput";
-import { Loader2, ArrowLeft, Save, RefreshCw, Activity, Settings2, Terminal, ChevronRight, ChevronDown, Search } from "lucide-react";
+import { Loader2, ArrowLeft, Save, RefreshCw, Activity, Settings2, Terminal, ChevronRight, ChevronDown, Search, Lock } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -213,7 +213,7 @@ export default function BotDetail() {
   });
 
   useEffect(() => {
-    if (bot) {
+    if (bot && bot !== BOT_NOT_FOUND && bot !== BOT_ACCESS_DENIED) {
       form.reset({
         name: bot.name,
         rpcTitle: bot.rpcTitle || "",
@@ -252,9 +252,33 @@ export default function BotDetail() {
     );
   }
 
-  if (!bot) return (
-    <div className="min-h-screen flex items-center justify-center bg-black">
+  if (bot === BOT_ACCESS_DENIED) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-black gap-4 p-6 text-center">
+      <div className="w-16 h-16 rounded-full bg-destructive/10 border border-destructive/30 flex items-center justify-center">
+        <Lock className="w-7 h-7 text-destructive" />
+      </div>
+      <div>
+        <h1 className="font-mono text-lg font-bold text-white mb-1">Access Denied</h1>
+        <p className="text-sm text-muted-foreground font-mono">This instance belongs to another user.</p>
+      </div>
+      <Link href="/">
+        <button className="flex items-center gap-2 h-9 px-4 rounded-lg bg-white/5 border border-white/10 text-sm font-mono text-white hover:bg-white/10 transition-all">
+          <ArrowLeft className="w-4 h-4" />
+          Back to Dashboard
+        </button>
+      </Link>
+    </div>
+  );
+
+  if (!bot || bot === BOT_NOT_FOUND) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-black gap-4 p-6 text-center">
       <p className="text-muted-foreground font-mono">Bot not found</p>
+      <Link href="/">
+        <button className="flex items-center gap-2 h-9 px-4 rounded-lg bg-white/5 border border-white/10 text-sm font-mono text-white hover:bg-white/10 transition-all">
+          <ArrowLeft className="w-4 h-4" />
+          Back to Dashboard
+        </button>
+      </Link>
     </div>
   );
 
