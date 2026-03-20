@@ -81,20 +81,22 @@ export async function registerRoutes(
   await initDb();
 
   // Auto-start all bots that were running before restart
-  setTimeout(async () => {
+  (async () => {
     try {
       const bots = await storage.getAllBots();
       const runnable = bots.filter(b => b.isRunning);
       console.log(`[startup] Auto-starting ${runnable.length} previously-running bots...`);
-      for (const bot of runnable) {
-        BotManager.startBot(bot).catch(e =>
-          console.warn(`[startup] Failed to restart bot ${bot.id}:`, e)
-        );
-      }
+      await Promise.all(
+        runnable.map(bot =>
+          BotManager.startBot(bot).catch(e =>
+            console.warn(`[startup] Failed to restart bot ${bot.id}:`, e)
+          )
+        )
+      );
     } catch (e) {
       console.error("[startup] startAll failed:", e);
     }
-  }, 500);
+  })();
 
   // ── Session store: PostgreSQL (Railway) or file (local dev) ──────────────
   let sessionStore: session.Store;

@@ -184,6 +184,7 @@ export class BotManager {
 
     try {
       let clientOptions: any = {
+        checkUpdate: false,
         ws: {
           properties: {
             browser: "Discord iOS"
