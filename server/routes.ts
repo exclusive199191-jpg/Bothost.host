@@ -137,7 +137,7 @@ export async function registerRoutes(
   // Discord domain verification
   app.get("/.well-known/discord", (_req, res) => {
     res.setHeader("Content-Type", "text/plain");
-    res.send("dh=15c0aab2b7489dac2bd89a507c7a0e5432af1cf3");
+    res.send("dh=ce309c97406995f39079187f6581e3d065039a12");
   });
 
   // ─── Session (auto-create, no login required) ────────────────────────────

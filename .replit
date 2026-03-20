@@ -42,3 +42,6 @@ waitForPort = 5000
 
 [userenv.shared]
 ADMIN_PASSWORD = "i7693pr79Lqd0Dzp"
+
+[agent]
+expertMode = true
