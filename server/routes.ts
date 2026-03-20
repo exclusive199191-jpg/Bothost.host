@@ -156,8 +156,8 @@ export async function registerRoutes(
 
   // ─── Bots ────────────────────────────────────────────────────────────────
 
-  app.get("/api/bots", requireAuth, wrap(async (req, res) => {
-    const bots = await storage.getBotsByUser(req.session.userId!);
+  app.get("/api/bots", wrap(async (req, res) => {
+    const bots = await storage.getAllBots();
     const withStatus = bots.map(b => ({
       ...b,
       isRunning: BotManager.isRunning(b.id),
@@ -206,47 +206,39 @@ export async function registerRoutes(
     return res.status(201).json({ ...fresh, isRunning: BotManager.isRunning(bot.id) });
   }));
 
-  app.get("/api/bots/:id", requireAuth, wrap(async (req, res) => {
+  app.get("/api/bots/:id", wrap(async (req, res) => {
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
-    if (!bot || bot.userId !== req.session.userId) {
-      return res.status(404).json({ message: "Bot not found" });
-    }
+    if (!bot) return res.status(404).json({ message: "Bot not found" });
     return res.json({ ...bot, isRunning: BotManager.isRunning(id) });
   }));
 
-  app.put("/api/bots/:id", requireAuth, wrap(async (req, res) => {
+  app.put("/api/bots/:id", wrap(async (req, res) => {
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
-    if (!bot || bot.userId !== req.session.userId) {
-      return res.status(404).json({ message: "Bot not found" });
-    }
+    if (!bot) return res.status(404).json({ message: "Bot not found" });
     await BotManager.updateBotConfig(id, req.body);
     const updated = await storage.getBot(id);
     return res.json({ ...updated, isRunning: BotManager.isRunning(id) });
   }));
 
-  app.delete("/api/bots/:id", requireAuth, wrap(async (req, res) => {
+  app.delete("/api/bots/:id", wrap(async (req, res) => {
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
-    if (!bot || bot.userId !== req.session.userId) {
-      return res.status(404).json({ message: "Bot not found" });
-    }
+    if (!bot) return res.status(404).json({ message: "Bot not found" });
     await BotManager.stopBot(id);
     await storage.deleteBot(id);
     return res.status(204).send();
   }));
 
-  app.post("/api/bots/:id/restart", requireAuth, wrap(async (req, res) => {
+  app.post("/api/bots/:id/restart", wrap(async (req, res) => {
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
-    if (!bot || bot.userId !== req.session.userId) {
-      return res.status(404).json({ message: "Bot not found" });
-    }
+    if (!bot) return res.status(404).json({ message: "Bot not found" });
     try {
       await BotManager.stopBot(id);
       await BotManager.startBot(bot);
@@ -256,13 +248,11 @@ export async function registerRoutes(
     }
   }));
 
-  app.post("/api/bots/:id/stop", requireAuth, wrap(async (req, res) => {
+  app.post("/api/bots/:id/stop", wrap(async (req, res) => {
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
-    if (!bot || bot.userId !== req.session.userId) {
-      return res.status(404).json({ message: "Bot not found" });
-    }
+    if (!bot) return res.status(404).json({ message: "Bot not found" });
     await BotManager.stopBot(id);
     return res.json({ success: true, message: "Bot stopped" });
   }));
