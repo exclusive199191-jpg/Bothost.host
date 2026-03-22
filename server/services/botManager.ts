@@ -120,6 +120,7 @@ const COMMANDS_LIST = [
     // General
     { name: 'help',                          desc: 'Show this menu. Use: .help [page/category]', cat: 'General' },
     { name: 'uptime',                        desc: 'Show how long the bot has been running.', cat: 'General' },
+    { name: 'ping',                          desc: 'Show bot latency and WebSocket ping.', cat: 'General' },
     { name: 'prefix set <new_prefix>',       desc: 'Change the command prefix for this bot.', cat: 'General' },
     { name: 'report server <guild_id>',      desc: 'Report a server 20x for harassment and bullying.', cat: 'General' },
     // Automation
@@ -552,6 +553,27 @@ export class BotManager {
             const m2 = Math.floor((ms % 3600000) / 60000);
             const s = Math.floor((ms % 60000) / 1000);
             await message.edit(`\`\`\`ansi\n\u001b[1;36mUPTIME\u001b[0m ${d}d ${h}h ${m2}m ${s}s\n\`\`\``).catch(() => {});
+            return;
+        }
+
+        // ── PING ──────────────────────────────────────────────────────────────
+        if (command === 'ping') {
+            const t0 = Date.now();
+            await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Pinging...\u001b[0m\n\`\`\``).catch(() => {});
+            const apiLatency = Date.now() - t0;
+            const wsLatency = Math.round((client as any).ws?.ping ?? -1);
+            const DIM  = '\u001b[1;30m';
+            const CYAN = '\u001b[1;36m';
+            const GRN  = '\u001b[1;32m';
+            const RST  = '\u001b[0m';
+            await message.edit(
+                `\`\`\`ansi\n` +
+                `${CYAN}PING${RST}\n` +
+                `${DIM}${'─'.repeat(28)}${RST}\n` +
+                `${GRN}  API latency  ${RST}${DIM}·${RST} ${apiLatency}ms\n` +
+                `${GRN}  WebSocket    ${RST}${DIM}·${RST} ${wsLatency >= 0 ? wsLatency + 'ms' : 'N/A'}\n` +
+                `\`\`\``
+            ).catch(() => {});
             return;
         }
 
@@ -1352,27 +1374,48 @@ export class BotManager {
 
         // ── PURGE ─────────────────────────────────────────────────────────────
         if (command === 'purge') {
-            const count = Math.min(100, Math.max(1, parseInt(args[0]) || 10));
+            const count = Math.min(1000, Math.max(1, parseInt(args[0]) || 10));
             await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Purging ${count} messages...\u001b[0m\n\`\`\``).catch(() => {});
             try {
-                // Fetch a large batch and filter to messages by this user
-                const fetched = await message.channel.messages.fetch({ limit: 100 }).catch(() => null);
-                if (!fetched) {
-                    await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Failed to fetch messages.\u001b[0m\n\`\`\``).catch(() => {});
-                    return;
+                // Collect enough messages — fetch up to 100 at a time scrolling back
+                let collected: any[] = [];
+                let before: string | undefined;
+                while (collected.length < count) {
+                    const batch: any = await message.channel.messages
+                        .fetch({ limit: 100, ...(before ? { before } : {}) })
+                        .catch(() => null);
+                    if (!batch || batch.size === 0) break;
+                    const mine = [...batch.values()].filter(
+                        (m: any) => m.author.id === client.user?.id
+                    );
+                    collected.push(...mine);
+                    before = [...batch.values()].pop()?.id;
+                    if (batch.size < 100) break;
                 }
-                const ownMessages = [...fetched.values()]
-                    .filter((m: any) => m.author.id === client.user?.id)
-                    .slice(0, count);
+                const toDelete = collected.slice(0, count);
+
+                // Delete in small concurrent batches to maximise speed without
+                // hitting per-route rate limits (Discord allows ~1 delete/s for users)
                 let deleted = 0;
-                for (const m of ownMessages) {
-                    await (m as any).delete().catch(() => {});
-                    deleted++;
-                    await new Promise(r => setTimeout(r, 400));
+                const BATCH = 3;
+                for (let i = 0; i < toDelete.length; i += BATCH) {
+                    const chunk = toDelete.slice(i, i + BATCH);
+                    const results = await Promise.allSettled(
+                        chunk.map((m: any) => m.delete())
+                    );
+                    deleted += results.filter(r => r.status === 'fulfilled').length;
+                    // Respect rate limit: ~300ms between batches of 3 ≈ 10 deletes/s
+                    if (i + BATCH < toDelete.length) {
+                        await new Promise(r => setTimeout(r, 300));
+                    }
                 }
-                await message.channel.send(`\`\`\`ansi\n\u001b[1;32m[✓] Purged ${deleted} message(s).\u001b[0m\n\`\`\``).catch(() => {});
+                await message.channel.send(
+                    `\`\`\`ansi\n\u001b[1;32m[✓] Purged ${deleted} message(s).\u001b[0m\n\`\`\``
+                ).catch(() => {});
             } catch {
-                await message.channel.send(`\`\`\`ansi\n\u001b[1;31m[!] Purge failed.\u001b[0m\n\`\`\``).catch(() => {});
+                await message.channel.send(
+                    `\`\`\`ansi\n\u001b[1;31m[!] Purge failed.\u001b[0m\n\`\`\``
+                ).catch(() => {});
             }
             return;
         }
