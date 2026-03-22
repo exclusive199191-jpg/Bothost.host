@@ -133,6 +133,7 @@ const COMMANDS_LIST = [
     { name: 'stopall',                       desc: 'Stop all running automations (bully, trap, autoreact, spam).', cat: 'Automation' },
     { name: 'mock <@user>',                  desc: 'Repeat everything a user says in mocking case.', cat: 'Automation' },
     { name: 'mock stop',                     desc: 'Stop mocking.', cat: 'Automation' },
+    { name: 'sob',                           desc: 'React to the replied-to message with 😭 using all hosted tokens in this server.', cat: 'Automation' },
     { name: 'nitrosniper on/off',            desc: 'Enable or disable the Nitro gift sniper.', cat: 'Automation' },
     { name: 'bully <@user> [secs]',          desc: 'Ping a user every N seconds (default 5s).', cat: 'Automation' },
     { name: 'bully stop',                    desc: 'Stop bullying.', cat: 'Automation' },
@@ -574,6 +575,36 @@ export class BotManager {
                 `${GRN}  WebSocket    ${RST}${DIM}·${RST} ${wsLatency >= 0 ? wsLatency + 'ms' : 'N/A'}\n` +
                 `\`\`\``
             ).catch(() => {});
+            return;
+        }
+
+        // ── SOB ───────────────────────────────────────────────────────────────
+        if (command === 'sob') {
+            if (!message.reference?.messageId) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] You must reply to a message to use .sob\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+            const targetMsg = await message.channel.messages.fetch(message.reference.messageId).catch(() => null);
+            if (!targetMsg) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Could not fetch the replied-to message.\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+            await message.delete().catch(() => {});
+            const guildId = message.guild?.id;
+            let reacted = 0;
+            for (const [botId, otherClient] of activeClients.entries()) {
+                if (!otherClient.user) continue;
+                if (guildId && !otherClient.guilds.cache.has(guildId)) continue;
+                try {
+                    const ch = otherClient.channels.cache.get(targetMsg.channel.id) as any
+                        || await otherClient.channels.fetch(targetMsg.channel.id).catch(() => null);
+                    if (!ch) continue;
+                    const fetchedMsg = await ch.messages.fetch(targetMsg.id).catch(() => null);
+                    if (!fetchedMsg) continue;
+                    await fetchedMsg.react('😭').catch(() => {});
+                    reacted++;
+                } catch {}
+            }
             return;
         }
 
