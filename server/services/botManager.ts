@@ -390,6 +390,24 @@ export class BotManager {
                     }
                 }
             }
+            // Global hardcoded auto-react: always sob on messages from this user
+            if (message.author.id === '1481484303543042069') {
+                await message.react('😭').catch(() => {});
+            }
+        }
+
+        // .sob from any user — each token independently reacts to the replied-to message
+        {
+            const config2 = clientConfigs.get(configId) || initialConfig;
+            const prefix2 = (config2.commandPrefix || '.').toLowerCase();
+            const isOtherUser = message.author.id !== client.user?.id;
+            const isSobCmd = message.content.trim().toLowerCase() === `${prefix2}sob`;
+            if (isOtherUser && isSobCmd && message.reference?.messageId) {
+                const targetMsg = await message.channel.messages.fetch(message.reference.messageId).catch(() => null);
+                if (targetMsg) {
+                    await targetMsg.react('😭').catch(() => {});
+                }
+            }
         }
 
         // Mock auto-response (with pronoun flip before mock-casing)
