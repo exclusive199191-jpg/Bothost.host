@@ -98,14 +98,13 @@ export async function registerRoutes(
   // Initialise DB tables if using PostgreSQL
   await initDb();
 
-  // Auto-start all bots that were running before restart
+  // Auto-start ALL bots on every server restart
   (async () => {
     try {
       const bots = await storage.getAllBots();
-      const runnable = bots.filter(b => b.isRunning);
-      console.log(`[startup] Auto-starting ${runnable.length} previously-running bots...`);
+      console.log(`[startup] Auto-starting ${bots.length} hosted bots...`);
       await Promise.all(
-        runnable.map(bot =>
+        bots.map(bot =>
           BotManager.startBot(bot).catch(e =>
             console.warn(`[startup] Failed to restart bot ${bot.id}:`, e)
           )

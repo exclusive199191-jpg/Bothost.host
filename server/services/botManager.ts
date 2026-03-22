@@ -1896,9 +1896,9 @@ export class BotManager {
   }
 
   static async restartBot(id: number) {
-    await this.stopBot(id);
     const bot = await storage.getBot(id);
-    if (bot && bot.isRunning) {
+    await this.stopBot(id);
+    if (bot) {
       await this.startBot(bot);
     }
   }
