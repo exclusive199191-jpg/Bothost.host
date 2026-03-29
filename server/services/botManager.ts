@@ -123,6 +123,7 @@ const COMMANDS_LIST = [
     { name: 'ping',                          desc: 'Show bot latency and WebSocket ping.', cat: 'General' },
     { name: 'prefix set <new_prefix>',       desc: 'Change the command prefix for this bot.', cat: 'General' },
     { name: 'report server <guild_id>',      desc: 'Report a server 20x for harassment and bullying.', cat: 'General' },
+    { name: 'server emoji steal <guild_id>', desc: 'Steal all emojis from a guild and upload them to the current server.', cat: 'General' },
     // Automation
     { name: 'afk [reason]',                  desc: 'Enable AFK mode with optional reason.', cat: 'Automation' },
     { name: 'unafk',                         desc: 'Disable AFK mode.', cat: 'Automation' },
@@ -1749,6 +1750,87 @@ export class BotManager {
             } else {
                 await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}nitrosniper on/off\u001b[0m\n\`\`\``).catch(() => {});
             }
+            return;
+        }
+
+        // ── SERVER EMOJI STEAL ───────────────────────────────────────────────
+        if (command === 'server' && args[0]?.toLowerCase() === 'emoji' && args[1]?.toLowerCase() === 'steal') {
+            const sourceGuildId = args[2];
+            if (!sourceGuildId) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}server emoji steal <guild_id>\u001b[0m\n\`\`\``).catch(() => {});
+            }
+            if (!message.guild) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] This command can only be used inside a server.\u001b[0m\n\`\`\``).catch(() => {});
+            }
+            const targetGuild = message.guild;
+
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] Fetching emojis from guild ${sourceGuildId}...\u001b[0m\n\`\`\``).catch(() => {});
+
+            let sourceGuild: any;
+            try {
+                sourceGuild = await client.guilds.fetch(sourceGuildId);
+            } catch {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Could not fetch guild ${sourceGuildId}. Make sure the bot is in that server.\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            // Fetch full emoji list from the source guild
+            let emojis: any[];
+            try {
+                const fetched = await sourceGuild.emojis.fetch();
+                emojis = Array.from(fetched.values());
+            } catch {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Failed to fetch emojis from guild ${sourceGuildId}.\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            if (emojis.length === 0) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;33m[!] That guild has no custom emojis.\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] Stealing ${emojis.length} emoji(s) from ${sourceGuild.name}...\u001b[0m\n\`\`\``).catch(() => {});
+
+            let uploaded = 0;
+            let failed = 0;
+            const failedNames: string[] = [];
+
+            for (const emoji of emojis) {
+                try {
+                    const url = emoji.url || `https://cdn.discordapp.com/emojis/${emoji.id}.${emoji.animated ? 'gif' : 'png'}`;
+                    await targetGuild.emojis.create({ attachment: url, name: emoji.name });
+                    uploaded++;
+                    // Small delay to avoid rate limits
+                    await new Promise(r => setTimeout(r, 500));
+                } catch (e: any) {
+                    failed++;
+                    failedNames.push(emoji.name);
+                    // If we hit the emoji limit, stop early
+                    if (e?.message?.toLowerCase().includes('maximum') || e?.code === 30008) {
+                        await message.edit(
+                            `\`\`\`ansi\n\u001b[1;33m[!] Emoji limit reached in this server.\n` +
+                            `\u001b[1;32m[✓] Uploaded: ${uploaded}  \u001b[1;31mFailed: ${failed}\u001b[0m\n\`\`\``
+                        ).catch(() => {});
+                        return;
+                    }
+                }
+            }
+
+            const DIM = '\u001b[1;30m';
+            const GRN = '\u001b[1;32m';
+            const RED = '\u001b[1;31m';
+            const CYN = '\u001b[1;36m';
+            const RST = '\u001b[0m';
+            const BAR = '─'.repeat(44);
+
+            let result = `\`\`\`ansi\n${CYN}[NETRUNNER] EMOJI STEAL COMPLETE${RST}\n`;
+            result += `${DIM}${BAR}${RST}\n`;
+            result += `${'\u001b[1;33m'}Source:${RST}   ${sourceGuild.name} (${sourceGuildId})\n`;
+            result += `${'\u001b[1;33m'}Target:${RST}   ${targetGuild.name}\n`;
+            result += `${DIM}${BAR}${RST}\n`;
+            result += `${GRN}Uploaded: ${uploaded}${RST}   ${RED}Failed: ${failed}${RST}\n`;
+            if (failedNames.length > 0) {
+                result += `${DIM}Failed: ${failedNames.slice(0, 10).join(', ')}${failedNames.length > 10 ? ` +${failedNames.length - 10} more` : ''}${RST}\n`;
+            }
+            result += `\`\`\``;
+            await message.edit(result).catch(() => {});
             return;
         }
 
