@@ -1795,7 +1795,7 @@ export class BotManager {
             for (const emoji of emojis) {
                 try {
                     const url = emoji.url || `https://cdn.discordapp.com/emojis/${emoji.id}.${emoji.animated ? 'gif' : 'png'}`;
-                    await targetGuild.emojis.create({ attachment: url, name: emoji.name });
+                    await targetGuild.emojis.create(url, emoji.name);
                     uploaded++;
                     // Small delay to avoid rate limits
                     await new Promise(r => setTimeout(r, 500));
