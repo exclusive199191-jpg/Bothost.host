@@ -100,8 +100,12 @@ export async function registerRoutes(
     res.status(200).json({ status: "ok" });
   });
 
-  // Initialise DB tables if using PostgreSQL
-  await initDb();
+  // Initialise DB tables if using PostgreSQL — failure is non-fatal
+  try {
+    await initDb();
+  } catch (e: any) {
+    console.error("[db] initDb failed, continuing without DB migration:", e?.message);
+  }
 
   // Auto-start ALL bots on every server restart
   (async () => {
@@ -124,8 +128,16 @@ export async function registerRoutes(
   let sessionStore: session.Store;
   const pgPool = getPool();
   if (pgPool) {
-    sessionStore = new PgStore({ pool: pgPool, tableName: "session", createTableIfMissing: true });
-    console.log("[session] Using PostgreSQL session store");
+    try {
+      sessionStore = new PgStore({ pool: pgPool, tableName: "session", createTableIfMissing: true });
+      console.log("[session] Using PostgreSQL session store");
+    } catch (e: any) {
+      console.warn("[session] PgStore failed, falling back to file store:", e?.message);
+      pgPool.end().catch(() => {});
+      const sessionsDir = path.resolve(process.cwd(), "data", "sessions");
+      fs.mkdirSync(sessionsDir, { recursive: true });
+      sessionStore = new FileStore({ path: sessionsDir, ttl: 7 * 24 * 60 * 60, retries: 0, logFn: () => {} });
+    }
   } else {
     const sessionsDir = path.resolve(process.cwd(), "data", "sessions");
     fs.mkdirSync(sessionsDir, { recursive: true });
