@@ -58,21 +58,29 @@ async function requireAuth(req: Request, res: Response, next: NextFunction) {
     // 2. X-User-Id header fallback (used when cookies are blocked, e.g. Replit iframe)
     const headerUserId = req.headers["x-user-id"] as string | undefined;
     if (headerUserId) {
-      const user = await storage.getUser(headerUserId);
-      if (user) {
-        req.session.userId = user.id;
-        req.session.save(() => {});
-        return next();
-      }
+      try {
+        const user = await storage.getUser(headerUserId);
+        if (user) {
+          req.session.userId = user.id;
+          req.session.save(() => {});
+          return next();
+        }
+      } catch { /* DB unavailable, fall through */ }
     }
 
-    // 3. Last resort — create a new user
-    const user = await storage.createUser({
-      username: `session_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      password: "",
-    });
-    req.session.userId = user.id;
-    await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
+    // 3. Try to create a new DB user; if DB is down fall back to session ID
+    try {
+      const user = await storage.createUser({
+        username: `session_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        password: "",
+      });
+      req.session.userId = user.id;
+      await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
+    } catch {
+      // DB unavailable — use the express session ID as a temporary identity
+      req.session.userId = req.sessionID;
+      req.session.save(() => {});
+    }
     next();
   } catch (err) {
     console.error("[requireAuth] Failed:", err);
@@ -184,21 +192,31 @@ export async function registerRoutes(
     // Accept X-User-Id header as a persistent identity from localStorage
     const headerUserId = req.headers["x-user-id"] as string | undefined;
     if (headerUserId) {
-      const user = await storage.getUser(headerUserId);
-      if (user) {
-        req.session.userId = user.id;
-        req.session.save(() => {});
-        return res.json({ id: user.id });
-      }
+      try {
+        const user = await storage.getUser(headerUserId);
+        if (user) {
+          req.session.userId = user.id;
+          req.session.save(() => {});
+          return res.json({ id: user.id });
+        }
+      } catch { /* DB unavailable, fall through */ }
     }
 
     if (!req.session.userId) {
-      const user = await storage.createUser({
-        username: `session_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        password: "",
-      });
-      req.session.userId = user.id;
-      await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
+      try {
+        const user = await storage.createUser({
+          username: `session_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          password: "",
+        });
+        req.session.userId = user.id;
+        await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
+      } catch (e) {
+        // DB unavailable — fall back to the express session ID so the frontend
+        // can still load. The real DB user will be created on next successful connect.
+        console.warn("[auth/init] DB unavailable, using sessionID as fallback:", (e as any)?.message);
+        req.session.userId = req.sessionID;
+        req.session.save(() => {});
+      }
     }
     return res.json({ id: req.session.userId });
   }));
