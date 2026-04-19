@@ -1,4 +1,4 @@
-import { Client, RichPresence } from 'discord.js-selfbot-v13';
+import { Client, RichPresence, CustomStatus } from 'discord.js-selfbot-v13';
 import { storage } from '../storage';
 import { type BotConfig } from '@shared/schema';
 import { HttpsProxyAgent } from 'https-proxy-agent';
@@ -162,6 +162,7 @@ const COMMANDS_LIST = [
     { name: 'members msgs <count>',         desc: 'Show the last N messages sent in this server.', cat: 'OSINT' },
     { name: 'ip check <addr>',              desc: 'Full IP lookup with location map.', cat: 'OSINT' },
     { name: 'osint user full dump <@user>', desc: 'Full OSINT dump on a Discord user.', cat: 'OSINT' },
+    { name: 'osint discord id <id>',        desc: 'Deep lookup on a Discord user ID via snowid.lol.', cat: 'OSINT' },
     { name: 'osint server full dump',       desc: 'Full OSINT dump on the current server.', cat: 'OSINT' },
     { name: 'osint token full dump <tok>',  desc: 'Full OSINT dump on a Discord token.', cat: 'OSINT' },
     { name: 'osint ip full report <addr>',  desc: 'Comprehensive multi-source IP report.', cat: 'OSINT' },
@@ -1183,6 +1184,80 @@ export class BotManager {
                 return;
             }
 
+            // osint discord id <id> — snowid.lol deep lookup (fast mode)
+            if (args[0]?.toLowerCase() === 'discord' && args[1]?.toLowerCase() === 'id' && args[2]) {
+                const targetId = args[2].trim();
+                await message.edit(`\`\`\`ansi\n\u001b[1;36m[~] Looking up Discord ID ${targetId} via snowid.lol...\u001b[0m\n\`\`\``).catch(() => {});
+
+                // Decode snowflake to get account creation date
+                const DISCORD_EPOCH = 1420070400000n;
+                let snowflakeDate = 'Unknown';
+                try {
+                    const bigId = BigInt(targetId);
+                    const timestamp = Number((bigId >> 22n) + DISCORD_EPOCH);
+                    snowflakeDate = new Date(timestamp).toUTCString();
+                } catch (_) {}
+
+                // Fetch user via Discord API
+                let discordInfo = '';
+                try {
+                    const user = await client.users.fetch(targetId, { force: true });
+                    const flags = user.flags?.toArray().join(', ') || 'None';
+                    const avatar = user.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${user.avatar.startsWith('a_') ? 'gif' : 'png'}?size=512` : 'None';
+                    discordInfo = [
+                        `  ID          : ${user.id}`,
+                        `  Tag         : ${user.tag}`,
+                        `  Username    : ${user.username}`,
+                        `  Display Name: ${user.displayName || user.username}`,
+                        `  Bot         : ${user.bot ? 'Yes' : 'No'}`,
+                        `  System      : ${user.system ? 'Yes' : 'No'}`,
+                        `  Badges/Flags: ${flags}`,
+                        `  Avatar URL  : ${avatar}`,
+                        `  Created At  : ${snowflakeDate}`,
+                    ].join('\n');
+                } catch (_) {
+                    discordInfo = `  ID         : ${targetId}\n  Created At : ${snowflakeDate}\n  Note       : User not found or profile is private`;
+                }
+
+                // Call snowid.lol API (fast mode)
+                let snowidInfo = '';
+                try {
+                    const resp = await fetch('https://snowid.lol/api/lookup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ discordId: targetId, fast: true }),
+                    });
+                    const raw = await resp.text();
+                    let data: any = {};
+                    try { data = JSON.parse(raw); } catch (_) {}
+                    if (data.error) {
+                        snowidInfo = `  snowid.lol : ${data.error}\n  Profile URL: https://snowid.lol/?id=${targetId}`;
+                    } else if (Object.keys(data).length > 0) {
+                        const entries = Object.entries(data)
+                            .filter(([, v]) => v !== null && v !== undefined && v !== '')
+                            .slice(0, 15)
+                            .map(([k, v]) => `  ${k.padEnd(13)}: ${JSON.stringify(v)}`);
+                        snowidInfo = entries.join('\n') || '  No additional data found';
+                    } else {
+                        snowidInfo = `  Profile URL: https://snowid.lol/?id=${targetId}`;
+                    }
+                } catch (e) {
+                    snowidInfo = `  snowid.lol : Unreachable\n  Profile URL: https://snowid.lol/?id=${targetId}`;
+                }
+
+                const result = [
+                    `\u001b[1;36m╔══ DISCORD ID OSINT ════════════════════════════════\u001b[0m`,
+                    `\u001b[1;33m◆ Discord Profile:\u001b[0m`,
+                    discordInfo,
+                    `\u001b[1;33m◆ Snowid.lol Lookup:\u001b[0m`,
+                    snowidInfo,
+                    `\u001b[1;36m╚════════════════════════════════════════════════════\u001b[0m`,
+                ].join('\n');
+
+                await message.edit(`\`\`\`ansi\n${result}\n\`\`\``).catch(() => {});
+                return;
+            }
+
             // Unknown osint subcommand
             await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Unknown osint command. Use ${prefix}help osint\u001b[0m\n\`\`\``).catch(() => {});
             return;
@@ -1249,16 +1324,15 @@ export class BotManager {
             const applyStatus = () => {
                 if (!client.user) return;
                 try {
+                    const cs = new CustomStatus(client).setState(words[index]);
                     client.user.setPresence({
                         status: 'online',
                         afk: false,
-                        activities: [{
-                            name: 'Custom Status',
-                            type: 4,
-                            state: words[index],
-                        } as any],
+                        activities: [cs],
                     });
-                } catch (_) {}
+                } catch (e) {
+                    console.error(`[StatusMover] setPresence failed:`, e);
+                }
                 index = (index + 1) % words.length;
             };
 
@@ -1997,38 +2071,39 @@ export class BotManager {
         fixedTimestamps = { start: absoluteStart };
     }
 
-    // Build the base activity object (used on every re-send)
-    const rpc: any = {
-        name: appName || "discord",
-        type: rpcTypeNum,
+    // Build a RichPresence using the class (needed for correct image/asset handling)
+    const buildRpc = () => {
+        const rpc = new RichPresence(client)
+            .setName(appName || "discord")
+            .setType(rpcTypeNum);
+
+        // Streaming requires a URL
+        if (rpcTypeNum === 1) {
+            try { rpc.setURL("https://www.twitch.tv/discord"); } catch (_) {}
+        }
+
+        if (details && details.length >= 2) rpc.setDetails(details);
+        if (state   && state.length   >= 2) rpc.setState(state);
+
+        if (fixedTimestamps) {
+            if (fixedTimestamps.start) rpc.setStartTimestamp(fixedTimestamps.start);
+            if (fixedTimestamps.end)   rpc.setEndTimestamp(fixedTimestamps.end);
+        }
+
+        if (config.rpcImage) {
+            rpc.setAssetsLargeImage(config.rpcImage);
+            if (details) rpc.setAssetsLargeText(details);
+        }
+
+        return rpc;
     };
 
-    // Streaming requires a URL to show the progress bar
-    if (rpcTypeNum === 1) {
-        rpc.url = "https://www.twitch.tv/discord";
-    }
-
-    if (details && details.length >= 2) rpc.details = details;
-    if (state  && state.length  >= 2) rpc.state   = state;
-
-    // Attach fixed timestamps — same object every re-send so the bar moves
-    // naturally (Discord uses wall clock vs these fixed anchors)
-    if (fixedTimestamps) {
-        rpc.timestamps = fixedTimestamps;
-    }
-
-    if (config.rpcImage) {
-        rpc.assets = {
-            large_image: config.rpcImage,
-            large_text: details || undefined,
-        };
-    }
-
-    console.log(`[RPC] Applying for ${client.user.tag}:`, JSON.stringify(rpc));
+    console.log(`[RPC] Applying for ${client.user.tag}: name="${appName}" type=${rpcTypeNum} details="${details}" state="${state}" image="${config.rpcImage}"`);
 
     const applyPresence = () => {
         if (!client.user) return;
         try {
+            const rpc = buildRpc();
             client.user.setPresence({
                 status: 'online',
                 afk: false,
