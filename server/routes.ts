@@ -14,8 +14,8 @@ const FileStore = FileStoreFactory(session);
 const PgStore = connectPgSimple(session);
 
 // ── Admin credentials ─────────────────────────────────────────────────────────
-const ADMIN_USERNAME = "peroxide000";
-const ADMIN_PASSWORD = "moneyhungry";
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "peroxide000";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "moneyhungry";
 
 // ── Stable session secret ─────────────────────────────────────────────────────
 const SECRET_FILE = path.resolve(process.cwd(), "data", "session_secret");
