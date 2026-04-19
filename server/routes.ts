@@ -161,6 +161,11 @@ export async function registerRoutes(
     res.send("dh=ce309c97406995f39079187f6581e3d065039a12");
   });
 
+  // ─── Health check (Railway / uptime monitors) ────────────────────────────
+  app.get("/health", (_req, res) => {
+    res.status(200).json({ status: "ok" });
+  });
+
   // ─── Session (auto-create, no login required) ────────────────────────────
 
   app.get("/api/auth/init", wrap(async (req, res) => {
