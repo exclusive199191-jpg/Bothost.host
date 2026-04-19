@@ -1,0 +1,189 @@
+2026-04-19T07:33:20.307463793Z [info] 
+2026-04-19T07:33:21.553782982Z [info] [Region: us-east4]
+2026-04-19T07:33:21.561483334Z [info] ==============
+2026-04-19T07:33:21.561525187Z [info] Using Nixpacks
+2026-04-19T07:33:21.561532300Z [info] ==============
+2026-04-19T07:33:21.561538687Z [info] 
+2026-04-19T07:33:21.561647077Z [info] context: tlhm-dh5_
+2026-04-19T07:33:21.644471990Z [info] ╔═════════════════════ Nixpacks v1.38.0 ═════════════════════╗
+2026-04-19T07:33:21.644507768Z [info] ║ setup      │ nodejs_18, npm-9_x, openssl                   ║
+2026-04-19T07:33:21.644513123Z [info] ║────────────────────────────────────────────────────────────║
+2026-04-19T07:33:21.644517254Z [info] ║ caddy      │ pkgs: caddy                                   ║
+2026-04-19T07:33:21.644523381Z [info] ║            │ cmds: caddy fmt --overwrite /assets/Caddyfile ║
+2026-04-19T07:33:21.644527113Z [info] ║────────────────────────────────────────────────────────────║
+2026-04-19T07:33:21.644530698Z [info] ║ install    │ npm ci                                        ║
+2026-04-19T07:33:21.644534158Z [info] ║────────────────────────────────────────────────────────────║
+2026-04-19T07:33:21.644537898Z [info] ║ build      │ npm run build                                 ║
+2026-04-19T07:33:21.644540974Z [info] ║────────────────────────────────────────────────────────────║
+2026-04-19T07:33:21.644544188Z [info] ║ start      │ npm start                                     ║
+2026-04-19T07:33:21.644547575Z [info] ╚════════════════════════════════════════════════════════════╝
+2026-04-19T07:33:21.840359165Z [info] [internal] load build definition from Dockerfile
+2026-04-19T07:33:21.840409535Z [info] [internal] load build definition from Dockerfile
+2026-04-19T07:33:21.840424799Z [info] [internal] load build definition from Dockerfile
+2026-04-19T07:33:21.858201500Z [info] [internal] load build definition from Dockerfile
+2026-04-19T07:33:21.870812027Z [info] [internal] load metadata for ghcr.io/railwayapp/nixpacks:ubuntu-1745885067
+2026-04-19T07:33:21.944187194Z [info] [internal] load metadata for ghcr.io/railwayapp/nixpacks:ubuntu-1745885067
+2026-04-19T07:33:21.944349070Z [info] [internal] load .dockerignore
+2026-04-19T07:33:21.944691184Z [info] [internal] load .dockerignore
+2026-04-19T07:33:21.944740600Z [info] [internal] load .dockerignore
+2026-04-19T07:33:21.957995247Z [info] [internal] load .dockerignore
+2026-04-19T07:33:21.965522300Z [info] [stage-0 11/15] RUN --mount=type=cache,id=s/717dbe81-2bc9-4b9e-9840-e0550f6e9860-/root/npm,target=/root/.npm npm ci
+2026-04-19T07:33:21.965548110Z [info] [stage-0 10/15] COPY . /app/.
+2026-04-19T07:33:21.965560199Z [info] [stage-0  9/15] RUN  caddy fmt --overwrite /assets/Caddyfile
+2026-04-19T07:33:21.965568183Z [info] [stage-0  8/15] COPY . /app/.
+2026-04-19T07:33:21.965573975Z [info] [stage-0  7/15] COPY .nixpacks/assets /assets/
+2026-04-19T07:33:21.965583066Z [info] [stage-0  1/15] FROM ghcr.io/railwayapp/nixpacks:ubuntu-1745885067@sha256:d45c89d80e13d7ad0fd555b5130f22a866d9dd10e861f589932303ef2314c7de
+2026-04-19T07:33:21.965589760Z [info] [stage-0  5/15] COPY .nixpacks/nixpkgs-ffeebf0acf3ae8b29f8c7049cd911b9636efd7e7.nix .nixpacks/nixpkgs-ffeebf0acf3ae8b29f8c7049cd911b9636efd7e7.nix
+2026-04-19T07:33:21.965596806Z [info] [stage-0  4/15] RUN nix-env -if .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix && nix-collect-garbage -d
+2026-04-19T07:33:21.965611175Z [info] [stage-0  3/15] COPY .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix
+2026-04-19T07:33:21.965617234Z [info] [internal] load build context
+2026-04-19T07:33:21.965625727Z [info] [stage-0  2/15] WORKDIR /app/
+2026-04-19T07:33:21.965631840Z [info] [stage-0 12/15] COPY . /app/.
+2026-04-19T07:33:21.965637376Z [info] [stage-0  6/15] RUN nix-env -if .nixpacks/nixpkgs-ffeebf0acf3ae8b29f8c7049cd911b9636efd7e7.nix && nix-collect-garbage -d
+2026-04-19T07:33:21.965679662Z [info] [stage-0 15/15] COPY . /app
+2026-04-19T07:33:21.965690102Z [info] [stage-0 14/15] RUN printf '\nPATH=/app/node_modules/.bin:$PATH' >> /root/.profile
+2026-04-19T07:33:21.965696275Z [info] [stage-0 13/15] RUN --mount=type=cache,id=s/717dbe81-2bc9-4b9e-9840-e0550f6e9860-node_modules/cache,target=/app/node_modules/.cache npm run build
+2026-04-19T07:33:21.965707892Z [info] [stage-0  1/15] FROM ghcr.io/railwayapp/nixpacks:ubuntu-1745885067@sha256:d45c89d80e13d7ad0fd555b5130f22a866d9dd10e861f589932303ef2314c7de
+2026-04-19T07:33:21.965714183Z [info] [internal] load build context
+2026-04-19T07:33:21.966097006Z [info] [internal] load build context
+2026-04-19T07:33:21.972468600Z [info] [stage-0  1/15] FROM ghcr.io/railwayapp/nixpacks:ubuntu-1745885067@sha256:d45c89d80e13d7ad0fd555b5130f22a866d9dd10e861f589932303ef2314c7de
+2026-04-19T07:33:22.009284658Z [info] [internal] load build context
+2026-04-19T07:33:22.017044799Z [info] [stage-0  2/15] WORKDIR /app/
+2026-04-19T07:33:22.017081820Z [info] [stage-0  3/15] COPY .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix
+2026-04-19T07:33:22.017096112Z [info] [stage-0  4/15] RUN nix-env -if .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix && nix-collect-garbage -d
+2026-04-19T07:33:22.017108019Z [info] [stage-0  5/15] COPY .nixpacks/nixpkgs-ffeebf0acf3ae8b29f8c7049cd911b9636efd7e7.nix .nixpacks/nixpkgs-ffeebf0acf3ae8b29f8c7049cd911b9636efd7e7.nix
+2026-04-19T07:33:22.017114321Z [info] [stage-0  6/15] RUN nix-env -if .nixpacks/nixpkgs-ffeebf0acf3ae8b29f8c7049cd911b9636efd7e7.nix && nix-collect-garbage -d
+2026-04-19T07:33:22.017121767Z [info] [stage-0  7/15] COPY .nixpacks/assets /assets/
+2026-04-19T07:33:22.017137337Z [info] [stage-0  8/15] COPY . /app/.
+2026-04-19T07:33:22.240979295Z [info] [stage-0  8/15] COPY . /app/.
+2026-04-19T07:33:22.243882452Z [info] [stage-0  9/15] RUN  caddy fmt --overwrite /assets/Caddyfile
+2026-04-19T07:33:22.375479370Z [info] [stage-0  9/15] RUN  caddy fmt --overwrite /assets/Caddyfile
+2026-04-19T07:33:22.377209006Z [info] [stage-0 10/15] COPY . /app/.
+2026-04-19T07:33:22.410341995Z [info] [stage-0 10/15] COPY . /app/.
+2026-04-19T07:33:22.412485694Z [info] [stage-0 11/15] RUN --mount=type=cache,id=s/717dbe81-2bc9-4b9e-9840-e0550f6e9860-/root/npm,target=/root/.npm npm ci
+2026-04-19T07:33:22.601333176Z [info] npm warn config production Use `--omit=dev` instead.
+
+2026-04-19T07:33:23.093662961Z [info] npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: '@tailwindcss/oxide@4.2.2',
+npm warn EBADENGINE   required: { node: '>= 20' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+
+2026-04-19T07:33:23.094357507Z [info] npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'discord.js-selfbot-v13@3.7.1',
+npm warn EBADENGINE   required: { node: '>=20.18' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+
+2026-04-19T07:33:23.096355405Z [info] npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'undici@7.24.3',
+npm warn EBADENGINE   required: { node: '>=20.18.1' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+
+2026-04-19T07:33:23.096728833Z [info] npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'vite@7.3.1',
+npm warn EBADENGINE   required: { node: '^20.19.0 || >=22.12.0' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+
+2026-04-19T07:33:25.550309103Z [info] npm warn deprecated @otplib/plugin-thirty-two@12.0.1: Please upgrade to v13 of otplib. Refer to otplib docs for migration paths
+
+2026-04-19T07:33:25.550405490Z [info] npm warn deprecated @otplib/plugin-crypto@12.0.1: Please upgrade to v13 of otplib. Refer to otplib docs for migration paths
+
+2026-04-19T07:33:25.550422006Z [info] npm warn deprecated @otplib/preset-default@12.0.1: Please upgrade to v13 of otplib. Refer to otplib docs for migration paths
+
+2026-04-19T07:33:26.712203367Z [info] npm warn deprecated discord.js-selfbot-v13@3.7.1: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+
+2026-04-19T07:33:28.265957658Z [info] 
+added 564 packages, and audited 565 packages in 6s
+
+
+2026-04-19T07:33:28.266006810Z [info] 86 packages are looking for funding
+  run `npm fund` for details
+
+2026-04-19T07:33:28.295938556Z [info] 
+10 vulnerabilities (1 low, 2 moderate, 7 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+
+2026-04-19T07:33:29.315500306Z [info] [stage-0 11/15] RUN --mount=type=cache,id=s/717dbe81-2bc9-4b9e-9840-e0550f6e9860-/root/npm,target=/root/.npm npm ci
+2026-04-19T07:33:29.318214582Z [info] [stage-0 12/15] COPY . /app/.
+2026-04-19T07:33:29.457919263Z [info] [stage-0 12/15] COPY . /app/.
+2026-04-19T07:33:29.459976188Z [info] [stage-0 13/15] RUN --mount=type=cache,id=s/717dbe81-2bc9-4b9e-9840-e0550f6e9860-node_modules/cache,target=/app/node_modules/.cache npm run build
+2026-04-19T07:33:29.628545464Z [info] npm warn config production Use `--omit=dev` instead.
+
+2026-04-19T07:33:29.645464959Z [info] 
+> rest-express@1.0.0 build
+> tsx script/build.ts
+
+
+2026-04-19T07:33:30.348792231Z [info] building client...
+
+2026-04-19T07:33:30.408439693Z [info] vite v7.3.1 building client environment for production...
+
+2026-04-19T07:33:30.886454167Z [info] transforming...
+
+2026-04-19T07:33:31.688640067Z [info] 
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+
+2026-04-19T07:33:34.597010060Z [info] ✓ 2160 modules transformed.
+
+2026-04-19T07:33:34.927451783Z [info] rendering chunks...
+
+2026-04-19T07:33:34.938589386Z [info] computing gzip size...
+
+2026-04-19T07:33:34.963745934Z [info] ../dist/public/index.html                   3.02 kB │ gzip:   1.03 kB
+../dist/public/assets/index-B15gnd8v.css   86.19 kB │ gzip:  13.77 kB
+../dist/public/assets/index-gr5ZRgM-.js   601.11 kB │ gzip: 184.11 kB
+
+2026-04-19T07:33:34.963788930Z [info] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+2026-04-19T07:33:34.963995885Z [info] ✓ built in 4.37s
+
+2026-04-19T07:33:34.964107935Z [info] building server...
+
+2026-04-19T07:33:35.079594381Z [info] 
+  dist/index.cjs  1.1mb ⚠️
+
+⚡ Done in 106ms
+
+2026-04-19T07:33:35.166023618Z [info] [stage-0 13/15] RUN --mount=type=cache,id=s/717dbe81-2bc9-4b9e-9840-e0550f6e9860-node_modules/cache,target=/app/node_modules/.cache npm run build
+2026-04-19T07:33:35.168045266Z [info] [stage-0 14/15] RUN printf '\nPATH=/app/node_modules/.bin:$PATH' >> /root/.profile
+2026-04-19T07:33:35.397047607Z [info] [stage-0 14/15] RUN printf '\nPATH=/app/node_modules/.bin:$PATH' >> /root/.profile
+2026-04-19T07:33:35.399227508Z [info] [stage-0 15/15] COPY . /app
+2026-04-19T07:33:35.434182253Z [info] [stage-0 15/15] COPY . /app
+2026-04-19T07:33:35.437115175Z [info] exporting to docker image format
+2026-04-19T07:33:35.437139590Z [info] exporting to image
+2026-04-19T07:33:38.534704130Z [info] [auth] sharing credentials for production-us-east4-eqdc4a.railway-registry.com
+2026-04-19T07:33:38.534754811Z [info] [auth] sharing credentials for production-us-east4-eqdc4a.railway-registry.com
+2026-04-19T07:33:40.878897223Z [info] importing to docker
+2026-04-19T07:33:51.871345846Z [info] importing to docker
+2026-04-19T07:33:54.351439172Z [info] exporting to image
+2026-04-19T07:33:55.519138893Z [info] === Successfully Built! ===
+2026-04-19T07:33:55.519182556Z [info] Run:
+2026-04-19T07:33:55.519189620Z [info] docker run -it production-us-east4-eqdc4a.railway-registry.com/717dbe81-2bc9-4b9e-9840-e0550f6e9860:78db3b2a-7294-4d04-bfbe-3934ffda1b41
+2026-04-19T07:33:55.590881580Z [info] Build time: 34.03 seconds
+2026-04-19T07:34:03.200078914Z [info] 
+2026-04-19T07:34:03.200085415Z [info] ====================
+Starting Healthcheck
+====================
+
+2026-04-19T07:34:03.200086117Z [info] Path: /health
+2026-04-19T07:34:03.200086861Z [info] Retry window: 30s
+2026-04-19T07:34:03.200087785Z [info] 
+2026-04-19T07:34:13.305386100Z [info] Attempt #1 failed with service unavailable. Continuing to retry for 19s
+2026-04-19T07:34:24.375945016Z [info] Attempt #2 failed with service unavailable. Continuing to retry for 8s
+2026-04-19T07:34:56.417949533Z [info] 
+2026-04-19T07:34:56.417952314Z [info] 1/1 replicas never became healthy!
+2026-04-19T07:34:56.417953391Z [info] Healthcheck failed!
