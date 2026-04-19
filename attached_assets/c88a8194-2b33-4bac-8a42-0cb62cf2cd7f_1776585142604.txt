@@ -1,0 +1,170 @@
+2026-04-19T07:45:49.631195809Z [info] 
+2026-04-19T07:45:51.121584267Z [info] [Region: us-east4]
+2026-04-19T07:45:51.131097824Z [info] =========================
+2026-04-19T07:45:51.131142046Z [info] Using Detected Dockerfile
+2026-04-19T07:45:51.131146720Z [info] =========================
+2026-04-19T07:45:51.131150282Z [info] 
+2026-04-19T07:45:51.131164756Z [info] context: tlhm-dh5_
+2026-04-19T07:45:51.270588506Z [info] [internal] load build definition from Dockerfile
+2026-04-19T07:45:51.270631816Z [info] [internal] load build definition from Dockerfile
+2026-04-19T07:45:51.270646938Z [info] [internal] load build definition from Dockerfile
+2026-04-19T07:45:51.270659060Z [info] [internal] load build definition from Dockerfile
+2026-04-19T07:45:51.300383947Z [info] [internal] load build definition from Dockerfile
+2026-04-19T07:45:51.304592822Z [info] [internal] load metadata for docker.io/library/node:20-alpine
+2026-04-19T07:45:51.308235658Z [info] [auth] library/node:pull token for registry-1.docker.io
+2026-04-19T07:45:51.308264515Z [info] [auth] library/node:pull token for registry-1.docker.io
+2026-04-19T07:45:51.423333461Z [info] [internal] load metadata for docker.io/library/node:20-alpine
+2026-04-19T07:45:51.423592491Z [info] [internal] load .dockerignore
+2026-04-19T07:45:51.423789587Z [info] [internal] load .dockerignore
+2026-04-19T07:45:51.423829617Z [info] [internal] load .dockerignore
+2026-04-19T07:45:51.444000698Z [info] [internal] load .dockerignore
+2026-04-19T07:45:51.449687840Z [info] [runner 5/5] COPY --from=builder /app/dist ./dist
+2026-04-19T07:45:51.449730647Z [info] [builder 6/6] RUN npm run build
+2026-04-19T07:45:51.449738629Z [info] [builder 5/6] COPY . .
+2026-04-19T07:45:51.449748748Z [info] [builder 4/6] RUN npm ci
+2026-04-19T07:45:51.449756332Z [info] [runner 4/5] RUN npm ci --omit=dev
+2026-04-19T07:45:51.449762496Z [info] [builder 3/6] COPY package*.json ./
+2026-04-19T07:45:51.449768961Z [info] [internal] load build context
+2026-04-19T07:45:51.449774583Z [info] [builder 2/6] WORKDIR /app
+2026-04-19T07:45:51.449782029Z [info] [builder 1/6] FROM docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+2026-04-19T07:45:51.449798531Z [info] [builder 1/6] FROM docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+2026-04-19T07:45:51.449805217Z [info] [internal] load build context
+2026-04-19T07:45:51.455326937Z [info] [builder 1/6] FROM docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+2026-04-19T07:45:51.456143496Z [info] [internal] load build context
+2026-04-19T07:45:51.509318613Z [info] [internal] load build context
+2026-04-19T07:45:51.515462131Z [info] [builder 2/6] WORKDIR /app
+2026-04-19T07:45:51.515517748Z [info] [builder 3/6] COPY package*.json ./
+2026-04-19T07:45:51.600807327Z [info] [builder 3/6] COPY package*.json ./
+2026-04-19T07:45:51.605227689Z [info] [runner 4/5] RUN npm ci --omit=dev
+2026-04-19T07:45:51.605268502Z [info] [builder 4/6] RUN npm ci
+2026-04-19T07:45:55.262197516Z [info] npm warn deprecated @otplib/preset-default@12.0.1: Please upgrade to v13 of otplib. Refer to otplib docs for migration paths
+
+2026-04-19T07:45:55.301834361Z [info] npm warn deprecated @otplib/plugin-crypto@12.0.1: Please upgrade to v13 of otplib. Refer to otplib docs for migration paths
+
+2026-04-19T07:45:55.329750236Z [info] npm warn deprecated @otplib/plugin-thirty-two@12.0.1: Please upgrade to v13 of otplib. Refer to otplib docs for migration paths
+
+2026-04-19T07:45:55.793296384Z [info] npm warn deprecated @otplib/plugin-crypto@12.0.1: Please upgrade to v13 of otplib. Refer to otplib docs for migration paths
+
+2026-04-19T07:45:55.793819532Z [info] npm warn deprecated @otplib/preset-default@12.0.1: Please upgrade to v13 of otplib. Refer to otplib docs for migration paths
+
+2026-04-19T07:45:55.793888688Z [info] npm warn deprecated @otplib/plugin-thirty-two@12.0.1: Please upgrade to v13 of otplib. Refer to otplib docs for migration paths
+
+2026-04-19T07:45:56.581129804Z [info] npm warn deprecated discord.js-selfbot-v13@3.7.1: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+
+2026-04-19T07:45:57.892053395Z [info] npm warn deprecated discord.js-selfbot-v13@3.7.1: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+
+2026-04-19T07:45:58.593745665Z [info] 
+added 472 packages, and audited 473 packages in 7s
+
+71 packages are looking for funding
+  run `npm fund` for details
+
+2026-04-19T07:45:58.610825578Z [info] 
+8 vulnerabilities (1 low, 2 moderate, 5 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+
+2026-04-19T07:45:58.611936180Z [info] npm notice
+npm notice New major version of npm available! 10.8.2 -> 11.12.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.12.1
+npm notice To update run: npm install -g npm@11.12.1
+npm notice
+
+2026-04-19T07:45:58.768650787Z [info] [runner 4/5] RUN npm ci --omit=dev
+2026-04-19T07:46:00.290680792Z [info] 
+added 566 packages, and audited 567 packages in 8s
+
+86 packages are looking for funding
+  run `npm fund` for details
+
+2026-04-19T07:46:00.316932846Z [info] 
+10 vulnerabilities (1 low, 2 moderate, 7 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+
+2026-04-19T07:46:00.318186072Z [info] npm notice
+npm notice New major version of npm available! 10.8.2 -> 11.12.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.12.1
+npm notice To update run: npm install -g npm@11.12.1
+npm notice
+
+2026-04-19T07:46:00.552314410Z [info] [builder 4/6] RUN npm ci
+2026-04-19T07:46:00.555255526Z [info] [builder 5/6] COPY . .
+2026-04-19T07:46:00.731413401Z [info] [builder 5/6] COPY . .
+2026-04-19T07:46:00.733571513Z [info] [builder 6/6] RUN npm run build
+2026-04-19T07:46:00.943549008Z [info] 
+> rest-express@1.0.0 build
+> tsx script/build.ts
+
+
+2026-04-19T07:46:01.730400756Z [info] building client...
+
+2026-04-19T07:46:01.798991285Z [info] vite v7.3.1 building client environment for production...
+
+2026-04-19T07:46:02.399704020Z [info] transforming...
+
+2026-04-19T07:46:03.658218174Z [info] 
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+
+2026-04-19T07:46:06.831668077Z [info] ✓ 2160 modules transformed.
+
+2026-04-19T07:46:07.225677716Z [info] rendering chunks...
+
+2026-04-19T07:46:07.240356141Z [info] computing gzip size...
+
+2026-04-19T07:46:07.267960986Z [info] ../dist/public/index.html                   3.02 kB │ gzip:   1.03 kB
+
+2026-04-19T07:46:07.267993978Z [info] ../dist/public/assets/index-B15gnd8v.css   86.19 kB │ gzip:  13.77 kB
+
+2026-04-19T07:46:07.268018561Z [info] ../dist/public/assets/index-gr5ZRgM-.js   601.11 kB │ gzip: 184.55 kB
+
+2026-04-19T07:46:07.268050110Z [info] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+2026-04-19T07:46:07.268352801Z [info] ✓ built in 5.23s
+
+2026-04-19T07:46:07.268540265Z [info] building server...
+
+2026-04-19T07:46:07.392325332Z [info] 
+  dist/index.cjs  1.1mb ⚠️
+
+⚡ Done in 112ms
+
+2026-04-19T07:46:07.650638453Z [info] [builder 6/6] RUN npm run build
+2026-04-19T07:46:08.020999781Z [info] [runner 5/5] COPY --from=builder /app/dist ./dist
+2026-04-19T07:46:08.223749875Z [info] [runner 5/5] COPY --from=builder /app/dist ./dist
+2026-04-19T07:46:11.579140785Z [info] [auth] sharing credentials for production-us-east4-eqdc4a.railway-registry.com
+2026-04-19T07:46:11.579195850Z [info] [auth] sharing credentials for production-us-east4-eqdc4a.railway-registry.com
+2026-04-19T07:46:12.312187693Z [info] importing to docker
+2026-04-19T07:46:19.065094258Z [info] importing to docker
+2026-04-19T07:46:28.103476405Z [info] Build time: 36.97 seconds
+2026-04-19T07:46:34.712340071Z [info] 
+2026-04-19T07:46:34.712343420Z [info] ====================
+Starting Healthcheck
+====================
+
+2026-04-19T07:46:34.712344133Z [info] Path: /health
+2026-04-19T07:46:34.712344906Z [info] Retry window: 1m0s
+2026-04-19T07:46:34.712345603Z [info] 
+2026-04-19T07:46:44.802161223Z [info] Attempt #1 failed with service unavailable. Continuing to retry for 49s
+2026-04-19T07:46:55.877580968Z [info] Attempt #2 failed with service unavailable. Continuing to retry for 38s
+2026-04-19T07:47:07.949661184Z [info] Attempt #3 failed with service unavailable. Continuing to retry for 26s
+2026-04-19T07:47:22.023106092Z [info] Attempt #4 failed with service unavailable. Continuing to retry for 12s
+2026-04-19T07:48:30.064422650Z [info] 
+2026-04-19T07:48:30.064424504Z [info] 1/1 replicas never became healthy!
+2026-04-19T07:48:30.064425610Z [info] Healthcheck failed!
