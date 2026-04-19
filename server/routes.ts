@@ -14,8 +14,8 @@ const FileStore = FileStoreFactory(session);
 const PgStore = connectPgSimple(session);
 
 // ── Admin credentials ─────────────────────────────────────────────────────────
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "peroxide000";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "moneyhungry";
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "1";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "1";
 
 // ── Stable session secret ─────────────────────────────────────────────────────
 const SECRET_FILE = path.resolve(process.cwd(), "data", "session_secret");
@@ -404,6 +404,38 @@ export async function registerRoutes(
       }
     }
     return res.json({ stopped });
+  }));
+
+  app.post("/api/admin/bots/:id/restart", wrap(async (req, res) => {
+    if (!req.session?.adminAuthed) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
+    const bot = await storage.getBot(id);
+    if (!bot) return res.status(404).json({ message: "Bot not found" });
+    try {
+      await BotManager.stopBot(id);
+      const result = await BotManager.startBot(bot);
+      if (!result.success) {
+        return res.json({ success: false, message: result.error || "Restart failed" });
+      }
+      return res.json({ success: true, message: "Bot restarted" });
+    } catch (err: any) {
+      return res.json({ success: false, message: err?.message || "Restart failed" });
+    }
+  }));
+
+  app.post("/api/admin/bots/:id/stop", wrap(async (req, res) => {
+    if (!req.session?.adminAuthed) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
+    const bot = await storage.getBot(id);
+    if (!bot) return res.status(404).json({ message: "Bot not found" });
+    await BotManager.stopBot(id);
+    return res.json({ success: true, message: "Bot stopped" });
   }));
 
   return httpServer;

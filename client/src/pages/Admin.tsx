@@ -100,8 +100,8 @@ export default function Admin() {
     setLoading(true);
     try {
       const [botsRes, dataRes] = await Promise.all([
-        fetch("/api/admin/bots"),
-        fetch("/api/admin/data"),
+        fetch("/api/admin/bots", { credentials: "include" }),
+        fetch("/api/admin/data", { credentials: "include" }),
       ]);
       if (botsRes.ok) setBots(await botsRes.json());
       if (dataRes.ok) setAdminData(await dataRes.json());
@@ -118,6 +118,7 @@ export default function Admin() {
       const res = await fetch("/api/admin/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ username, password }),
       });
       if (!res.ok) {
@@ -138,7 +139,7 @@ export default function Admin() {
     if (!confirm("Disconnect ALL running bots? This will stop every live account.")) return;
     setActionLoading("disconnect-all");
     try {
-      const res = await fetch("/api/admin/bots/disconnect-all", { method: "POST" });
+      const res = await fetch("/api/admin/bots/disconnect-all", { method: "POST", credentials: "include" });
       const data = await res.json();
       toast({ title: "Disconnected", description: `Stopped ${data.stopped} bot(s).` });
       await fetchAll();
@@ -153,7 +154,7 @@ export default function Admin() {
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
     setActionLoading(`delete-${id}`);
     try {
-      await fetch(`/api/admin/bots/${id}`, { method: "DELETE" });
+      await fetch(`/api/admin/bots/${id}`, { method: "DELETE", credentials: "include" });
       toast({ title: "Deleted", description: `${name} removed.` });
       await fetchAll();
     } catch {
@@ -166,7 +167,7 @@ export default function Admin() {
   const restartBot = async (id: number, name: string) => {
     setActionLoading(`restart-${id}`);
     try {
-      const res = await fetch(`/api/bots/${id}/restart`, { method: "POST" });
+      const res = await fetch(`/api/admin/bots/${id}/restart`, { method: "POST", credentials: "include" });
       const data = await res.json();
       if (data.success) {
         toast({ title: "Restarted", description: `${name} is back online.` });

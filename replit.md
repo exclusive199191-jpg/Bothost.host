@@ -51,14 +51,20 @@ Single table `bot_configs`:
 - `lastSeen` (timestamp)
 
 ### API Endpoints
-- `GET /api/bots` — List all bot configurations
-- `GET /api/bots/:id` — Get single bot config
-- `POST /api/bots` — Create new bot (auto-starts if isRunning)
+- `GET /api/bots` — List all bot configurations (requires user session)
+- `GET /api/bots/:id` — Get single bot config (requires user session)
+- `POST /api/bots` — Create new bot (auto-starts on creation)
 - `PUT /api/bots/:id` — Update bot configuration
 - `DELETE /api/bots/:id` — Delete bot
-- `POST /api/bots/:id/start` — Start a bot instance
 - `POST /api/bots/:id/stop` — Stop a bot instance
 - `POST /api/bots/:id/restart` — Restart a bot instance
+- `POST /api/admin/auth` — Admin login (credentials: "1" / "1" by default, or set ADMIN_USERNAME/ADMIN_PASSWORD env vars)
+- `GET /api/admin/bots` — Admin: list all bots across all users
+- `GET /api/admin/data` — Admin: user and bot statistics
+- `DELETE /api/admin/bots/:id` — Admin: delete any bot
+- `POST /api/admin/bots/:id/restart` — Admin: restart any bot
+- `POST /api/admin/bots/:id/stop` — Admin: stop any bot
+- `POST /api/admin/bots/disconnect-all` — Admin: disconnect all running bots
 
 ## External Dependencies
 
