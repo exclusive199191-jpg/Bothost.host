@@ -21,6 +21,7 @@ const autoReactConfigs = new Map<number, { userOption: string, emojis: string[] 
 const mockTargets = new Map<number, string>(); // botId -> userId to mock
 const activeSpams = new Map<number, boolean>();
 const rpcIntervals = new Map<number, NodeJS.Timeout>();
+const statusMoverIntervals = new Map<number, NodeJS.Timeout>();
 const botStartTimes = new Map<number, number>();
 const afkCache = new Map<number, { active: boolean; reason: string; since: number }>();
 const voiceConnections = new Map<number, any>();
@@ -127,6 +128,8 @@ const COMMANDS_LIST = [
     // Automation
     { name: 'afk [reason]',                  desc: 'Enable AFK mode with optional reason.', cat: 'Automation' },
     { name: 'unafk',                         desc: 'Disable AFK mode.', cat: 'Automation' },
+    { name: 'statusmover {w1,w2,w3}',        desc: 'Cycle through words as your custom status every 2s.', cat: 'Automation' },
+    { name: 'statusmover stop',              desc: 'Stop the status mover.', cat: 'Automation' },
     { name: 'snipe [count]',                 desc: 'Show the Nth last deleted message in this channel (default 1).', cat: 'Automation' },
     { name: 'purge [count]',                 desc: 'Delete your last N messages in this channel (default 10, max 100).', cat: 'Automation' },
     { name: 'closealldms',                   desc: 'Close all open DM channels.', cat: 'Automation' },
@@ -1209,6 +1212,68 @@ export class BotManager {
             return;
         }
 
+        // ── STATUSMOVER ───────────────────────────────────────────────────────
+        if (command === 'statusmover') {
+            const sub = fullArgs.trim().toLowerCase();
+
+            // Stop
+            if (sub === 'stop' || sub === '') {
+                const existing = statusMoverIntervals.get(configId);
+                if (existing) {
+                    clearInterval(existing);
+                    statusMoverIntervals.delete(configId);
+                    // Clear custom status
+                    try { client.user.setPresence({ status: 'online', afk: false, activities: [] }); } catch (_) {}
+                }
+                await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Status mover stopped.\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+
+            // Parse {word1,word2,...} — allow with or without braces
+            const raw = fullArgs.trim().replace(/^\{/, '').replace(/\}$/, '');
+            const words = raw.split(',').map(w => w.trim()).filter(w => w.length > 0);
+
+            if (words.length < 2) {
+                await message.edit(
+                    `\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}statusmover {word1,word2,word3}\u001b[0m\n` +
+                    `\u001b[1;30mProvide at least 2 words separated by commas.\u001b[0m\n\`\`\``
+                ).catch(() => {});
+                return;
+            }
+
+            // Clear any existing mover
+            const old = statusMoverIntervals.get(configId);
+            if (old) clearInterval(old);
+
+            let index = 0;
+            const applyStatus = () => {
+                if (!client.user) return;
+                try {
+                    client.user.setPresence({
+                        status: 'online',
+                        afk: false,
+                        activities: [{
+                            name: 'Custom Status',
+                            type: 4,
+                            state: words[index],
+                        } as any],
+                    });
+                } catch (_) {}
+                index = (index + 1) % words.length;
+            };
+
+            applyStatus();
+            const interval = setInterval(applyStatus, 2000);
+            statusMoverIntervals.set(configId, interval);
+
+            await message.edit(
+                `\`\`\`ansi\n\u001b[1;32m[✓] Status mover started.\u001b[0m\n` +
+                `\u001b[1;33mCycling:\u001b[0m ${words.join(' → ')}\n` +
+                `\u001b[1;30mEvery 2 seconds · Use ${prefix}statusmover stop to cancel\u001b[0m\n\`\`\``
+            ).catch(() => {});
+            return;
+        }
+
         // ── SNIPE ─────────────────────────────────────────────────────────────
         if (command === 'snipe') {
             const requestedIndex = Math.max(1, parseInt(args[0]) || 1) - 1; // 0-based
@@ -1551,9 +1616,16 @@ export class BotManager {
             trappedUsers.delete(configId);
             // Stop mock
             mockTargets.delete(configId);
+            // Stop status mover
+            const smi = statusMoverIntervals.get(configId);
+            if (smi) {
+                clearInterval(smi);
+                statusMoverIntervals.delete(configId);
+                try { client.user.setPresence({ status: 'online', afk: false, activities: [] }); } catch (_) {}
+            }
             await message.edit(
                 `\`\`\`ansi\n\u001b[1;32m[✓] All automations stopped.\u001b[0m\n` +
-                `\u001b[1;30mBully · Spam · AutoReact · Trap · Mock\u001b[0m\n\`\`\``
+                `\u001b[1;30mBully · Spam · AutoReact · Trap · Mock · StatusMover\u001b[0m\n\`\`\``
             ).catch(() => {});
             return;
         }
@@ -1975,6 +2047,8 @@ export class BotManager {
 
   static async stopBot(id: number) {
     this.clearRpcInterval(id);
+    const smi = statusMoverIntervals.get(id);
+    if (smi) { clearInterval(smi); statusMoverIntervals.delete(id); }
     const vcConn = voiceConnections.get(id);
     if (vcConn) {
       try { vcConn.disconnect(); } catch {}
