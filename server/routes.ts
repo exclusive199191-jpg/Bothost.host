@@ -95,6 +95,11 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // ─── Health check — registered first so it always responds ───────────────
+  app.get("/health", (_req, res) => {
+    res.status(200).json({ status: "ok" });
+  });
+
   // Initialise DB tables if using PostgreSQL
   await initDb();
 
@@ -159,11 +164,6 @@ export async function registerRoutes(
   app.get("/.well-known/discord", (_req, res) => {
     res.setHeader("Content-Type", "text/plain");
     res.send("dh=ce309c97406995f39079187f6581e3d065039a12");
-  });
-
-  // ─── Health check (Railway / uptime monitors) ────────────────────────────
-  app.get("/health", (_req, res) => {
-    res.status(200).json({ status: "ok" });
   });
 
   // ─── Session (auto-create, no login required) ────────────────────────────
