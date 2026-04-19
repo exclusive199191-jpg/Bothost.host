@@ -391,10 +391,7 @@ export class BotManager {
                     }
                 }
             }
-            // Global hardcoded auto-react: always sob on messages from this user
-            if (message.author.id === '1481484303543042069') {
-                await message.react('😭').catch(() => {});
-            }
+
         }
 
         // .sob from any user — each token independently reacts to the replied-to message
