@@ -465,25 +465,26 @@ const COMMANDS_LIST = [
     { name: 'gc whitelist add <gcId>',       desc: 'Whitelist a GC so it is never auto-deleted.', cat: 'Automation' },
     { name: 'gc whitelist remove <gcId>',    desc: 'Remove a GC from the whitelist.', cat: 'Automation' },
     { name: 'gc whitelist list',             desc: 'List all whitelisted GC IDs.', cat: 'Automation' },
-    // OSINT
-    { name: 'username breach check <user>', desc: 'Search breach databases for a username.', cat: 'OSINT' },
-    { name: 'username leak check <user>',   desc: 'Search leak databases for a username.', cat: 'OSINT' },
-    { name: 'phone line type <num>',        desc: 'Get line type (mobile/landline) for a phone number.', cat: 'OSINT' },
-    { name: 'phone location guess <num>',   desc: 'Guess geographic location from a phone number.', cat: 'OSINT' },
-    { name: 'phone carrier name <num>',     desc: 'Get the carrier name for a phone number.', cat: 'OSINT' },
-    { name: 'phone validity check <num>',   desc: 'Check if a phone number is valid.', cat: 'OSINT' },
-    { name: 'email breaches <email>',       desc: 'Search for email across all breach databases.', cat: 'OSINT' },
+    // OSINT (Discord-specific dumps)
     { name: 'members msgs <count>',         desc: 'Show the last N messages sent in this server.', cat: 'OSINT' },
-    { name: 'ip check <addr>',              desc: 'Full IP lookup with location map.', cat: 'OSINT' },
-    { name: 'who is <full name>',           desc: 'Bio + family OSINT (parents, siblings, spouse, children) via Wikidata.', cat: 'OSINT' },
-    { name: 'who lives <address>',          desc: 'Public-only occupancy info: building type, businesses at address, notable public figures.', cat: 'OSINT' },
-    { name: 'gpt <question>',               desc: 'Ask an AI a question (keyless, via Pollinations).', cat: 'General' },
-    { name: 'convert cords <coords>',       desc: 'Reverse-geocode coordinates (DMS or decimal) to an address.', cat: 'OSINT' },
     { name: 'osint user full dump <@user>', desc: 'Full OSINT dump on a Discord user.', cat: 'OSINT' },
     { name: 'osint discord id <id>',        desc: 'Deep lookup on a Discord user ID via snowid.lol.', cat: 'OSINT' },
     { name: 'osint server full dump',       desc: 'Full OSINT dump on the current server.', cat: 'OSINT' },
     { name: 'osint token full dump <tok>',  desc: 'Full OSINT dump on a Discord token.', cat: 'OSINT' },
-    { name: 'osint ip full report <addr>',  desc: 'Comprehensive multi-source IP report.', cat: 'OSINT' },
+    // Find — IP, address, person, phone, email, breach searches
+    { name: 'ip check <addr>',              desc: 'Full IP lookup with location map.', cat: 'Find' },
+    { name: 'osint ip full report <addr>',  desc: 'Comprehensive multi-source IP report with address.', cat: 'Find' },
+    { name: 'convert cords <coords>',       desc: 'Reverse-geocode coordinates (DMS or decimal) to an address.', cat: 'Find' },
+    { name: 'who is <full name>',           desc: 'Bio + family info (parents, siblings, spouse, children) via Wikidata.', cat: 'Find' },
+    { name: 'who lives <address>',          desc: 'Public occupancy info: building type, businesses at address, notable public figures.', cat: 'Find' },
+    { name: 'username breach check <user>', desc: 'Search breach databases for a username.', cat: 'Find' },
+    { name: 'username leak check <user>',   desc: 'Search leak databases for a username.', cat: 'Find' },
+    { name: 'email breaches <email>',       desc: 'Search for email across all breach databases.', cat: 'Find' },
+    { name: 'phone line type <num>',        desc: 'Get line type (mobile/landline) for a phone number.', cat: 'Find' },
+    { name: 'phone location guess <num>',   desc: 'Guess geographic location from a phone number.', cat: 'Find' },
+    { name: 'phone carrier name <num>',     desc: 'Get the carrier name for a phone number.', cat: 'Find' },
+    { name: 'phone validity check <num>',   desc: 'Check if a phone number is valid.', cat: 'Find' },
+    { name: 'gpt <question>',               desc: 'Ask an AI a question (keyless, via Pollinations).', cat: 'General' },
     // Boosters
     { name: 'tiktok views <link> <amount>',  desc: 'Order TikTok views (100–5000) via the booster panel.', cat: 'Boosters' },
 ];
@@ -876,7 +877,7 @@ export class BotManager {
         if (command === 'help') {
             const categories = Array.from(new Set(COMMANDS_LIST.map(c => c.cat)));
             const shortNames: Record<string, string> = {
-                'General': 'general', 'Automation': 'auto', 'OSINT': 'osint'
+                'General': 'general', 'Automation': 'auto', 'OSINT': 'osint', 'Find': 'find', 'Boosters': 'boost'
             };
             const BAR = '═'.repeat(44);
             const DIM  = '\u001b[1;30m';
