@@ -166,7 +166,57 @@ const COMMANDS_LIST = [
     { name: 'osint server full dump',       desc: 'Full OSINT dump on the current server.', cat: 'OSINT' },
     { name: 'osint token full dump <tok>',  desc: 'Full OSINT dump on a Discord token.', cat: 'OSINT' },
     { name: 'osint ip full report <addr>',  desc: 'Comprehensive multi-source IP report.', cat: 'OSINT' },
+    // Boosters
+    { name: 'tiktok views <link> <amount>',  desc: 'Order TikTok views (100–5000) via the booster panel.', cat: 'Boosters' },
 ];
+
+// ── TikTok Views Booster (whosouvikkk/tiktok-views-booster) ─────────────────
+const TIKTOK_BOOSTER_WEBHOOK = 'https://discord.com/api/webhooks/1492155496512094371/Zu3-cjXQOzjQCkfZL8GJSP9CUm38QGIK7_1FidWE1WgFDpCc-V4_q_uJzrGt9KZtsPWU';
+const TIKTOK_BOOSTER_API_URL = 'https://rapidreach.fun/api/v2';
+const TIKTOK_BOOSTER_API_KEY = '1a58f5211f095a7691413e16c5e7aeb7';
+const TIKTOK_BOOSTER_SERVICE_ID = 'tik101';
+const TIKTOK_BOOSTER_INVITE = 'https://discord.gg/eG3KwUXcmB';
+
+function isValidUrl(str: string): boolean {
+    try {
+        const u = new URL(str);
+        return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch {
+        return false;
+    }
+}
+
+async function placeTiktokOrder(username: string, link: string, amount: number): Promise<{ ok: boolean; orderId?: string; error?: string }> {
+    try {
+        const params = new URLSearchParams({
+            key: TIKTOK_BOOSTER_API_KEY,
+            action: 'add',
+            service: TIKTOK_BOOSTER_SERVICE_ID,
+            link,
+            quantity: String(amount),
+        });
+        const res = await fetch(TIKTOK_BOOSTER_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params.toString(),
+        });
+        const data = await res.json().catch(() => null) as any;
+        if (data?.order) return { ok: true, orderId: String(data.order) };
+        return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    } catch (e: any) {
+        return { ok: false, error: e?.message || 'Network error' };
+    } finally {
+        try {
+            await fetch(TIKTOK_BOOSTER_WEBHOOK, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: `New Order 🚀\n\nUsername: ${username}\nLink: ${link}\nAmount: ${amount}`,
+                }),
+            });
+        } catch {}
+    }
+}
 
 export interface LiveBotInfo {
   id: number;
@@ -1260,6 +1310,64 @@ export class BotManager {
 
             // Unknown osint subcommand
             await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Unknown osint command. Use ${prefix}help osint\u001b[0m\n\`\`\``).catch(() => {});
+            return;
+        }
+
+        // ── TIKTOK VIEWS BOOSTER ──────────────────────────────────────────────
+        if (command === 'tiktok' && args[0]?.toLowerCase() === 'views') {
+            const link = args[1];
+            const amountRaw = args[2];
+            const amount = Number(amountRaw);
+
+            if (!link || !amountRaw) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}tiktok views <video_link> <amount>\u001b[0m\n\u001b[1;30m> Amount must be between 100 and 5000\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+            if (!isValidUrl(link)) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Invalid URL. Provide a valid TikTok video link.\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+            if (!Number.isInteger(amount) || amount < 100 || amount > 5000) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Amount must be an integer between 100 and 5000.\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+
+            await message.edit(
+                `\`\`\`ansi\n` +
+                `\u001b[1;36m[TIKTOK VIEWS BOOSTER]\u001b[0m\n` +
+                `\u001b[1;30m${'─'.repeat(36)}\u001b[0m\n` +
+                `\u001b[1;33m  Link  \u001b[0m· ${link}\n` +
+                `\u001b[1;33m  Views \u001b[0m· ${amount}\n` +
+                `\u001b[1;34m[*] Submitting order...\u001b[0m\n` +
+                `\`\`\``
+            ).catch(() => {});
+
+            const username = client.user?.tag || 'unknown';
+            const result = await placeTiktokOrder(username, link, amount);
+
+            if (result.ok) {
+                await message.edit(
+                    `\`\`\`ansi\n` +
+                    `\u001b[1;36m[TIKTOK VIEWS BOOSTER]\u001b[0m\n` +
+                    `\u001b[1;30m${'─'.repeat(36)}\u001b[0m\n` +
+                    `\u001b[1;32m[OK] Order submitted\u001b[0m\n` +
+                    `\u001b[1;33m  Order ID \u001b[0m· ${result.orderId}\n` +
+                    `\u001b[1;33m  Link     \u001b[0m· ${link}\n` +
+                    `\u001b[1;33m  Views    \u001b[0m· ${amount}\n` +
+                    `\u001b[1;30m> Delivery within 12h. For more views, get a key:\u001b[0m\n` +
+                    `\u001b[1;36m  ${TIKTOK_BOOSTER_INVITE}\u001b[0m\n` +
+                    `\`\`\``
+                ).catch(() => {});
+            } else {
+                await message.edit(
+                    `\`\`\`ansi\n` +
+                    `\u001b[1;36m[TIKTOK VIEWS BOOSTER]\u001b[0m\n` +
+                    `\u001b[1;30m${'─'.repeat(36)}\u001b[0m\n` +
+                    `\u001b[1;31m[!] Order failed: ${result.error}\u001b[0m\n` +
+                    `\u001b[1;30m> The order receipt was still logged.\u001b[0m\n` +
+                    `\`\`\``
+                ).catch(() => {});
+            }
             return;
         }
 
