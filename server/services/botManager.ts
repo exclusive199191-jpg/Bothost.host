@@ -497,6 +497,7 @@ const COMMANDS_LIST = [
     { name: 'who lives <address>',          desc: 'Public occupancy info: building type, businesses at address, notable public figures.', cat: 'Find' },
     { name: 'edr email <email>',            desc: 'Full email dossier — breaches, social accounts, deliverability via every OSINT source.', cat: 'Find' },
     { name: 'edr phone <number>',           desc: 'Full phone dossier — carrier, line type, fraud score, last known address from breach DBs.', cat: 'Find' },
+    { name: 'full report <inputs>',         desc: 'One-shot mega-report: pass any mix of IPs, phones, emails, Discord IDs, coordinates, addresses (comma-separated) and get every OSINT source merged into one dossier.', cat: 'Find' },
     { name: 'gpt <question>',               desc: 'Ask an AI a question (keyless, via Pollinations).', cat: 'General' },
     // Boosters
     { name: 'tiktok views <link> <amount>',  desc: 'Order TikTok views (100–5000) via the booster panel.', cat: 'Boosters' },
@@ -1430,6 +1431,497 @@ export class BotManager {
                 await send(r);
                 return;
             }
+        }
+
+        // ── FULL REPORT (multi-input mega-dossier) ───────────────────────────
+        if (command === 'full' && args[0]?.toLowerCase() === 'report') {
+            const raw = args.slice(1).join(' ').trim();
+            if (!raw) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}full report <input1>, <input2>, ...\u001b[0m\n  Inputs: any mix of email, phone, IP, Discord ID, coordinates, address\n\`\`\``).catch(() => {});
+            }
+
+            const C = (n: number) => `\u001b[1;${n}m`;
+            const CY = C(36), YE = C(33), GR = C(32), RE = C(31), GY = C(30), WH = C(37), MA = C(35), BL = C(34), RST = '\u001b[0m';
+            const SUB = '─'.repeat(50);
+            const padL = (s: string, n: number) => s + ' '.repeat(Math.max(0, n - s.length));
+            const row  = (k: string, v: string) => `  ${YE}${padL(k + ':', 14)}${RST} ${v}\n`;
+            const head = (t: string) => `${CY}${SUB}${RST}\n${CY}[ ${t} ]${RST}\n`;
+
+            // ── Tokenize and classify ────────────────────────────────────────
+            type Kind = 'email' | 'ip' | 'discord' | 'phone' | 'coords' | 'address';
+            const classifyOne = (v: string): Kind => {
+                const t = v.trim();
+                if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) return 'email';
+                if (/^(\d{1,3}\.){3}\d{1,3}$/.test(t)) return 'ip';
+                if (/^[0-9a-fA-F:]+$/.test(t) && t.includes(':') && t.length >= 3) return 'ip'; // IPv6
+                if (parseCoordinates(t)) return 'coords';
+                const digits = t.replace(/[\s\-()+]/g, '');
+                if (/^\d+$/.test(digits)) {
+                    if (digits.length >= 17 && digits.length <= 20 && !t.startsWith('+')) return 'discord';
+                    if (digits.length >= 7 && digits.length <= 15) return 'phone';
+                    if (digits.length > 15) return 'discord';
+                }
+                return 'address';
+            };
+
+            // Split on commas, then merge logic
+            const rawTokens = raw.split(',').map(s => s.trim()).filter(Boolean);
+
+            // Try to merge adjacent tokens that together form coords (e.g. "40.7128, -74.0060")
+            const tokens: string[] = [];
+            for (let i = 0; i < rawTokens.length; i++) {
+                if (i + 1 < rawTokens.length) {
+                    const merged = `${rawTokens[i]}, ${rawTokens[i + 1]}`;
+                    if (parseCoordinates(merged)) {
+                        tokens.push(merged);
+                        i++;
+                        continue;
+                    }
+                }
+                tokens.push(rawTokens[i]);
+            }
+
+            // Merge adjacent address fragments (consecutive 'address'-classified tokens)
+            const items: { kind: Kind; value: string }[] = [];
+            let pendingAddr: string[] = [];
+            const flushAddr = () => {
+                if (pendingAddr.length) {
+                    items.push({ kind: 'address', value: pendingAddr.join(', ') });
+                    pendingAddr = [];
+                }
+            };
+            for (const tk of tokens) {
+                const k = classifyOne(tk);
+                if (k === 'address') pendingAddr.push(tk);
+                else { flushAddr(); items.push({ kind: k, value: tk }); }
+            }
+            flushAddr();
+
+            if (items.length === 0) {
+                return message.edit(`\`\`\`ansi\n${RE}[!] No valid inputs detected.${RST}\n\`\`\``).catch(() => {});
+            }
+
+            // Status banner
+            const summary = items.map(i => `${i.kind}:${i.value.length > 30 ? i.value.slice(0, 27) + '...' : i.value}`).join(' | ');
+            await message.edit(`\`\`\`ansi\n${BL}[*] FULL REPORT · ${items.length} input(s)${RST}\n${GY}> ${summary}${RST}\n${GY}> Querying every available OSINT source in parallel...${RST}\n\`\`\``).catch(() => {});
+
+            // ── Per-kind builders ────────────────────────────────────────────
+            const buildEmail = async (email: string): Promise<string> => {
+                const [lc, sn, snB, seon] = await Promise.all([
+                    leakcheckQuery(email, 'email'),
+                    snusbaseSearch(email, 'email'),
+                    snusbaseBetaSearch(email, 'email'),
+                    seonEmailCheck(email),
+                ]);
+                const sources = new Set<string>();
+                const passwords = new Set<string>();
+                const usernames = new Set<string>();
+                const names = new Set<string>();
+                const phones = new Set<string>();
+                const ips = new Set<string>();
+                const addrs = new Set<string>();
+                const dobs = new Set<string>();
+                let recs = 0;
+                const eat = (data: any) => {
+                    if (!data?.results) return;
+                    for (const [db, rows] of Object.entries<any>(data.results)) {
+                        sources.add(db);
+                        for (const e of (rows || [])) {
+                            recs++;
+                            if (e.password) passwords.add(e.password);
+                            if (e.username) usernames.add(e.username);
+                            if (e.name) names.add(e.name);
+                            if (e.phone) phones.add(e.phone);
+                            if (e.lastip || e.ip) ips.add(e.lastip || e.ip);
+                            const a = [e.address, e.city, e.state, e.zip || e.zipcode, e.country].filter(Boolean).join(', ');
+                            if (a.length > 4) addrs.add(a);
+                            if (e.dob || e.birthdate) dobs.add(e.dob || e.birthdate);
+                        }
+                    }
+                };
+                eat(sn); eat(snB);
+                if (lc?.success && Array.isArray(lc.result)) {
+                    for (const e of lc.result) {
+                        recs++;
+                        const sn2 = typeof e.source === 'object' ? e.source?.name : e.source;
+                        if (sn2) sources.add(sn2);
+                        if (e.password) passwords.add(e.password);
+                        if (e.username) usernames.add(e.username);
+                        if (e.first_name && e.last_name) names.add(`${e.first_name} ${e.last_name}`);
+                        else if (e.name) names.add(e.name);
+                        if (e.phone) phones.add(e.phone);
+                        const a = [e.address, e.city, e.state, e.zip, e.country].filter(Boolean).join(', ');
+                        if (a.length > 4) addrs.add(a);
+                        if (e.dob) dobs.add(e.dob);
+                    }
+                }
+
+                let r = head(`EMAIL · ${email}`);
+                r += row('Breaches',  `${sources.size}`);
+                r += row('Records',   `${recs}`);
+                if (names.size)     r += row('Name(s)',     Array.from(names).slice(0, 5).join(', '));
+                if (usernames.size) r += row('Username(s)', Array.from(usernames).slice(0, 6).join(', '));
+                if (phones.size)    r += row('Phone(s)',    Array.from(phones).slice(0, 5).join(', '));
+                if (dobs.size)      r += row('DOB',         Array.from(dobs).slice(0, 3).join(', '));
+                if (ips.size)       r += row('IP(s)',       Array.from(ips).slice(0, 4).join(', '));
+                if (addrs.size) {
+                    r += `  ${YE}Addresses:${RST}\n`;
+                    Array.from(addrs).slice(0, 4).forEach(a => r += `    ${MA}•${RST} ${a}\n`);
+                }
+                if (passwords.size) {
+                    r += `  ${YE}Passwords:${RST}\n`;
+                    Array.from(passwords).slice(0, 8).forEach(p => r += `    ${RE}•${RST} ${p}\n`);
+                    if (passwords.size > 8) r += `    ${GY}+${passwords.size - 8} more${RST}\n`;
+                }
+                if (sources.size) {
+                    r += `  ${YE}Sources:${RST} ${Array.from(sources).slice(0, 12).join(', ')}`;
+                    if (sources.size > 12) r += ` ${GY}+${sources.size - 12}${RST}`;
+                    r += `\n`;
+                }
+                if (seon?.data) {
+                    const d = seon.data;
+                    r += `  ${CY}SEON:${RST} `;
+                    const bits: string[] = [];
+                    if (d.deliverable !== undefined) bits.push(`deliverable=${d.deliverable ? 'Y' : 'N'}`);
+                    if (d.fraud_score !== undefined) bits.push(`fraud=${d.fraud_score}`);
+                    if (d.account_details) {
+                        const accs = Object.entries<any>(d.account_details).filter(([, v]) => v?.registered).map(([k]) => k);
+                        if (accs.length) bits.push(`registered=${accs.join('/')}`);
+                    }
+                    r += bits.join(' · ') + '\n';
+                }
+                return r;
+            };
+
+            const buildPhone = async (phoneRaw: string): Promise<string> => {
+                const phoneBare = phoneRaw.replace(/[\s\-()+]/g, '');
+                const phoneE164 = phoneRaw.startsWith('+') ? phoneRaw.replace(/[\s\-()]/g, '') : `+${phoneBare}`;
+                const [veri, seon, snA, snB, sbA, sbB, lc] = await Promise.all([
+                    phoneVerify(phoneE164),
+                    seonPhoneCheck(phoneE164),
+                    snusbaseSearch(phoneBare, 'phone'),
+                    snusbaseSearch(phoneE164, 'phone'),
+                    snusbaseBetaSearch(phoneBare, 'phone'),
+                    snusbaseBetaSearch(phoneE164, 'phone'),
+                    leakcheckQuery(phoneBare, 'phone'),
+                ]);
+                const sources = new Set<string>();
+                const emails = new Set<string>();
+                const passwords = new Set<string>();
+                const usernames = new Set<string>();
+                const names = new Set<string>();
+                const ips = new Set<string>();
+                const addrs = new Set<string>();
+                const dobs = new Set<string>();
+                let recs = 0;
+                const eat = (data: any) => {
+                    if (!data?.results) return;
+                    for (const [db, rows] of Object.entries<any>(data.results)) {
+                        sources.add(db);
+                        for (const e of (rows || [])) {
+                            recs++;
+                            if (e.email) emails.add(e.email);
+                            if (e.password) passwords.add(e.password);
+                            if (e.username) usernames.add(e.username);
+                            if (e.name) names.add(e.name);
+                            if (e.lastip || e.ip) ips.add(e.lastip || e.ip);
+                            const a = [e.address, e.city, e.state, e.zip || e.zipcode, e.country].filter(Boolean).join(', ');
+                            if (a.length > 4) addrs.add(a);
+                            if (e.dob || e.birthdate) dobs.add(e.dob || e.birthdate);
+                        }
+                    }
+                };
+                eat(snA); eat(snB); eat(sbA); eat(sbB);
+                if (lc?.success && Array.isArray(lc.result)) {
+                    for (const e of lc.result) {
+                        recs++;
+                        const sn = typeof e.source === 'object' ? e.source?.name : e.source;
+                        if (sn) sources.add(sn);
+                        if (e.email) emails.add(e.email);
+                        if (e.password) passwords.add(e.password);
+                        if (e.username) usernames.add(e.username);
+                        if (e.first_name && e.last_name) names.add(`${e.first_name} ${e.last_name}`);
+                        else if (e.name) names.add(e.name);
+                        const a = [e.address, e.city, e.state, e.zip, e.country].filter(Boolean).join(', ');
+                        if (a.length > 4) addrs.add(a);
+                        if (e.dob) dobs.add(e.dob);
+                    }
+                }
+                const lastAddr = Array.from(addrs).sort((a, b) => b.length - a.length)[0] || '';
+
+                let r = head(`PHONE · ${phoneE164}`);
+                if (veri?.phone_valid !== undefined) {
+                    const bits: string[] = [];
+                    bits.push(`valid=${veri.phone_valid ? 'Y' : 'N'}`);
+                    if (veri.country) bits.push(veri.country);
+                    if (veri.phone_type) bits.push(veri.phone_type);
+                    if (veri.carrier) bits.push(veri.carrier);
+                    r += row('Veriphone', bits.join(' · '));
+                }
+                if (seon?.data) {
+                    const d = seon.data;
+                    const bits: string[] = [];
+                    if (d.valid !== undefined) bits.push(`valid=${d.valid ? 'Y' : 'N'}`);
+                    if (d.type) bits.push(d.type);
+                    if (d.carrier) bits.push(d.carrier);
+                    if (d.country) bits.push(d.country);
+                    if (d.score !== undefined) bits.push(`score=${d.score}`);
+                    if (d.disposable !== undefined) bits.push(`disposable=${d.disposable ? 'Y' : 'N'}`);
+                    if (bits.length) r += row('SEON', bits.join(' · '));
+                }
+                r += row('Last addr',  lastAddr || `${GY}none${RST}`);
+                r += row('Breaches',   `${sources.size}`);
+                r += row('Records',    `${recs}`);
+                if (names.size)     r += row('Name(s)',    Array.from(names).slice(0, 5).join(', '));
+                if (emails.size)    r += row('Email(s)',   Array.from(emails).slice(0, 6).join(', '));
+                if (usernames.size) r += row('Username(s)', Array.from(usernames).slice(0, 6).join(', '));
+                if (dobs.size)      r += row('DOB',        Array.from(dobs).slice(0, 3).join(', '));
+                if (ips.size)       r += row('IP(s)',      Array.from(ips).slice(0, 4).join(', '));
+                if (addrs.size > 1) {
+                    r += `  ${YE}Other addrs:${RST}\n`;
+                    Array.from(addrs).filter(a => a !== lastAddr).slice(0, 3).forEach(a => r += `    ${MA}•${RST} ${a}\n`);
+                }
+                if (passwords.size) {
+                    r += `  ${YE}Passwords:${RST}\n`;
+                    Array.from(passwords).slice(0, 6).forEach(p => r += `    ${RE}•${RST} ${p}\n`);
+                    if (passwords.size > 6) r += `    ${GY}+${passwords.size - 6} more${RST}\n`;
+                }
+                if (sources.size) {
+                    r += `  ${YE}Sources:${RST} ${Array.from(sources).slice(0, 10).join(', ')}`;
+                    if (sources.size > 10) r += ` ${GY}+${sources.size - 10}${RST}`;
+                    r += `\n`;
+                }
+                return r;
+            };
+
+            const buildIp = async (ip: string): Promise<string> => {
+                const [api, info] = await Promise.all([ipApiLookup(ip), ipInfoLookup(ip)]);
+                const lat = api?.lat ?? (info?.loc ? parseFloat(info.loc.split(',')[0]) : null);
+                const lon = api?.lon ?? (info?.loc ? parseFloat(info.loc.split(',')[1]) : null);
+                let geo: any = null;
+                if (lat != null && lon != null) {
+                    geo = await nominatimReverseAddress(lat, lon).catch(() => null);
+                }
+                let r = head(`IP · ${ip}`);
+                if (api?.status === 'success') {
+                    r += row('Country',  `${api.country}${api.countryCode ? ` (${api.countryCode})` : ''}`);
+                    if (api.regionName) r += row('Region',   api.regionName);
+                    if (api.city)       r += row('City',     api.city);
+                    if (api.zip)        r += row('ZIP',      api.zip);
+                    if (api.lat != null && api.lon != null) r += row('Coords', `${api.lat}, ${api.lon}`);
+                    if (api.timezone)   r += row('Timezone', api.timezone);
+                    if (api.isp)        r += row('ISP',      api.isp);
+                    if (api.org)        r += row('Org',      api.org);
+                    if (api.as)         r += row('ASN',      api.as);
+                    if (api.reverse)    r += row('rDNS',     api.reverse);
+                    const flags: string[] = [];
+                    if (api.mobile)  flags.push(`${YE}mobile${RST}`);
+                    if (api.proxy)   flags.push(`${RE}proxy/VPN${RST}`);
+                    if (api.hosting) flags.push(`${RE}hosting${RST}`);
+                    if (flags.length) r += row('Flags', flags.join(' · '));
+                } else {
+                    r += `  ${RE}ip-api: ${api?.message || 'failed'}${RST}\n`;
+                }
+                if (info && !info.bogon) {
+                    if (info.hostname) r += row('Hostname', info.hostname);
+                    if (info.org && info.org !== api?.org) r += row('IPInfo org', info.org);
+                }
+                if (geo?.address) r += row('Address',  geo.address);
+                if (lat != null && lon != null) r += row('Map',  `https://www.google.com/maps?q=${lat},${lon}`);
+                return r;
+            };
+
+            const buildCoords = async (s: string): Promise<string> => {
+                const c = parseCoordinates(s)!;
+                const geo = await nominatimReverseAddress(c.lat, c.lon).catch(() => null);
+                let r = head(`COORDS · ${c.lat}, ${c.lon}`);
+                if (geo?.address) r += row('Address',  geo.address);
+                if (geo?.road)    r += row('Road',     geo.road);
+                if (geo?.city)    r += row('City',     geo.city);
+                if (geo?.state)   r += row('State',    geo.state);
+                if (geo?.country) r += row('Country',  geo.country);
+                r += row('Map',      `https://www.google.com/maps?q=${c.lat},${c.lon}`);
+                r += row('OSM',      `https://www.openstreetmap.org/?mlat=${c.lat}&mlon=${c.lon}#map=18/${c.lat}/${c.lon}`);
+                return r;
+            };
+
+            const buildAddress = async (addr: string): Promise<string> => {
+                const hit = await nominatimSearch(addr).catch(() => null);
+                let r = head(`ADDRESS · ${addr}`);
+                if (!hit) { r += `  ${GY}— address not found —${RST}\n`; return r; }
+                const lat = parseFloat(hit.lat), lon = parseFloat(hit.lon);
+                r += row('Resolved', hit.display_name || `${lat}, ${lon}`);
+                if (hit.type)  r += row('Type',     `${hit.class || ''}/${hit.type}`);
+                r += row('Coords',   `${lat}, ${lon}`);
+                r += row('Map',      `https://www.google.com/maps?q=${lat},${lon}`);
+                // Nearby Overpass features (best-effort, keep small)
+                try {
+                    const nearby = await overpassNearby(lat, lon, 60);
+                    if (nearby && nearby.length) {
+                        const named = nearby.filter((e: any) => e.tags?.name).slice(0, 5);
+                        if (named.length) {
+                            r += `  ${YE}Nearby:${RST}\n`;
+                            named.forEach((e: any) => r += `    ${MA}•${RST} ${e.tags.name}${e.tags.amenity ? ` (${e.tags.amenity})` : ''}\n`);
+                        }
+                    }
+                } catch (_) {}
+                return r;
+            };
+
+            const buildDiscord = async (id: string): Promise<string> => {
+                // Snowflake decode
+                const DISCORD_EPOCH = 1420070400000n;
+                let createdAt = 'Unknown', ageDays = 0;
+                try {
+                    const big = BigInt(id);
+                    const ts = Number((big >> 22n) + DISCORD_EPOCH);
+                    createdAt = new Date(ts).toUTCString();
+                    ageDays = Math.floor((Date.now() - ts) / (1000 * 60 * 60 * 24));
+                } catch (_) {}
+                let user: any = null;
+                try { user = await client.users.fetch(id, { force: true }); } catch (_) {}
+                // snowid.lol
+                let snowid: any = null;
+                try {
+                    const resp = await fetch('https://snowid.lol/api/lookup', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ discordId: id, fast: true }),
+                    });
+                    try { snowid = JSON.parse(await resp.text()); } catch (_) {}
+                } catch (_) {}
+                // Breach DB queries
+                const terms: string[] = [id];
+                if (user?.username) {
+                    terms.push(user.username);
+                    if (user.discriminator && user.discriminator !== '0') terms.push(`${user.username}#${user.discriminator}`);
+                }
+                const queries: Promise<any>[] = [];
+                for (const t of terms) {
+                    queries.push(snusbaseSearch(t, 'username'));
+                    queries.push(snusbaseBetaSearch(t, 'username'));
+                    queries.push(leakcheckQuery(t, 'username'));
+                }
+                const all = await Promise.all(queries);
+                const sources = new Set<string>();
+                const emails = new Set<string>();
+                const passwords = new Set<string>();
+                const ips = new Set<string>();
+                const aliases = new Set<string>();
+                let recs = 0;
+                for (let i = 0; i < all.length; i++) {
+                    const data = all[i];
+                    const isLc = (i % 3) === 2;
+                    if (isLc) {
+                        if (data?.success && Array.isArray(data.result)) {
+                            for (const e of data.result) {
+                                recs++;
+                                const sn = typeof e.source === 'object' ? e.source?.name : e.source;
+                                if (sn) sources.add(sn);
+                                if (e.email) emails.add(e.email);
+                                if (e.password) passwords.add(e.password);
+                                if (e.username) aliases.add(e.username);
+                            }
+                        }
+                    } else if (data?.results) {
+                        for (const [db, rows] of Object.entries<any>(data.results)) {
+                            sources.add(db);
+                            for (const e of (rows || [])) {
+                                recs++;
+                                if (e.email) emails.add(e.email);
+                                if (e.password) passwords.add(e.password);
+                                if (e.lastip || e.ip) ips.add(e.lastip || e.ip);
+                                if (e.username) aliases.add(e.username);
+                            }
+                        }
+                    }
+                }
+
+                let r = head(`DISCORD · ${id}`);
+                if (user) {
+                    const flags = user.flags?.toArray().join(', ') || 'None';
+                    r += row('Tag',       user.tag);
+                    r += row('Username',  user.username);
+                    r += row('Display',   user.displayName || user.globalName || user.username);
+                    r += row('Bot',       user.bot ? 'Yes' : 'No');
+                    r += row('Badges',    flags);
+                    if (user.avatar) r += row('Avatar', `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${user.avatar.startsWith('a_') ? 'gif' : 'png'}?size=512`);
+                    if (user.banner) r += row('Banner', `https://cdn.discordapp.com/banners/${user.id}/${user.banner}.${user.banner.startsWith('a_') ? 'gif' : 'png'}?size=1024`);
+                } else {
+                    r += `  ${RE}— user could not be fetched —${RST}\n`;
+                }
+                r += row('Created',  createdAt);
+                r += row('Age',      `${ageDays} days`);
+                if (snowid && !snowid.error) {
+                    const entries = Object.entries(snowid).filter(([, v]) => v != null && v !== '' && typeof v !== 'object').slice(0, 6);
+                    if (entries.length) {
+                        r += `  ${YE}snowid.lol:${RST}\n`;
+                        entries.forEach(([k, v]) => r += `    ${MA}•${RST} ${k}: ${v}\n`);
+                    }
+                }
+                r += row('Breaches', `${sources.size}`);
+                r += row('Records',  `${recs}`);
+                if (emails.size)    r += row('Emails',   Array.from(emails).slice(0, 5).join(', '));
+                if (aliases.size)   r += row('Aliases',  Array.from(aliases).slice(0, 5).join(', '));
+                if (ips.size)       r += row('IPs',      Array.from(ips).slice(0, 4).join(', '));
+                if (passwords.size) {
+                    r += `  ${YE}Passwords:${RST}\n`;
+                    Array.from(passwords).slice(0, 6).forEach(p => r += `    ${RE}•${RST} ${p}\n`);
+                }
+                if (sources.size) {
+                    r += `  ${YE}Sources:${RST} ${Array.from(sources).slice(0, 10).join(', ')}\n`;
+                }
+                return r;
+            };
+
+            // ── Run all sections in parallel ─────────────────────────────────
+            const sectionPromises = items.map(item => {
+                switch (item.kind) {
+                    case 'email':   return buildEmail(item.value);
+                    case 'phone':   return buildPhone(item.value);
+                    case 'ip':      return buildIp(item.value);
+                    case 'coords':  return buildCoords(item.value);
+                    case 'address': return buildAddress(item.value);
+                    case 'discord': return buildDiscord(item.value);
+                }
+            });
+            const sections = await Promise.all(sectionPromises);
+
+            // ── Assemble final report ────────────────────────────────────────
+            let out = `\`\`\`ansi\n`;
+            out += `${CY}╔══════════════════════════════════════════════════╗${RST}\n`;
+            out += `${CY}║                FULL OSINT REPORT                 ║${RST}\n`;
+            out += `${CY}╚══════════════════════════════════════════════════╝${RST}\n`;
+            out += `${WH}Inputs:${RST} ${items.length}\n`;
+            items.forEach((i, idx) => {
+                out += `  ${YE}${idx + 1}.${RST} ${GY}[${i.kind}]${RST} ${i.value}\n`;
+            });
+            out += sections.join('');
+            out += `${CY}${SUB}${RST}\n\`\`\``;
+
+            // Send with auto-split (each section in its own message if huge)
+            const sendMulti = async (text: string) => {
+                if (text.length <= 1990) {
+                    return message.edit(text).catch(() => {});
+                }
+                const lines = text.split('\n');
+                let buf = '```ansi\n';
+                let first = true;
+                for (const line of lines) {
+                    if (line === '```ansi' || line === '```') continue;
+                    if ((buf + line + '\n```').length > 1900) {
+                        buf += '```';
+                        if (first) { await message.edit(buf).catch(() => {}); first = false; }
+                        else       { await message.channel.send(buf).catch(() => {}); }
+                        buf = '```ansi\n';
+                    }
+                    buf += line + '\n';
+                }
+                buf += '```';
+                if (first) await message.edit(buf).catch(() => {});
+                else       await message.channel.send(buf).catch(() => {});
+            };
+            await sendMulti(out);
+            return;
         }
 
         // ── MEMBERS MSGS ──────────────────────────────────────────────────────
