@@ -134,6 +134,93 @@ async function nominatimReverse(lat: number, lon: number): Promise<any> {
     }
 }
 
+// Reverse-geocode that always returns a real street address (or nearest road),
+// not a park / lake / building name. Strategy:
+//   1. Query at zoom 18 (building level) to get the most specific result + full address components.
+//   2. If the closest feature isn't an actual address (e.g. it's a park, water, leisure area),
+//      fall back to zoom 17 / 16 to find the nearest road.
+//   3. Compose the address from address components rather than `display_name`,
+//      which often leads with a POI name.
+async function nominatimReverseAddress(lat: number, lon: number): Promise<{
+    houseNumber: string;
+    road: string;
+    city: string;
+    state: string;
+    postcode: string;
+    country: string;
+    countryCode: string;
+    formatted: string;
+    placeName: string;        // POI / building name at the exact spot, if any (for context)
+    placeType: string;        // e.g. "park", "building", "residential"
+    isExactAddress: boolean;  // true if a street + house number was found
+} | null> {
+    const ua = { 'User-Agent': 'NetrunnerBot/1.0 (reverse-geocode)', 'Accept': 'application/json' };
+
+    const fetchAt = async (zoom: number): Promise<any> => {
+        try {
+            const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=${zoom}&addressdetails=1&namedetails=1`;
+            const res = await fetch(url, { headers: ua });
+            if (!res.ok) return null;
+            return await res.json();
+        } catch { return null; }
+    };
+
+    // 1. Closest feature (building / POI / address)
+    const exact = await fetchAt(18);
+    const a1 = exact?.address || {};
+    let road = a1.road || a1.pedestrian || a1.residential || a1.footway || a1.path || a1.cycleway || '';
+    let houseNumber = a1.house_number || '';
+
+    // 2. If we don't have a road yet, walk the zoom levels back to find the nearest street
+    if (!road) {
+        for (const z of [17, 16, 15]) {
+            const r = await fetchAt(z);
+            const ar = r?.address || {};
+            const candidateRoad = ar.road || ar.pedestrian || ar.residential || '';
+            if (candidateRoad) {
+                road = candidateRoad;
+                if (!houseNumber && ar.house_number) houseNumber = ar.house_number;
+                // Also pull other components from this fallback if missing on the exact result
+                for (const k of ['city', 'town', 'village', 'hamlet', 'state', 'postcode', 'country', 'country_code', 'suburb', 'neighbourhood']) {
+                    if (!(a1 as any)[k] && (ar as any)[k]) (a1 as any)[k] = (ar as any)[k];
+                }
+                break;
+            }
+        }
+    }
+
+    const city = a1.city || a1.town || a1.village || a1.hamlet || a1.suburb || a1.neighbourhood || '';
+    const state = a1.state || a1.region || '';
+    const postcode = a1.postcode || '';
+    const country = a1.country || '';
+    const countryCode = (a1.country_code || '').toUpperCase();
+
+    // Compose a real street-style address (don't use display_name, it leads with POI name)
+    const street = [houseNumber, road].filter(Boolean).join(' ');
+    const cityState = [city, state, postcode].filter(Boolean).join(', ').replace(', ,', ',');
+    const formatted = [street, cityState, country].filter(Boolean).join(', ');
+
+    // Identify the POI / place type at the exact coordinates (for context only)
+    const placeName = exact?.name || exact?.namedetails?.name || '';
+    const placeType = exact?.type || exact?.category || '';
+
+    if (!road && !city && !country) return null;
+
+    return {
+        houseNumber,
+        road,
+        city,
+        state,
+        postcode,
+        country,
+        countryCode,
+        formatted: formatted || exact?.display_name || '',
+        placeName,
+        placeType,
+        isExactAddress: Boolean(houseNumber && road),
+    };
+}
+
 // Parse coordinates from decimal ("42.28, -87.95") or DMS ("42°17'07.1\"N 87°57'11.5\"W").
 function parseCoordinates(input: string): { lat: number, lon: number } | null {
     const s = input.trim().replace(/[，;]/g, ',');
