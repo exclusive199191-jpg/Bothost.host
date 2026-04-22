@@ -316,6 +316,7 @@ const COMMANDS_LIST = [
     { name: 'members msgs <count>',         desc: 'Show the last N messages sent in this server.', cat: 'OSINT' },
     { name: 'ip check <addr>',              desc: 'Full IP lookup with location map.', cat: 'OSINT' },
     { name: 'who is <full name>',           desc: 'Bio + family OSINT (parents, siblings, spouse, children) via Wikidata.', cat: 'OSINT' },
+    { name: 'gpt <question>',               desc: 'Ask an AI a question (keyless, via Pollinations).', cat: 'General' },
     { name: 'convert cords <coords>',       desc: 'Reverse-geocode coordinates (DMS or decimal) to an address.', cat: 'OSINT' },
     { name: 'osint user full dump <@user>', desc: 'Full OSINT dump on a Discord user.', cat: 'OSINT' },
     { name: 'osint discord id <id>',        desc: 'Deep lookup on a Discord user ID via snowid.lol.', cat: 'OSINT' },
@@ -1130,6 +1131,69 @@ export class BotManager {
 
             await message.edit(result).catch(() => {});
             await message.channel.send(mapUrl).catch(() => {});
+            return;
+        }
+
+        // ── GPT — keyless AI chat via Pollinations.ai ────────────────────────
+        if (command === 'gpt') {
+            const question = args.join(' ').trim();
+            if (!question) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}gpt <question>\u001b[0m\n\u001b[1;30mExample: ${prefix}gpt who won the 2022 world cup?\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] Asking AI...\u001b[0m\n\u001b[1;30m> ${question.slice(0, 100)}${question.length > 100 ? '...' : ''}\u001b[0m\n\`\`\``).catch(() => {});
+
+            try {
+                const resp = await fetch('https://text.pollinations.ai/openai', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: 'openai',
+                        messages: [
+                            { role: 'system', content: 'You are a helpful, concise assistant. Keep answers under 1500 characters when possible.' },
+                            { role: 'user', content: question },
+                        ],
+                    }),
+                });
+
+                if (!resp.ok) {
+                    return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] AI request failed (${resp.status}).\u001b[0m\n\`\`\``).catch(() => {});
+                }
+
+                let answer = '';
+                const ct = resp.headers.get('content-type') || '';
+                if (ct.includes('application/json')) {
+                    const data: any = await resp.json();
+                    answer = data?.choices?.[0]?.message?.content || data?.response || JSON.stringify(data).slice(0, 1500);
+                } else {
+                    answer = await resp.text();
+                }
+
+                answer = (answer || '').trim();
+                if (!answer) {
+                    return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] AI returned an empty response.\u001b[0m\n\`\`\``).catch(() => {});
+                }
+
+                // Discord message hard limit is 2000 chars. Reserve room for header + code fences.
+                const MAX = 1850;
+                if (answer.length <= MAX) {
+                    await message.edit(`**🤖 GPT** — *${question.slice(0, 80)}${question.length > 80 ? '...' : ''}*\n\`\`\`\n${answer}\n\`\`\``).catch(() => {});
+                } else {
+                    // Split into chunks across multiple messages
+                    const chunks: string[] = [];
+                    let remaining = answer;
+                    while (remaining.length > 0) {
+                        chunks.push(remaining.slice(0, MAX));
+                        remaining = remaining.slice(MAX);
+                    }
+                    await message.edit(`**🤖 GPT** — *${question.slice(0, 80)}${question.length > 80 ? '...' : ''}*\n\`\`\`\n${chunks[0]}\n\`\`\``).catch(() => {});
+                    for (let i = 1; i < chunks.length; i++) {
+                        await message.channel.send(`\`\`\`\n${chunks[i]}\n\`\`\``).catch(() => {});
+                    }
+                }
+            } catch (e: any) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] AI request error: ${e?.message || 'unknown'}\u001b[0m\n\`\`\``).catch(() => {});
+            }
             return;
         }
 
