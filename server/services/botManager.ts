@@ -1365,8 +1365,18 @@ export class BotManager {
                     return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Invalid IP or all lookups failed.\u001b[0m\n\`\`\``).catch(() => {});
                 }
 
-                const mapUrl = staticMapUrl(main.lat, main.lon, 11);
-                const googleMapsUrl = `https://maps.google.com/?q=${main.lat},${main.lon}`;
+                const lat = Number(main.lat);
+                const lon = Number(main.lon);
+                const mapUrl = staticMapUrl(lat, lon, 11);
+                const googleMapsUrl = `https://maps.google.com/?q=${lat},${lon}`;
+
+                // Reverse-geocode coords to a street-level address via OpenStreetMap (public, ToS-compliant)
+                const geo = await nominatimReverse(lat, lon);
+                const ga = geo?.address || {};
+                const streetName = ga.road || ga.pedestrian || ga.footway || ga.path || '—';
+                const houseNum   = ga.house_number || '';
+                const streetLine = houseNum ? `${houseNum} ${streetName}` : streetName;
+                const neighborhood = ga.neighbourhood || ga.suburb || ga.quarter || '—';
 
                 let result = `\`\`\`ansi\n\u001b[1;36m[NETRUNNER] FULL IP REPORT: ${main.query}\u001b[0m\n`;
                 result += `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n`;
@@ -1375,9 +1385,13 @@ export class BotManager {
                 result += `  \u001b[1;33mCountry:\u001b[0m     ${main.country} (${main.countryCode})\n`;
                 result += `  \u001b[1;33mRegion:\u001b[0m      ${main.regionName} (${main.region})\n`;
                 result += `  \u001b[1;33mCity:\u001b[0m        ${main.city}\n`;
-                result += `  \u001b[1;33mPostcode:\u001b[0m    ${main.zip || '—'}\n`;
-                result += `  \u001b[1;33mCoords:\u001b[0m      ${main.lat}, ${main.lon}\n`;
+                result += `  \u001b[1;33mNeighborhood:\u001b[0m ${neighborhood}\n`;
+                result += `  \u001b[1;33mStreet:\u001b[0m      ${streetLine}\n`;
+                result += `  \u001b[1;33mAddress:\u001b[0m     ${geo?.display_name || '—'}\n`;
+                result += `  \u001b[1;33mPostcode:\u001b[0m    ${main.zip || ga.postcode || '—'}\n`;
+                result += `  \u001b[1;33mCoords:\u001b[0m      ${lat}, ${lon}\n`;
                 result += `  \u001b[1;33mTimezone:\u001b[0m    ${main.timezone}\n`;
+                result += `  \u001b[1;30m(approximate — IP geolocation is city/ISP-level, not exact)\u001b[0m\n`;
                 result += `\u001b[1;30m──\u001b[0m\n`;
                 result += `\u001b[1;36m[NETWORK]\u001b[0m\n`;
                 result += `  \u001b[1;33mISP:\u001b[0m         ${main.isp}\n`;
