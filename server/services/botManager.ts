@@ -1177,17 +1177,12 @@ export class BotManager {
             const { lat, lon } = parsed;
             await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] Reverse geocoding ${lat}, ${lon}...\u001b[0m\n\`\`\``).catch(() => {});
 
-            const geo = await nominatimReverse(lat, lon);
-            if (!geo) {
+            const addr = await nominatimReverseAddress(lat, lon);
+            if (!addr) {
                 return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Reverse geocoding failed or no result.\u001b[0m\n\`\`\``).catch(() => {});
             }
 
-            const a = geo.address || {};
-            const street = [a.house_number, a.road].filter(Boolean).join(' ') || '—';
-            const locality = a.city || a.town || a.village || a.hamlet || a.suburb || '—';
-            const region = a.state || a.region || '—';
-            const country = a.country || '—';
-            const postcode = a.postcode || '—';
+            const street = [addr.houseNumber, addr.road].filter(Boolean).join(' ') || (addr.road || '—');
             const mapUrl = staticMapUrl(lat, lon, 14);
             const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lon}`;
             const osmUrl = osmEmbedUrl(lat, lon, 0.02);
@@ -1204,12 +1199,18 @@ export class BotManager {
             result += `\u001b[1;37mCoords:\u001b[0m ${lat}, ${lon}\n`;
             result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
             result += `\u001b[1;36m[ ADDRESS ]\u001b[0m\n`;
-            result += row('Display', geo.display_name || '—');
-            result += row('Street',  street);
-            result += row('City',    locality);
-            result += row('Region',  region);
-            result += row('Postcode', postcode);
-            result += row('Country', country);
+            result += row('Address',  addr.formatted || '—');
+            result += row('Street',   street);
+            result += row('City',     addr.city || '—');
+            result += row('Region',   addr.state || '—');
+            result += row('Postcode', addr.postcode || '—');
+            result += row('Country',  addr.country ? `${addr.country}${addr.countryCode ? ` (${addr.countryCode})` : ''}` : '—');
+            if (!addr.isExactAddress) {
+                result += `  \u001b[1;30m(no exact street number at these coords — showing nearest road)\u001b[0m\n`;
+            }
+            if (addr.placeName && addr.placeName !== addr.road) {
+                result += row('Nearby',  `${addr.placeName}${addr.placeType ? ` (${addr.placeType})` : ''}`);
+            }
             result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
             result += `\u001b[1;36m[ MAP ]\u001b[0m\n`;
             result += `  \u001b[1;32mGoogle:\u001b[0m ${googleMapsUrl}\n`;
