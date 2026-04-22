@@ -1067,9 +1067,14 @@ export class BotManager {
             const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lon}`;
             const osmUrl = osmEmbedUrl(lat, lon);
 
+            // Reverse-geocode to get the nearest street name at the (approximate) coords
+            const geo = await nominatimReverse(lat, lon);
+            const ga = geo?.address || {};
+            const streetName = ga.road || ga.pedestrian || ga.footway || ga.path || '—';
+
             // ipinfo.io returns a "loc" string like "37.7749,-122.4194"; sometimes also a "postal"
             const infoLoc = info?.loc || `${lat},${lon}`;
-            const infoPostal = info?.postal || main.zip || '—';
+            const infoPostal = info?.postal || main.zip || ga.postcode || '—';
             const infoCity = info?.city || main.city || '—';
             const infoRegion = info?.region || main.regionName || '—';
             const infoCountry = info?.country || main.countryCode || '—';
@@ -1089,6 +1094,7 @@ export class BotManager {
             result += row('Country',  `${main.country || infoCountry} (${main.countryCode || infoCountry})`);
             result += row('Region',   `${main.regionName || infoRegion}${main.region ? ` (${main.region})` : ''}`);
             result += row('City',     `${main.city || infoCity}`);
+            result += row('Street',   `${streetName}`);
             result += row('Postcode', `${infoPostal}`);
             result += row('Coords',   `${lat}, ${lon}`);
             result += row('ipinfo',   `${infoLoc}`);
