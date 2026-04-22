@@ -112,8 +112,16 @@ async function phoneVerify(phone: string): Promise<any> {
     }
 }
 
-function staticMapUrl(lat: number, lon: number, zoom = 12): string {
-    return `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lon}&zoom=${zoom}&size=600x400&markers=${lat},${lon},ol-marker`;
+function staticMapUrl(lat: number, lon: number, zoom = 11): string {
+    return `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lon}&zoom=${zoom}&size=640x420&maptype=mapnik&markers=${lat},${lon},ol-marker`;
+}
+
+function osmEmbedUrl(lat: number, lon: number, delta = 0.08): string {
+    const left = (lon - delta).toFixed(4);
+    const right = (lon + delta).toFixed(4);
+    const top = (lat + delta).toFixed(4);
+    const bottom = (lat - delta).toFixed(4);
+    return `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=11/${lat}/${lon}&bbox=${left},${bottom},${right},${top}`;
 }
 
 // ── COMMANDS LIST ───────────────────────────────────────────────────────────
@@ -935,28 +943,60 @@ export class BotManager {
                 return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Invalid IP or lookup failed.\u001b[0m\n\`\`\``).catch(() => {});
             }
 
-            const mapUrl = staticMapUrl(main.lat, main.lon, 12);
-            const googleMapsUrl = `https://maps.google.com/?q=${main.lat},${main.lon}`;
+            const lat = Number(main.lat);
+            const lon = Number(main.lon);
+            const mapUrl = staticMapUrl(lat, lon, 11);
+            const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lon}`;
+            const osmUrl = osmEmbedUrl(lat, lon);
 
-            let result = `\`\`\`ansi\n\u001b[1;36m[NETRUNNER] IP REPORT: ${main.query}\u001b[0m\n`;
-            result += `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n`;
-            result += `\u001b[1;33mIP:\u001b[0m        ${main.query}\n`;
-            result += `\u001b[1;33mCountry:\u001b[0m   ${main.country} (${main.countryCode})\n`;
-            result += `\u001b[1;33mRegion:\u001b[0m    ${main.regionName} (${main.region})\n`;
-            result += `\u001b[1;33mCity:\u001b[0m      ${main.city}\n`;
-            result += `\u001b[1;33mZIP:\u001b[0m       ${main.zip || '—'}\n`;
-            result += `\u001b[1;33mTimezone:\u001b[0m  ${main.timezone}\n`;
-            result += `\u001b[1;33mISP:\u001b[0m       ${main.isp}\n`;
-            result += `\u001b[1;33mOrg:\u001b[0m       ${main.org || '—'}\n`;
-            result += `\u001b[1;33mAS:\u001b[0m        ${main.as || '—'}\n`;
-            result += `\u001b[1;33mHostname:\u001b[0m  ${main.reverse || info?.hostname || '—'}\n`;
-            result += `\u001b[1;33mCoords:\u001b[0m    ${main.lat}, ${main.lon}\n`;
-            result += `\u001b[1;33mMobile:\u001b[0m    ${main.mobile ? 'Yes' : 'No'}\n`;
-            result += `\u001b[1;33mProxy/VPN:\u001b[0m ${main.proxy ? '\u001b[1;31mYES\u001b[0m' : 'No'}\n`;
-            result += `\u001b[1;33mHosting:\u001b[0m   ${main.hosting ? 'Yes (Datacenter/VPS)' : 'No'}\n`;
-            if (info?.org) result += `\u001b[1;33mProvider:\u001b[0m  ${info.org}\n`;
-            result += `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n`;
-            result += `\u001b[1;32mMap:\u001b[0m       ${googleMapsUrl}\n`;
+            // ipinfo.io returns a "loc" string like "37.7749,-122.4194"; sometimes also a "postal"
+            const infoLoc = info?.loc || `${lat},${lon}`;
+            const infoPostal = info?.postal || main.zip || '—';
+            const infoCity = info?.city || main.city || '—';
+            const infoRegion = info?.region || main.regionName || '—';
+            const infoCountry = info?.country || main.countryCode || '—';
+
+            const pad = (s: string, n: number) => s + ' '.repeat(Math.max(0, n - s.length));
+            const row = (label: string, value: string) =>
+                `  \u001b[1;33m${pad(label + ':', 12)}\u001b[0m ${value}\n`;
+
+            let result = `\`\`\`ansi\n`;
+            result += `\u001b[1;36m╔══════════════════════════════════════════════╗\u001b[0m\n`;
+            result += `\u001b[1;36m║          NETRUNNER · IP INTEL REPORT         ║\u001b[0m\n`;
+            result += `\u001b[1;36m╚══════════════════════════════════════════════╝\u001b[0m\n`;
+            result += `\u001b[1;37mTarget:\u001b[0m ${main.query}\n`;
+            result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
+
+            result += `\u001b[1;36m[ GEOLOCATION ]\u001b[0m\n`;
+            result += row('Country',  `${main.country || infoCountry} (${main.countryCode || infoCountry})`);
+            result += row('Region',   `${main.regionName || infoRegion}${main.region ? ` (${main.region})` : ''}`);
+            result += row('City',     `${main.city || infoCity}`);
+            result += row('Postcode', `${infoPostal}`);
+            result += row('Coords',   `${lat}, ${lon}`);
+            result += row('ipinfo',   `${infoLoc}`);
+            result += row('Timezone', `${main.timezone || info?.timezone || '—'}`);
+            result += `  \u001b[1;30m(approximate — IP geolocation is city/ISP-level, not a street address)\u001b[0m\n`;
+
+            result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
+            result += `\u001b[1;36m[ NETWORK ]\u001b[0m\n`;
+            result += row('ISP',      `${main.isp || '—'}`);
+            result += row('Org',      `${main.org || info?.org || '—'}`);
+            result += row('AS',       `${main.as || '—'}`);
+            result += row('AS Name',  `${main.asname || '—'}`);
+            result += row('Hostname', `${main.reverse || info?.hostname || '—'}`);
+
+            result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
+            result += `\u001b[1;36m[ FLAGS ]\u001b[0m\n`;
+            result += row('Mobile',     main.mobile  ? '\u001b[1;31mYES\u001b[0m' : 'No');
+            result += row('Proxy/VPN',  main.proxy   ? '\u001b[1;31mYES\u001b[0m' : 'No');
+            result += row('Hosting/DC', main.hosting ? '\u001b[1;31mYES (Datacenter/VPS)\u001b[0m' : 'No');
+            if (info?.bogon) result += row('Bogon', '\u001b[1;31mYES (reserved/private range)\u001b[0m');
+            if (info?.anycast) result += row('Anycast', '\u001b[1;33mYES\u001b[0m');
+
+            result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
+            result += `\u001b[1;36m[ MAP ]\u001b[0m\n`;
+            result += `  \u001b[1;32mGoogle:\u001b[0m ${googleMapsUrl}\n`;
+            result += `  \u001b[1;32mOSM:\u001b[0m    ${osmUrl}\n`;
             result += `\`\`\``;
 
             await message.edit(result).catch(() => {});
