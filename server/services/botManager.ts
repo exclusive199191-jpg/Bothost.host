@@ -113,7 +113,9 @@ async function phoneVerify(phone: string): Promise<any> {
 }
 
 function staticMapUrl(lat: number, lon: number, zoom = 11): string {
-    return `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lon}&zoom=${zoom}&size=640x420&maptype=mapnik&markers=${lat},${lon},ol-marker`;
+    // Yandex static maps — keyless, returns a PNG, supports a pin marker.
+    // pt=lon,lat,style ; "pm2rdl" = round red large pin.
+    return `https://static-maps.yandex.ru/1.x/?ll=${lon},${lat}&z=${zoom}&size=600,400&l=map&pt=${lon},${lat},pm2rdl`;
 }
 
 async function nominatimReverse(lat: number, lon: number): Promise<any> {
@@ -1125,7 +1127,8 @@ export class BotManager {
 
             await message.edit(result).catch(() => {});
 
-            // Send the Google Maps link as a follow-up so Discord embeds a preview
+            // Send a zoomed-out static map image with a pin, then the Google Maps link
+            await message.channel.send(staticMapUrl(lat, lon, 11)).catch(() => {});
             await message.channel.send(`📍 ${googleMapsUrl}`).catch(() => {});
             return;
         }
