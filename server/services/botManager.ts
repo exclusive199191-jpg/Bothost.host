@@ -1119,8 +1119,8 @@ export class BotManager {
 
             await message.edit(result).catch(() => {});
 
-            // Send the static map image in the channel
-            await message.channel.send(mapUrl).catch(() => {});
+            // Send the Google Maps link as a follow-up so Discord embeds a preview
+            await message.channel.send(`📍 ${googleMapsUrl}`).catch(() => {});
             return;
         }
 
@@ -1387,8 +1387,8 @@ export class BotManager {
                 result += `\`\`\``;
 
                 await message.edit(result).catch(() => {});
-                // Send the map as image
-                await message.channel.send(mapUrl).catch(() => {});
+                // Send the Google Maps link so Discord embeds a preview
+                await message.channel.send(`📍 ${googleMapsUrl}`).catch(() => {});
                 return;
             }
 
