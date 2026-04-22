@@ -1097,6 +1097,7 @@ export class BotManager {
             result += row('Region',   `${main.regionName || infoRegion}${main.region ? ` (${main.region})` : ''}`);
             result += row('City',     `${main.city || infoCity}`);
             result += row('Street',   `${streetName}`);
+            result += row('Address',  `${geo?.display_name || '—'}`);
             result += row('Postcode', `${infoPostal}`);
             result += row('Coords',   `${lat}, ${lon}`);
             result += row('ipinfo',   `${infoLoc}`);
