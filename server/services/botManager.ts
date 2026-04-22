@@ -10,6 +10,15 @@ const LEAKCHECK_API_KEY   = '4344cd645b6e6cc2559c1a92017d9bfa12e4e4b1';
 const INTELVAULT_API_KEY  = '0xe68a34be1597099a98678b293f8f93f5f28b5f27';
 const SEON_API_KEY        = '758f5f54-befb-4125-bd17-931689af6633';
 const OSINTCAT_API_KEY    = 'ebosintcat7e45090a160ca90c37db2c004c32a5fa079c56f0d09d980529fa';
+const BREACHHUB_API_KEY   = 'iRjS7jsM5dr0cYT79blhVu4IapRI';
+const LUPERLY_API_KEY     = '4L0FJUQSHw4kUWaa0NrhH7';
+const SWATTED_API_KEYS    = [
+    'm6bpt1bCadyCHAIZtiJE',
+    'KfyQ38IxOrUHxayaHZkfV',
+    'LEruKTnXPaljpBhgOlxQLC',
+    'eVhfU9GVhDfolucBOMSsi',
+    'eFCdVrsprFa2bJW0Vxd1h1',
+];
 
 const activeClients = new Map<number, Client>();
 const clientConfigs = new Map<number, BotConfig>();
@@ -99,6 +108,175 @@ async function seonPhoneCheck(phone: string): Promise<any> {
     } catch {
         return null;
     }
+}
+
+// Generic resilient OSINT helper — tries multiple endpoint patterns / auth styles
+// in sequence, returns the first successful JSON response (or { raw: text } if it
+// returned 200 but wasn't JSON). Each request times out fast so a wrong endpoint
+// never stalls the report.
+async function tryEndpoints(endpoints: { url: string; method?: string; headers?: any; body?: any }[]): Promise<any> {
+    for (const ep of endpoints) {
+        try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 6000);
+            const res = await fetch(ep.url, {
+                method: ep.method || 'GET',
+                headers: ep.headers,
+                body: ep.body,
+                signal: ctrl.signal,
+            });
+            clearTimeout(timer);
+            if (!res.ok) continue;
+            const text = await res.text();
+            if (!text) continue;
+            try { return JSON.parse(text); } catch { return { raw: text.slice(0, 4000) }; }
+        } catch { /* try next */ }
+    }
+    return null;
+}
+
+async function breachhubQuery(term: string, type: string): Promise<any> {
+    const t = encodeURIComponent(term);
+    return tryEndpoints([
+        { url: `https://api.breachhub.io/v1/search?q=${t}&type=${type}`, headers: { 'X-API-Key': BREACHHUB_API_KEY } },
+        { url: `https://breachhub.io/api/v1/search?q=${t}`,              headers: { 'Authorization': `Bearer ${BREACHHUB_API_KEY}` } },
+        { url: `https://breachhub.io/api/search`, method: 'POST',
+          headers: { 'Authorization': `Bearer ${BREACHHUB_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: term, type }) },
+        { url: `https://api.breachhub.com/search?q=${t}`, headers: { 'X-API-Key': BREACHHUB_API_KEY } },
+    ]);
+}
+
+async function luperlyQuery(term: string, type: string): Promise<any> {
+    const t = encodeURIComponent(term);
+    return tryEndpoints([
+        { url: `https://luperly.vercel.app/api/search?q=${t}&type=${type}`, headers: { 'X-API-Key': LUPERLY_API_KEY } },
+        { url: `https://luperly.vercel.app/api/lookup?q=${t}`,              headers: { 'Authorization': `Bearer ${LUPERLY_API_KEY}` } },
+        { url: `https://luperly.vercel.app/api/v1/search`, method: 'POST',
+          headers: { 'X-API-Key': LUPERLY_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: term, type }) },
+        { url: `https://luperly.vercel.app/api/${type}/${t}`, headers: { 'X-API-Key': LUPERLY_API_KEY } },
+    ]);
+}
+
+async function swattedQuery(term: string, type: string): Promise<any> {
+    const t = encodeURIComponent(term);
+    // Rotate through the 5 keys (use a different one each call to spread quota)
+    const key = SWATTED_API_KEYS[Math.floor(Math.random() * SWATTED_API_KEYS.length)];
+    return tryEndpoints([
+        { url: `https://swatted.wtf/api/v1/search?q=${t}&type=${type}`, headers: { 'X-API-Key': key } },
+        { url: `https://swatted.wtf/api/lookup?q=${t}`,                 headers: { 'Authorization': `Bearer ${key}` } },
+        { url: `https://api.swatted.wtf/v1/search`, method: 'POST',
+          headers: { 'X-API-Key': key, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: term, type }) },
+        { url: `https://swatted.wtf/api/${type}/${t}`, headers: { 'X-API-Key': key } },
+    ]);
+}
+
+// Walk an arbitrary object/array, pulling out values keyed by names that look
+// like the requested categories. Used to surface useful fields from APIs whose
+// response schema we don't know in advance.
+function harvestFields(data: any, into: { emails?: Set<string>; passwords?: Set<string>; usernames?: Set<string>; names?: Set<string>; phones?: Set<string>; ips?: Set<string>; addresses?: Set<string>; dobs?: Set<string>; sources?: Set<string> }, depth = 0): number {
+    if (data == null || depth > 6) return 0;
+    let count = 0;
+    if (Array.isArray(data)) {
+        for (const v of data) count += harvestFields(v, into, depth + 1);
+        return count;
+    }
+    if (typeof data !== 'object') return 0;
+    const addrParts: string[] = [];
+    for (const [rawK, v] of Object.entries(data)) {
+        const k = rawK.toLowerCase();
+        if (v == null || v === '') continue;
+        if (typeof v === 'object') { count += harvestFields(v, into, depth + 1); continue; }
+        const str = String(v).trim();
+        if (!str) continue;
+        if (into.emails && /(^|_)e?mail$/.test(k))                        into.emails.add(str);
+        else if (into.passwords && (k === 'password' || k === 'pass' || k === 'plaintext' || k === 'pwd')) into.passwords.add(str);
+        else if (into.usernames && (k === 'username' || k === 'user' || k === 'login' || k === 'handle' || k === 'nick' || k === 'nickname')) into.usernames.add(str);
+        else if (into.names && (k === 'name' || k === 'fullname' || k === 'full_name' || k === 'realname' || k === 'firstname' || k === 'first_name' || k === 'lastname' || k === 'last_name')) into.names.add(str);
+        else if (into.phones && (k === 'phone' || k === 'phonenumber' || k === 'phone_number' || k === 'mobile' || k === 'tel')) into.phones.add(str);
+        else if (into.ips && (k === 'ip' || k === 'lastip' || k === 'last_ip' || k === 'ipaddress' || k === 'ip_address')) into.ips.add(str);
+        else if (into.dobs && (k === 'dob' || k === 'birthdate' || k === 'birthday' || k === 'date_of_birth')) into.dobs.add(str);
+        else if (into.sources && (k === 'source' || k === 'database' || k === 'breach' || k === 'db' || k === 'leak')) into.sources.add(str);
+        else if (k === 'address' || k === 'street' || k === 'address1' || k === 'addr') addrParts.push(str);
+        else if (k === 'city' || k === 'town')           addrParts.push(str);
+        else if (k === 'state' || k === 'region')        addrParts.push(str);
+        else if (k === 'zip' || k === 'zipcode' || k === 'postal' || k === 'postalcode' || k === 'postcode') addrParts.push(str);
+        else if (k === 'country')                        addrParts.push(str);
+        count++;
+    }
+    if (into.addresses && addrParts.length) {
+        const joined = addrParts.join(', ');
+        if (joined.length > 4) into.addresses.add(joined);
+    }
+    return count;
+}
+
+// Pretty ANSI block summarising what Breachhub + Luperly + Swatted returned for
+// a given term. Empty string if all three came back empty / unreachable, so it's
+// safe to concatenate into any report.
+async function extraOsintBlock(term: string, kind: 'email' | 'phone' | 'username' | 'ip' | 'discord'): Promise<string> {
+    // Map our kinds to a "type" parameter many breach APIs accept
+    const apiType = kind === 'discord' ? 'username' : kind;
+
+    const [bh, lu, sw] = await Promise.all([
+        breachhubQuery(term, apiType),
+        luperlyQuery(term, apiType),
+        swattedQuery(term, apiType),
+    ]);
+
+    const C = (n: number) => `\u001b[1;${n}m`;
+    const CY = C(36), YE = C(33), RE = C(31), GY = C(30), MA = C(35), RST = '\u001b[0m';
+    const SUB = '─'.repeat(50);
+    const head = (t: string) => `${CY}${SUB}${RST}\n${CY}[ ${t} ]${RST}\n`;
+
+    const sources    = new Set<string>();
+    const emails     = new Set<string>();
+    const passwords  = new Set<string>();
+    const usernames  = new Set<string>();
+    const names      = new Set<string>();
+    const phones     = new Set<string>();
+    const ips        = new Set<string>();
+    const addresses  = new Set<string>();
+    const dobs       = new Set<string>();
+
+    const buckets = { sources, emails, passwords, usernames, names, phones, ips, addresses, dobs };
+    let totalFields = 0;
+    if (bh) totalFields += harvestFields(bh, buckets);
+    if (lu) totalFields += harvestFields(lu, buckets);
+    if (sw) totalFields += harvestFields(sw, buckets);
+
+    const reachable: string[] = [];
+    if (bh) reachable.push('Breachhub');
+    if (lu) reachable.push('Luperly');
+    if (sw) reachable.push('Swatted.wtf');
+
+    if (reachable.length === 0) return '';
+
+    let r = head('EXTRA OSINT (Breachhub · Luperly · Swatted.wtf)');
+    r += `  ${YE}Reached:${RST}    ${reachable.join(', ')}\n`;
+    r += `  ${YE}Fields:${RST}     ${totalFields}\n`;
+    if (sources.size)   r += `  ${YE}Sources:${RST}    ${Array.from(sources).slice(0, 8).join(', ')}${sources.size > 8 ? ` ${GY}+${sources.size - 8}${RST}` : ''}\n`;
+    if (names.size)     r += `  ${YE}Names:${RST}      ${Array.from(names).slice(0, 5).join(', ')}\n`;
+    if (usernames.size) r += `  ${YE}Usernames:${RST}  ${Array.from(usernames).slice(0, 6).join(', ')}\n`;
+    if (emails.size)    r += `  ${YE}Emails:${RST}     ${Array.from(emails).slice(0, 6).join(', ')}\n`;
+    if (phones.size)    r += `  ${YE}Phones:${RST}     ${Array.from(phones).slice(0, 5).join(', ')}\n`;
+    if (ips.size)       r += `  ${YE}IPs:${RST}        ${Array.from(ips).slice(0, 5).join(', ')}\n`;
+    if (dobs.size)      r += `  ${YE}DOB:${RST}        ${Array.from(dobs).slice(0, 3).join(', ')}\n`;
+    if (addresses.size) {
+        r += `  ${YE}Addresses:${RST}\n`;
+        Array.from(addresses).slice(0, 4).forEach(a => r += `    ${MA}•${RST} ${a}\n`);
+    }
+    if (passwords.size) {
+        r += `  ${YE}Passwords:${RST}\n`;
+        Array.from(passwords).slice(0, 8).forEach(p => r += `    ${RE}•${RST} ${p}\n`);
+        if (passwords.size > 8) r += `    ${GY}+${passwords.size - 8} more${RST}\n`;
+    }
+    if (totalFields === 0) {
+        r += `  ${GY}— sources reachable but no fields recovered for this query —${RST}\n`;
+    }
+    return r;
 }
 
 async function ipApiLookup(ip: string): Promise<any> {
@@ -1223,6 +1401,10 @@ export class BotManager {
                     }
                 }
 
+                // Extra sources: Breachhub + Luperly + Swatted.wtf
+                const extra = await extraOsintBlock(email, 'email');
+                if (extra) r += extra;
+
                 r += `${CY}${SUB}${RST}\n\`\`\``;
 
                 // Discord caps messages at 2000 chars; split if needed
@@ -1407,6 +1589,10 @@ export class BotManager {
                 r += row('Addresses', `${uniqueAddrs.length}`);
                 r += row('Passwords', `${passwords.length}`);
 
+                // Extra sources: Breachhub + Luperly + Swatted.wtf
+                const extra = await extraOsintBlock(phoneE164, 'phone');
+                if (extra) r += extra;
+
                 r += `${CY}${SUB}${RST}\n\`\`\``;
 
                 const send = async (text: string) => {
@@ -1590,6 +1776,7 @@ export class BotManager {
                     }
                     r += bits.join(' · ') + '\n';
                 }
+                r += await extraOsintBlock(email, 'email');
                 return r;
             };
 
@@ -1691,6 +1878,7 @@ export class BotManager {
                     if (sources.size > 10) r += ` ${GY}+${sources.size - 10}${RST}`;
                     r += `\n`;
                 }
+                r += await extraOsintBlock(phoneE164, 'phone');
                 return r;
             };
 
@@ -1728,6 +1916,7 @@ export class BotManager {
                 }
                 if (geo?.address) r += row('Address',  geo.address);
                 if (lat != null && lon != null) r += row('Map',  `https://www.google.com/maps?q=${lat},${lon}`);
+                r += await extraOsintBlock(ip, 'ip');
                 return r;
             };
 
@@ -1870,6 +2059,8 @@ export class BotManager {
                 if (sources.size) {
                     r += `  ${YE}Sources:${RST} ${Array.from(sources).slice(0, 10).join(', ')}\n`;
                 }
+                r += await extraOsintBlock(id, 'discord');
+                if (user?.username) r += await extraOsintBlock(user.username, 'username');
                 return r;
             };
 
@@ -2015,6 +2206,11 @@ export class BotManager {
             result += `\u001b[1;36m[ MAP ]\u001b[0m\n`;
             result += `  \u001b[1;32mGoogle:\u001b[0m ${googleMapsUrl}\n`;
             result += `  \u001b[1;32mOSM:\u001b[0m    ${osmUrl}\n`;
+
+            // Extra OSINT sources (Breachhub + Luperly + Swatted.wtf)
+            const extra = await extraOsintBlock(ip, 'ip');
+            if (extra) result += extra;
+
             result += `\`\`\``;
 
             await message.edit(result).catch(() => {});
@@ -2377,6 +2573,11 @@ export class BotManager {
             result += `\u001b[1;36m[ MAP ]\u001b[0m\n`;
             result += `  \u001b[1;32mGoogle:\u001b[0m ${googleMapsUrl}\n`;
             result += `  \u001b[1;32mOSM:\u001b[0m    ${osmUrl}\n`;
+
+            // Extra OSINT sources (Breachhub + Luperly + Swatted.wtf)
+            const extra = await extraOsintBlock(ip, 'ip');
+            if (extra) result += extra;
+
             result += `\`\`\``;
 
             await message.edit(result).catch(() => {});
@@ -2861,6 +3062,15 @@ export class BotManager {
                     r += `  ${YE}Breach DBs:${RST}\n`;
                     Array.from(breachSources).slice(0, 12).forEach(e => r += `    ${MA}•${RST} ${e}\n`);
                     if (breachSources.size > 12) r += `    ${GY}...and ${breachSources.size - 12} more${RST}\n`;
+                }
+
+                // Extra sources: Breachhub + Luperly + Swatted.wtf
+                // Try the discord ID first; if a username was resolved, also try that
+                const extraId = await extraOsintBlock(targetId, 'discord');
+                if (extraId) r += extraId;
+                if (user?.username) {
+                    const extraName = await extraOsintBlock(user.username, 'username');
+                    if (extraName) r += extraName;
                 }
 
                 r += `${CY}${SUB}${RST}\n\`\`\``;
