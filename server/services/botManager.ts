@@ -116,6 +116,64 @@ function staticMapUrl(lat: number, lon: number, zoom = 11): string {
     return `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lon}&zoom=${zoom}&size=640x420&maptype=mapnik&markers=${lat},${lon},ol-marker`;
 }
 
+async function nominatimReverse(lat: number, lon: number): Promise<any> {
+    try {
+        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
+        const res = await fetch(url, {
+            headers: {
+                'User-Agent': 'NetrunnerBot/1.0 (reverse-geocode)',
+                'Accept': 'application/json',
+            },
+        });
+        if (!res.ok) return null;
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
+
+// Parse coordinates from decimal ("42.28, -87.95") or DMS ("42°17'07.1\"N 87°57'11.5\"W").
+function parseCoordinates(input: string): { lat: number, lon: number } | null {
+    const s = input.trim().replace(/[，;]/g, ',');
+
+    // Try plain decimal: "lat, lon" or "lat lon"
+    const dec = s.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (dec) {
+        const lat = parseFloat(dec[1]);
+        const lon = parseFloat(dec[2]);
+        if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+            return { lat: +lat.toFixed(6), lon: +lon.toFixed(6) };
+        }
+    }
+
+    // DMS: 42°17'07.1"N 87°57'11.5"W   (degrees / minutes / seconds, hemisphere)
+    const dmsRe = /(\d+(?:\.\d+)?)\s*[°ºd:\s]\s*(\d+(?:\.\d+)?)?\s*['′m:\s]?\s*(\d+(?:\.\d+)?)?\s*["″s]?\s*([NSEW])/gi;
+    const matches = [...s.matchAll(dmsRe)];
+    if (matches.length >= 2) {
+        const toDec = (m: RegExpMatchArray) => {
+            const deg = parseFloat(m[1] || '0');
+            const min = parseFloat(m[2] || '0');
+            const sec = parseFloat(m[3] || '0');
+            const hem = (m[4] || '').toUpperCase();
+            let v = deg + min / 60 + sec / 3600;
+            if (hem === 'S' || hem === 'W') v = -v;
+            return { v, hem };
+        };
+        const a = toDec(matches[0]);
+        const b = toDec(matches[1]);
+        let lat: number | null = null, lon: number | null = null;
+        if (a.hem === 'N' || a.hem === 'S') lat = a.v;
+        if (a.hem === 'E' || a.hem === 'W') lon = a.v;
+        if (b.hem === 'N' || b.hem === 'S') lat = b.v;
+        if (b.hem === 'E' || b.hem === 'W') lon = b.v;
+        if (lat !== null && lon !== null && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+            return { lat: +lat.toFixed(6), lon: +lon.toFixed(6) };
+        }
+    }
+
+    return null;
+}
+
 function osmEmbedUrl(lat: number, lon: number, delta = 0.08): string {
     const left = (lon - delta).toFixed(4);
     const right = (lon + delta).toFixed(4);
@@ -169,6 +227,7 @@ const COMMANDS_LIST = [
     { name: 'email breaches <email>',       desc: 'Search for email across all breach databases.', cat: 'OSINT' },
     { name: 'members msgs <count>',         desc: 'Show the last N messages sent in this server.', cat: 'OSINT' },
     { name: 'ip check <addr>',              desc: 'Full IP lookup with location map.', cat: 'OSINT' },
+    { name: 'convert cords <coords>',       desc: 'Reverse-geocode coordinates (DMS or decimal) to an address.', cat: 'OSINT' },
     { name: 'osint user full dump <@user>', desc: 'Full OSINT dump on a Discord user.', cat: 'OSINT' },
     { name: 'osint discord id <id>',        desc: 'Deep lookup on a Discord user ID via snowid.lol.', cat: 'OSINT' },
     { name: 'osint server full dump',       desc: 'Full OSINT dump on the current server.', cat: 'OSINT' },
@@ -926,6 +985,65 @@ export class BotManager {
         }
 
         // ── IP CHECK (enhanced with map) ──────────────────────────────────────
+        // ── CONVERT CORDS (reverse geocode coordinates → address) ────────────
+        if (command === 'convert' && args[0]?.toLowerCase() === 'cords') {
+            const raw = args.slice(1).join(' ').trim();
+            if (!raw) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}convert cords <coordinates>\u001b[0m\n\u001b[1;30mAccepts decimal (e.g. 42.2853, -87.9532) or DMS (e.g. 42°17'07.1"N 87°57'11.5"W).\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            const parsed = parseCoordinates(raw);
+            if (!parsed) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Could not parse coordinates: ${raw}\u001b[0m\n\u001b[1;30mTry: 42.2853, -87.9532  or  42°17'07.1"N 87°57'11.5"W\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            const { lat, lon } = parsed;
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] Reverse geocoding ${lat}, ${lon}...\u001b[0m\n\`\`\``).catch(() => {});
+
+            const geo = await nominatimReverse(lat, lon);
+            if (!geo) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Reverse geocoding failed or no result.\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            const a = geo.address || {};
+            const street = [a.house_number, a.road].filter(Boolean).join(' ') || '—';
+            const locality = a.city || a.town || a.village || a.hamlet || a.suburb || '—';
+            const region = a.state || a.region || '—';
+            const country = a.country || '—';
+            const postcode = a.postcode || '—';
+            const mapUrl = staticMapUrl(lat, lon, 14);
+            const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lon}`;
+            const osmUrl = osmEmbedUrl(lat, lon, 0.02);
+
+            const pad = (s: string, n: number) => s + ' '.repeat(Math.max(0, n - s.length));
+            const row = (label: string, value: string) =>
+                `  \u001b[1;33m${pad(label + ':', 12)}\u001b[0m ${value}\n`;
+
+            let result = `\`\`\`ansi\n`;
+            result += `\u001b[1;36m╔══════════════════════════════════════════════╗\u001b[0m\n`;
+            result += `\u001b[1;36m║         NETRUNNER · COORD → ADDRESS          ║\u001b[0m\n`;
+            result += `\u001b[1;36m╚══════════════════════════════════════════════╝\u001b[0m\n`;
+            result += `\u001b[1;37mInput:\u001b[0m  ${raw}\n`;
+            result += `\u001b[1;37mCoords:\u001b[0m ${lat}, ${lon}\n`;
+            result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
+            result += `\u001b[1;36m[ ADDRESS ]\u001b[0m\n`;
+            result += row('Display', geo.display_name || '—');
+            result += row('Street',  street);
+            result += row('City',    locality);
+            result += row('Region',  region);
+            result += row('Postcode', postcode);
+            result += row('Country', country);
+            result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
+            result += `\u001b[1;36m[ MAP ]\u001b[0m\n`;
+            result += `  \u001b[1;32mGoogle:\u001b[0m ${googleMapsUrl}\n`;
+            result += `  \u001b[1;32mOSM:\u001b[0m    ${osmUrl}\n`;
+            result += `\`\`\``;
+
+            await message.edit(result).catch(() => {});
+            await message.channel.send(mapUrl).catch(() => {});
+            return;
+        }
+
         if (command === 'ip' && args[0]?.toLowerCase() === 'check') {
             const ip = args[1];
             if (!ip) {
