@@ -339,6 +339,79 @@ function wdClaimTime(entity: any, prop: string): string | null {
     return `${y}-${mo}-${d}`;
 }
 
+// Forward geocode: address string → coordinates + OSM place metadata
+async function nominatimSearch(query: string): Promise<any | null> {
+    try {
+        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&addressdetails=1&extratags=1&namedetails=1&limit=1`;
+        const res = await fetch(url, {
+            headers: { 'User-Agent': 'NetrunnerBot/1.0 (geocode)', 'Accept': 'application/json' },
+        });
+        if (!res.ok) return null;
+        const data: any = await res.json();
+        return Array.isArray(data) && data.length > 0 ? data[0] : null;
+    } catch { return null; }
+}
+
+// Overpass API: find named businesses, amenities, shops at / near a coord (within radiusMeters)
+async function overpassNearby(lat: number, lon: number, radiusMeters = 40): Promise<any[]> {
+    try {
+        const q = `
+            [out:json][timeout:15];
+            (
+              node(around:${radiusMeters},${lat},${lon})["name"];
+              way(around:${radiusMeters},${lat},${lon})["name"];
+              node(around:${radiusMeters},${lat},${lon})["amenity"];
+              way(around:${radiusMeters},${lat},${lon})["amenity"];
+              node(around:${radiusMeters},${lat},${lon})["shop"];
+              way(around:${radiusMeters},${lat},${lon})["shop"];
+              node(around:${radiusMeters},${lat},${lon})["office"];
+              way(around:${radiusMeters},${lat},${lon})["office"];
+            );
+            out tags center 50;
+        `;
+        const res = await fetch('https://overpass-api.de/api/interpreter', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'NetrunnerBot/1.0 (poi)' },
+            body: 'data=' + encodeURIComponent(q),
+        });
+        if (!res.ok) return [];
+        const data: any = await res.json();
+        return data?.elements || [];
+    } catch { return []; }
+}
+
+// Wikidata SPARQL: notable people who publicly list this place as their residence (P551)
+// or place of birth (P19) or place of death (P20). Only returns famous/public-figure entries.
+async function wikidataResidentsAt(placeQid: string): Promise<{ name: string; description: string; relation: string }[]> {
+    if (!placeQid) return [];
+    try {
+        const sparql = `
+            SELECT ?person ?personLabel ?personDescription ?relLabel WHERE {
+              VALUES (?prop ?relLabel) {
+                (wdt:P551 "resident of"@en)
+                (wdt:P19  "born here"@en)
+                (wdt:P20  "died here"@en)
+              }
+              ?person ?prop wd:${placeQid} .
+              ?person wdt:P31 wd:Q5 .
+              SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+            } LIMIT 25
+        `;
+        const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
+        const res = await fetch(url, {
+            headers: { 'User-Agent': 'NetrunnerBot/1.0 (residents)', 'Accept': 'application/sparql-results+json' },
+        });
+        if (!res.ok) return [];
+        const data: any = await res.json();
+        const rows = data?.results?.bindings || [];
+        return rows.map((r: any) => ({
+            name: r.personLabel?.value || '',
+            description: r.personDescription?.value || '',
+            relation: r.relLabel?.value || '',
+        })).filter((r: any) => r.name);
+    } catch { return []; }
+}
+
 async function wikiSummary(title: string): Promise<string | null> {
     try {
         const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
@@ -403,6 +476,7 @@ const COMMANDS_LIST = [
     { name: 'members msgs <count>',         desc: 'Show the last N messages sent in this server.', cat: 'OSINT' },
     { name: 'ip check <addr>',              desc: 'Full IP lookup with location map.', cat: 'OSINT' },
     { name: 'who is <full name>',           desc: 'Bio + family OSINT (parents, siblings, spouse, children) via Wikidata.', cat: 'OSINT' },
+    { name: 'who lives <address>',          desc: 'Public-only occupancy info: building type, businesses at address, notable public figures.', cat: 'OSINT' },
     { name: 'gpt <question>',               desc: 'Ask an AI a question (keyless, via Pollinations).', cat: 'General' },
     { name: 'convert cords <coords>',       desc: 'Reverse-geocode coordinates (DMS or decimal) to an address.', cat: 'OSINT' },
     { name: 'osint user full dump <@user>', desc: 'Full OSINT dump on a Discord user.', cat: 'OSINT' },
@@ -1282,6 +1356,108 @@ export class BotManager {
             } catch (e: any) {
                 await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] AI request error: ${e?.message || 'unknown'}\u001b[0m\n\`\`\``).catch(() => {});
             }
+            return;
+        }
+
+        // ── WHO LIVES <address> — public-only occupancy info ─────────────────
+        if (command === 'who' && args[0]?.toLowerCase() === 'lives') {
+            // Allow `.who lives at 123 Main St` or `.who lives 123 Main St`
+            const startIdx = args[1]?.toLowerCase() === 'at' ? 2 : 1;
+            const address = args.slice(startIdx).join(' ').trim();
+            if (!address) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}who lives <address>\u001b[0m\n\u001b[1;30mExample: ${prefix}who lives 1600 Pennsylvania Ave NW, Washington DC\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] WHO LIVES: ${address}\u001b[0m\n\u001b[1;30m> Searching public records (OSM + Wikidata)...\u001b[0m\n\`\`\``).catch(() => {});
+
+            const place = await nominatimSearch(address);
+            if (!place) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Address not found in OpenStreetMap.\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            const lat = parseFloat(place.lat);
+            const lon = parseFloat(place.lon);
+            const a = place.address || {};
+            const extratags = place.extratags || {};
+            const buildingType = extratags.building || a.building || place.type || place.category || '';
+            const placeName = place.namedetails?.name || place.name || '';
+            const formatted = place.display_name || address;
+
+            // Run lookups in parallel: nearby businesses + notable Wikidata residents
+            const placeQid = (extratags['wikidata'] || place.extratags?.wikidata || '');
+            const [pois, residents] = await Promise.all([
+                overpassNearby(lat, lon, 30),
+                wikidataResidentsAt(placeQid),
+            ]);
+
+            // Filter & dedupe POIs (keep ones with a name)
+            const seen = new Set<string>();
+            const businesses = pois
+                .map((el: any) => {
+                    const t = el.tags || {};
+                    const nm = t.name;
+                    if (!nm || seen.has(nm)) return null;
+                    seen.add(nm);
+                    const kind = t.amenity || t.shop || t.office || t.tourism || t.craft || t.leisure || t.building || '';
+                    return { name: nm, kind };
+                })
+                .filter((x: any): x is { name: string; kind: string } => !!x)
+                .slice(0, 15);
+
+            const isResidential = /residential|apartments|house|detached|terrace|dormitory/i.test(buildingType);
+
+            const pad = (s: string, n: number) => s + ' '.repeat(Math.max(0, n - s.length));
+            const row = (label: string, value: string) =>
+                `  \u001b[1;33m${pad(label + ':', 14)}\u001b[0m ${value}\n`;
+
+            let result = `\`\`\`ansi\n`;
+            result += `\u001b[1;36m╔══════════════════════════════════════════════╗\u001b[0m\n`;
+            result += `\u001b[1;36m║         NETRUNNER · WHO LIVES HERE           ║\u001b[0m\n`;
+            result += `\u001b[1;36m╚══════════════════════════════════════════════╝\u001b[0m\n`;
+            result += `\u001b[1;37mInput:\u001b[0m  ${address}\n`;
+            result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
+
+            result += `\u001b[1;36m[ LOCATION ]\u001b[0m\n`;
+            result += row('Address',  formatted);
+            result += row('Coords',   `${lat}, ${lon}`);
+            result += row('City',     a.city || a.town || a.village || a.hamlet || '—');
+            result += row('Region',   a.state || a.region || '—');
+            result += row('Country',  a.country || '—');
+
+            result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
+            result += `\u001b[1;36m[ BUILDING ]\u001b[0m\n`;
+            result += row('Type',     buildingType || 'unknown');
+            result += row('Name',     placeName || '—');
+            result += row('Use',      isResidential ? 'Residential' : (buildingType ? 'Non-residential' : 'Unknown'));
+
+            result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
+            result += `\u001b[1;36m[ BUSINESSES / TENANTS AT THIS LOCATION ]\u001b[0m\n`;
+            if (businesses.length === 0) {
+                result += `  \u001b[1;30m— None registered in OpenStreetMap at this address —\u001b[0m\n`;
+            } else {
+                for (const b of businesses) {
+                    result += `  • \u001b[1;37m${b.name}\u001b[0m${b.kind ? ` \u001b[1;30m(${b.kind})\u001b[0m` : ''}\n`;
+                }
+            }
+
+            result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
+            result += `\u001b[1;36m[ NOTABLE PEOPLE LINKED TO THIS PLACE ]\u001b[0m\n`;
+            if (residents.length === 0) {
+                result += `  \u001b[1;30m— No public-figure entries link this place to a person —\u001b[0m\n`;
+            } else {
+                for (const r of residents.slice(0, 12)) {
+                    result += `  • \u001b[1;37m${r.name}\u001b[0m \u001b[1;30m(${r.relation})\u001b[0m\n`;
+                    if (r.description) result += `      ${r.description.slice(0, 70)}\n`;
+                }
+            }
+
+            result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
+            result += `\u001b[1;30mNote: Names of private residents are not in any free public dataset.\u001b[0m\n`;
+            result += `\u001b[1;30mThis report only shows publicly registered businesses and notable\u001b[0m\n`;
+            result += `\u001b[1;30mpublic-figure connections (Wikipedia/Wikidata).\u001b[0m\n`;
+            result += `\`\`\``;
+
+            await message.edit(result).catch(() => {});
             return;
         }
 
