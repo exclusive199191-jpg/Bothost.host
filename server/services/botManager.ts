@@ -85,6 +85,22 @@ async function seonEmailCheck(email: string): Promise<any> {
     }
 }
 
+async function seonPhoneCheck(phone: string): Promise<any> {
+    try {
+        // SEON expects E.164 format with leading +
+        const e164 = phone.startsWith('+') ? phone : `+${phone.replace(/^\+?/, '')}`;
+        const res = await fetch(`https://api.seon.io/SeonRestService/fraud-api/v2/phone-api/${encodeURIComponent(e164)}`, {
+            headers: {
+                'X-API-KEY': SEON_API_KEY,
+                'Content-Type': 'application/json',
+            },
+        });
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
+
 async function ipApiLookup(ip: string): Promise<any> {
     try {
         const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,reverse,mobile,proxy,hosting,query`);
@@ -468,14 +484,9 @@ const COMMANDS_LIST = [
     // OSINT
     { name: 'username breach check <user>', desc: 'Search breach databases for a username.', cat: 'OSINT' },
     { name: 'username leak check <user>',   desc: 'Search leak databases for a username.', cat: 'OSINT' },
-    { name: 'phone line type <num>',        desc: 'Get line type (mobile/landline) for a phone number.', cat: 'OSINT' },
-    { name: 'phone location guess <num>',   desc: 'Guess geographic location from a phone number.', cat: 'OSINT' },
-    { name: 'phone carrier name <num>',     desc: 'Get the carrier name for a phone number.', cat: 'OSINT' },
-    { name: 'phone validity check <num>',   desc: 'Check if a phone number is valid.', cat: 'OSINT' },
-    { name: 'email breaches <email>',       desc: 'Search for email across all breach databases.', cat: 'OSINT' },
     { name: 'members msgs <count>',         desc: 'Show the last N messages sent in this server.', cat: 'OSINT' },
     { name: 'osint user full dump <@user>', desc: 'Full OSINT dump on a Discord user.', cat: 'OSINT' },
-    { name: 'osint discord id <id>',        desc: 'Deep lookup on a Discord user ID via snowid.lol.', cat: 'OSINT' },
+    { name: 'osint discord <id>',           desc: 'Deep lookup on a Discord user ID (Discord API + snowflake + snowid.lol + breach DBs).', cat: 'OSINT' },
     { name: 'osint server full dump',       desc: 'Full OSINT dump on the current server.', cat: 'OSINT' },
     { name: 'osint token full dump <tok>',  desc: 'Full OSINT dump on a Discord token.', cat: 'OSINT' },
     // Find
@@ -484,6 +495,8 @@ const COMMANDS_LIST = [
     { name: 'convert cords <coords>',       desc: 'Reverse-geocode coordinates (DMS or decimal) to an address.', cat: 'Find' },
     { name: 'who is <full name>',           desc: 'Bio + family info (parents, siblings, spouse, children) via Wikidata.', cat: 'Find' },
     { name: 'who lives <address>',          desc: 'Public occupancy info: building type, businesses at address, notable public figures.', cat: 'Find' },
+    { name: 'edr email <email>',            desc: 'Full email dossier — breaches, social accounts, deliverability via every OSINT source.', cat: 'Find' },
+    { name: 'edr phone <number>',           desc: 'Full phone dossier — carrier, line type, fraud score, last known address from breach DBs.', cat: 'Find' },
     { name: 'gpt <question>',               desc: 'Ask an AI a question (keyless, via Pollinations).', cat: 'General' },
     // Boosters
     { name: 'tiktok views <link> <amount>',  desc: 'Order TikTok views (100–5000) via the booster panel.', cat: 'Boosters' },
@@ -1058,145 +1071,365 @@ export class BotManager {
             return;
         }
 
-        // ── PHONE ────────────────────────────────────────────────────────────
-        if (command === 'phone') {
-            const sub1 = args[0]?.toLowerCase();
-            const sub2 = args[1]?.toLowerCase();
-            const number = args[2];
+        // ── EDR (Email/Phone Dossier Report) ─────────────────────────────────
+        if (command === 'edr') {
+            const sub = args[0]?.toLowerCase();
+            const target = args.slice(1).join(' ').trim();
 
-            if (!number) {
-                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}phone <line type|location guess|carrier name|validity check> <number>\u001b[0m\n\`\`\``).catch(() => {});
+            if (sub !== 'email' && sub !== 'phone') {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage:\u001b[0m\n  ${prefix}edr email <email@domain.com>\n  ${prefix}edr phone <number>\n\`\`\``).catch(() => {});
             }
 
-            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] LOOKING UP PHONE: ${number}\u001b[0m\n\`\`\``);
+            // Helpers for nice boxed output
+            const BAR = '═'.repeat(50);
+            const SUB = '─'.repeat(50);
+            const C  = (n: number) => `\u001b[1;${n}m`;
+            const CY = C(36), YE = C(33), GR = C(32), RE = C(31), GY = C(30), WH = C(37), MA = C(35), RST = '\u001b[0m';
+            const pad = (s: string, n: number) => s + ' '.repeat(Math.max(0, n - s.length));
+            const row = (k: string, v: string) => `  ${YE}${pad(k + ':', 14)}${RST} ${v}\n`;
+            const head = (t: string) => `${CY}${SUB}${RST}\n${CY}[ ${t} ]${RST}\n`;
 
-            const phoneData = await phoneVerify(number);
+            // ─────────── EDR EMAIL ───────────
+            if (sub === 'email') {
+                const email = target;
+                if (!email || !email.includes('@')) {
+                    return message.edit(`\`\`\`ansi\n${RE}[!] Usage: ${prefix}edr email <email@domain.com>${RST}\n\`\`\``).catch(() => {});
+                }
 
-            let result = `\`\`\`ansi\n\u001b[1;36m[NETRUNNER] PHONE LOOKUP: ${number}\u001b[0m\n`;
-            result += `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n`;
+                await message.edit(`\`\`\`ansi\n${C(34)}[*] EDR · EMAIL DOSSIER: ${email}${RST}\n${GY}> Querying Snusbase + Snusbase Beta + LeakCheck + SEON...${RST}\n\`\`\``).catch(() => {});
 
-            if (phoneData && phoneData.phone_valid !== undefined) {
-                const valid = phoneData.phone_valid;
+                const [lcData, snusData, snusBeta, seonData] = await Promise.all([
+                    leakcheckQuery(email, 'email'),
+                    snusbaseSearch(email, 'email'),
+                    snusbaseBetaSearch(email, 'email'),
+                    seonEmailCheck(email),
+                ]);
 
-                if ((sub1 === 'validity' && sub2 === 'check') || (sub1 === 'line' && sub2 === 'type') ||
-                    (sub1 === 'location' && sub2 === 'guess') || (sub1 === 'carrier' && sub2 === 'name')) {
+                // Aggregate breach records into a unified list
+                type Rec = { source: string; password?: string; hash?: string; username?: string; name?: string; ip?: string; phone?: string; address?: string; city?: string; state?: string; zip?: string; country?: string; dob?: string; db?: string };
+                const records: Rec[] = [];
+                const breachSources = new Set<string>();
 
-                    if (sub1 === 'validity' && sub2 === 'check') {
-                        result += `\u001b[1;33mValid:\u001b[0m      ${valid ? '\u001b[1;32m✓ YES\u001b[0m' : '\u001b[1;31m✗ NO\u001b[0m'}\n`;
-                        if (phoneData.e164_format) result += `\u001b[1;33mFormatted:\u001b[0m  ${phoneData.e164_format}\n`;
-                        if (phoneData.international_format) result += `\u001b[1;33mIntl:\u001b[0m       ${phoneData.international_format}\n`;
-                        if (phoneData.country) result += `\u001b[1;33mCountry:\u001b[0m    ${phoneData.country}\n`;
-                    } else if (sub1 === 'line' && sub2 === 'type') {
-                        result += `\u001b[1;33mLine Type:\u001b[0m  ${phoneData.phone_type || 'Unknown'}\n`;
-                        result += `\u001b[1;33mValid:\u001b[0m      ${valid ? '\u001b[1;32m✓ YES\u001b[0m' : '\u001b[1;31m✗ NO\u001b[0m'}\n`;
-                    } else if (sub1 === 'location' && sub2 === 'guess') {
-                        result += `\u001b[1;33mCountry:\u001b[0m    ${phoneData.country || 'Unknown'}\n`;
-                        result += `\u001b[1;33mRegion:\u001b[0m     ${phoneData.country_code || 'Unknown'}\n`;
-                        if (phoneData.e164_format) result += `\u001b[1;33mDial Code:\u001b[0m  ${phoneData.phone_region || 'Unknown'}\n`;
-                    } else if (sub1 === 'carrier' && sub2 === 'name') {
-                        result += `\u001b[1;33mCarrier:\u001b[0m    ${phoneData.carrier || 'Unknown'}\n`;
-                        result += `\u001b[1;33mLine Type:\u001b[0m  ${phoneData.phone_type || 'Unknown'}\n`;
-                        result += `\u001b[1;33mCountry:\u001b[0m    ${phoneData.country || 'Unknown'}\n`;
+                // Snusbase main
+                if (snusData?.results) {
+                    for (const [db, rows] of Object.entries<any>(snusData.results)) {
+                        breachSources.add(db);
+                        for (const e of (rows || [])) {
+                            records.push({ source: 'Snusbase', db, password: e.password, hash: e.hash, username: e.username, name: e.name, ip: e.lastip || e.ip, phone: e.phone, address: e.address, city: e.city, state: e.state, zip: e.zip || e.zipcode, country: e.country, dob: e.dob || e.birthdate });
+                        }
                     }
                 }
-            } else {
-                // Fallback: parse E.164 format manually
-                const e164 = number.startsWith('+') ? number : `+${number}`;
-                const isValidFormat = /^\+[1-9]\d{6,14}$/.test(e164);
-                result += `\u001b[1;33mNumber:\u001b[0m  ${number}\n`;
-                result += `\u001b[1;33mFormat:\u001b[0m  ${isValidFormat ? '\u001b[1;32m✓ Valid E.164\u001b[0m' : '\u001b[1;31m✗ Invalid format\u001b[0m'}\n`;
-                result += `\u001b[1;31mNote:\u001b[0m    External lookup unavailable\n`;
-            }
-
-            result += `\`\`\``;
-            await message.edit(result).catch(() => {});
-            return;
-        }
-
-        // ── EMAIL BREACHES ────────────────────────────────────────────────────
-        if (command === 'email' && args[0]?.toLowerCase() === 'breaches') {
-            const email = args[1];
-            if (!email || !email.includes('@')) {
-                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}email breaches <email@domain.com>\u001b[0m\n\`\`\``).catch(() => {});
-            }
-
-            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] SCANNING BREACHES FOR: ${email}\u001b[0m\n\u001b[1;30m> Querying LeakCheck, Snusbase, SEON...\u001b[0m\n\`\`\``);
-
-            const [lcData, snusData, seonData, betaData] = await Promise.all([
-                leakcheckQuery(email, 'email'),
-                snusbaseSearch(email, 'email'),
-                seonEmailCheck(email),
-                snusbaseBetaSearch(email, 'email'),
-            ]);
-
-            let result = `\`\`\`ansi\n\u001b[1;36m[NETRUNNER] EMAIL BREACH REPORT: ${email}\u001b[0m\n`;
-            result += `\u001b[1;30m${'─'.repeat(44)}\u001b[0m\n`;
-
-            // LeakCheck
-            if (lcData && lcData.success) {
-                const found = lcData.found || 0;
-                result += `\u001b[1;32m[LEAKCHECK] ${found} breach(es)\u001b[0m\n`;
-                if (lcData.sources && Array.isArray(lcData.sources)) {
-                    lcData.sources.slice(0, 8).forEach((s: any) => {
-                        result += `  \u001b[1;33m•\u001b[0m ${typeof s === 'string' ? s : s.name || JSON.stringify(s)}\n`;
-                    });
+                // Snusbase beta
+                if (snusBeta?.results) {
+                    for (const [db, rows] of Object.entries<any>(snusBeta.results)) {
+                        breachSources.add(db);
+                        for (const e of (rows || [])) {
+                            records.push({ source: 'Snusbase Beta', db, password: e.password, hash: e.hash, username: e.username, name: e.name, ip: e.lastip || e.ip, phone: e.phone, address: e.address, city: e.city, state: e.state, zip: e.zip || e.zipcode, country: e.country, dob: e.dob || e.birthdate });
+                        }
+                    }
                 }
-                if (lcData.result && Array.isArray(lcData.result)) {
-                    lcData.result.slice(0, 3).forEach((r: any) => {
-                        if (r.password) result += `  \u001b[1;31mPass:\u001b[0m ${r.password}\n`;
-                        if (r.source)   result += `  \u001b[1;33mSrc:\u001b[0m  ${typeof r.source === 'object' ? r.source.name : r.source}\n`;
-                    });
+                // LeakCheck
+                if (lcData?.success && Array.isArray(lcData.result)) {
+                    for (const e of lcData.result) {
+                        const srcName = typeof e.source === 'object' ? e.source?.name : e.source;
+                        if (srcName) breachSources.add(srcName);
+                        records.push({ source: 'LeakCheck', db: srcName || '', password: e.password, hash: e.hash, username: e.username, name: e.first_name && e.last_name ? `${e.first_name} ${e.last_name}` : (e.name || e.username), phone: e.phone, address: e.address, city: e.city, state: e.state, zip: e.zip, country: e.country, dob: e.dob });
+                    }
                 }
-            } else {
-                result += `\u001b[1;31m[LEAKCHECK] ${lcData?.message || 'No data'}\u001b[0m\n`;
-            }
-
-            // Snusbase
-            if (snusData && snusData.results) {
-                const entries = Object.values(snusData.results).flat() as any[];
-                result += `\u001b[1;32m[SNUSBASE] ${entries.length} record(s)\u001b[0m\n`;
-                entries.slice(0, 4).forEach((e: any) => {
-                    if (e.password) result += `  \u001b[1;31mPass:\u001b[0m    ${e.password}\n`;
-                    if (e.hash)     result += `  \u001b[1;33mHash:\u001b[0m    ${e.hash}\n`;
-                    if (e.username) result += `  \u001b[1;33mUser:\u001b[0m    ${e.username}\n`;
-                    if (e.name)     result += `  \u001b[1;33mName:\u001b[0m    ${e.name}\n`;
-                    if (e.lastip)   result += `  \u001b[1;33mLast IP:\u001b[0m ${e.lastip}\n`;
-                });
-            } else {
-                result += `\u001b[1;31m[SNUSBASE] No data\u001b[0m\n`;
-            }
-
-            // Beta Snusbase
-            if (betaData && betaData.results) {
-                const bentries = Object.values(betaData.results).flat() as any[];
-                if (bentries.length > 0) {
-                    result += `\u001b[1;32m[SNUSBASE BETA] ${bentries.length} extra record(s)\u001b[0m\n`;
-                    bentries.slice(0, 2).forEach((e: any) => {
-                        if (e.password) result += `  \u001b[1;31mPass:\u001b[0m ${e.password}\n`;
-                        if (e.username) result += `  \u001b[1;33mUser:\u001b[0m ${e.username}\n`;
-                    });
+                if (lcData?.sources && Array.isArray(lcData.sources)) {
+                    for (const s of lcData.sources) breachSources.add(typeof s === 'string' ? s : s.name);
                 }
-            }
 
-            // SEON
-            if (seonData && seonData.data) {
-                const d = seonData.data;
-                result += `\u001b[1;32m[SEON] Email Intelligence\u001b[0m\n`;
-                if (d.deliverable !== undefined) result += `  \u001b[1;33mDeliverable:\u001b[0m ${d.deliverable ? 'Yes' : 'No'}\n`;
-                if (d.domain_details?.registered !== undefined) result += `  \u001b[1;33mDomain Reg:\u001b[0m  ${d.domain_details.registered ? 'Yes' : 'No'}\n`;
-                if (d.account_details) {
-                    const acc = d.account_details;
-                    if (acc.google?.registered !== undefined) result += `  \u001b[1;33mGoogle:\u001b[0m      ${acc.google.registered ? '✓' : '✗'}\n`;
-                    if (acc.facebook?.registered !== undefined) result += `  \u001b[1;33mFacebook:\u001b[0m    ${acc.facebook.registered ? '✓' : '✗'}\n`;
-                    if (acc.twitter?.registered !== undefined) result += `  \u001b[1;33mTwitter:\u001b[0m     ${acc.twitter.registered ? '✓' : '✗'}\n`;
-                    if (acc.spotify?.registered !== undefined) result += `  \u001b[1;33mSpotify:\u001b[0m     ${acc.spotify.registered ? '✓' : '✗'}\n`;
+                // Pull aggregated identity fields from records
+                const usernames = Array.from(new Set(records.map(r => r.username).filter(Boolean))) as string[];
+                const names     = Array.from(new Set(records.map(r => r.name).filter(Boolean))) as string[];
+                const passwords = Array.from(new Set(records.map(r => r.password).filter(Boolean))) as string[];
+                const ips       = Array.from(new Set(records.map(r => r.ip).filter(Boolean))) as string[];
+                const phones    = Array.from(new Set(records.map(r => r.phone).filter(Boolean))) as string[];
+                const addresses = Array.from(new Set(records.map(r => [r.address, r.city, r.state, r.zip, r.country].filter(Boolean).join(', ')).filter(s => s.length > 4))) as string[];
+                const dobs      = Array.from(new Set(records.map(r => r.dob).filter(Boolean))) as string[];
+
+                let r = `\`\`\`ansi\n`;
+                r += `${CY}╔══════════════════════════════════════════════════╗${RST}\n`;
+                r += `${CY}║              EDR · EMAIL DOSSIER                 ║${RST}\n`;
+                r += `${CY}╚══════════════════════════════════════════════════╝${RST}\n`;
+                r += `${WH}Target:${RST} ${email}\n`;
+                r += `${GY}Sources queried: Snusbase · Snusbase Beta · LeakCheck · SEON${RST}\n`;
+
+                // SUMMARY
+                r += head('SUMMARY');
+                r += row('Breaches',   `${breachSources.size}`);
+                r += row('Records',    `${records.length}`);
+                r += row('Passwords',  `${passwords.length}`);
+                r += row('Usernames',  `${usernames.length}`);
+                r += row('Names',      `${names.length}`);
+                r += row('Phones',     `${phones.length}`);
+                r += row('Addresses',  `${addresses.length}`);
+                r += row('IPs',        `${ips.length}`);
+
+                // IDENTITY (merged)
+                r += head('IDENTITY (merged)');
+                if (names.length)     r += row('Name(s)',    names.slice(0, 5).join(', '));
+                if (usernames.length) r += row('Username(s)', usernames.slice(0, 8).join(', '));
+                if (phones.length)    r += row('Phone(s)',   phones.slice(0, 5).join(', '));
+                if (dobs.length)      r += row('DOB',        dobs.slice(0, 3).join(', '));
+                if (addresses.length) r += row('Address',    addresses[0]);
+                if (addresses.length > 1) {
+                    addresses.slice(1, 4).forEach(a => r += `                 ${a}\n`);
                 }
-                if (d.fraud_score !== undefined) result += `  \u001b[1;31mFraud Score:\u001b[0m ${d.fraud_score}\n`;
+                if (ips.length)       r += row('Last IP',    ips.slice(0, 5).join(', '));
+                if (!names.length && !usernames.length && !phones.length && !addresses.length && !ips.length) {
+                    r += `  ${GY}— no identity fields recovered —${RST}\n`;
+                }
+
+                // CREDENTIALS
+                r += head('CREDENTIALS');
+                if (passwords.length === 0) {
+                    r += `  ${GY}— no plaintext passwords recovered —${RST}\n`;
+                } else {
+                    passwords.slice(0, 12).forEach(p => r += `  ${RE}•${RST} ${p}\n`);
+                    if (passwords.length > 12) r += `  ${GY}...and ${passwords.length - 12} more${RST}\n`;
+                }
+
+                // BREACH SOURCES
+                r += head('BREACH SOURCES');
+                if (breachSources.size === 0) {
+                    r += `  ${GY}— none —${RST}\n`;
+                } else {
+                    Array.from(breachSources).slice(0, 25).forEach(s => r += `  ${MA}•${RST} ${s}\n`);
+                    if (breachSources.size > 25) r += `  ${GY}...and ${breachSources.size - 25} more${RST}\n`;
+                }
+
+                // SEON intel
+                if (seonData?.data) {
+                    const d = seonData.data;
+                    r += head('SEON · EMAIL INTEL');
+                    if (d.deliverable !== undefined)            r += row('Deliverable',  d.deliverable ? `${GR}YES${RST}` : `${RE}NO${RST}`);
+                    if (d.domain_details?.registered !== undefined) r += row('Domain reg',  d.domain_details.registered ? 'Yes' : 'No');
+                    if (d.domain_details?.created)              r += row('Domain age',  String(d.domain_details.created));
+                    if (d.domain_details?.disposable !== undefined) r += row('Disposable',  d.domain_details.disposable ? `${RE}YES${RST}` : 'No');
+                    if (d.fraud_score !== undefined)            r += row('Fraud score', `${d.fraud_score}`);
+                    if (d.account_details) {
+                        const acc = d.account_details;
+                        const accs: string[] = [];
+                        for (const [k, v] of Object.entries<any>(acc)) {
+                            if (v?.registered) accs.push(k);
+                        }
+                        if (accs.length) r += row('Registered',  accs.join(', '));
+                    }
+                    if (d.breach_details?.haveibeenpwned_listed !== undefined) {
+                        r += row('HIBP listed', d.breach_details.haveibeenpwned_listed ? `${RE}YES${RST}` : 'No');
+                    }
+                }
+
+                r += `${CY}${SUB}${RST}\n\`\`\``;
+
+                // Discord caps messages at 2000 chars; split if needed
+                const send = async (text: string) => {
+                    if (text.length <= 1990) return message.edit(text).catch(() => {});
+                    // Split — keep ANSI block wrapping
+                    const lines = text.split('\n');
+                    let buf = '```ansi\n';
+                    let first = true;
+                    for (const line of lines) {
+                        if (line === '```ansi' || line === '```') continue;
+                        if ((buf + line + '\n```').length > 1900) {
+                            buf += '```';
+                            if (first) { await message.edit(buf).catch(() => {}); first = false; }
+                            else       { await message.channel.send(buf).catch(() => {}); }
+                            buf = '```ansi\n';
+                        }
+                        buf += line + '\n';
+                    }
+                    buf += '```';
+                    if (first) await message.edit(buf).catch(() => {});
+                    else       await message.channel.send(buf).catch(() => {});
+                };
+                await send(r);
+                return;
             }
 
-            result += `\`\`\``;
-            await message.edit(result).catch(() => {});
-            return;
+            // ─────────── EDR PHONE ───────────
+            if (sub === 'phone') {
+                const number = target.replace(/[\s\-()]/g, '');
+                if (!number || !/^\+?\d{6,15}$/.test(number)) {
+                    return message.edit(`\`\`\`ansi\n${RE}[!] Usage: ${prefix}edr phone <+1XXXXXXXXXX>${RST}\n\`\`\``).catch(() => {});
+                }
+
+                await message.edit(`\`\`\`ansi\n${C(34)}[*] EDR · PHONE DOSSIER: ${number}${RST}\n${GY}> Querying Veriphone + SEON + Snusbase + Snusbase Beta + LeakCheck...${RST}\n\`\`\``).catch(() => {});
+
+                // Search by phone in breach DBs (try with + and without)
+                const phoneBare = number.replace(/^\+/, '');
+                const phoneE164 = number.startsWith('+') ? number : `+${phoneBare}`;
+
+                const [veri, seon, snusA, snusB, snusBetaA, snusBetaB, lc] = await Promise.all([
+                    phoneVerify(phoneE164),
+                    seonPhoneCheck(phoneE164),
+                    snusbaseSearch(phoneBare, 'phone'),
+                    snusbaseSearch(phoneE164, 'phone'),
+                    snusbaseBetaSearch(phoneBare, 'phone'),
+                    snusbaseBetaSearch(phoneE164, 'phone'),
+                    leakcheckQuery(phoneBare, 'phone'),
+                ]);
+
+                // Aggregate breach records
+                type Rec = { source: string; db?: string; email?: string; password?: string; username?: string; name?: string; ip?: string; address?: string; city?: string; state?: string; zip?: string; country?: string; dob?: string };
+                const records: Rec[] = [];
+                const breachSources = new Set<string>();
+
+                const consumeSnus = (data: any, src: string) => {
+                    if (!data?.results) return;
+                    for (const [db, rows] of Object.entries<any>(data.results)) {
+                        breachSources.add(db);
+                        for (const e of (rows || [])) {
+                            records.push({ source: src, db, email: e.email, password: e.password, username: e.username, name: e.name, ip: e.lastip || e.ip, address: e.address, city: e.city, state: e.state, zip: e.zip || e.zipcode, country: e.country, dob: e.dob || e.birthdate });
+                        }
+                    }
+                };
+                consumeSnus(snusA, 'Snusbase');
+                consumeSnus(snusB, 'Snusbase');
+                consumeSnus(snusBetaA, 'Snusbase Beta');
+                consumeSnus(snusBetaB, 'Snusbase Beta');
+
+                if (lc?.success && Array.isArray(lc.result)) {
+                    for (const e of lc.result) {
+                        const srcName = typeof e.source === 'object' ? e.source?.name : e.source;
+                        if (srcName) breachSources.add(srcName);
+                        records.push({ source: 'LeakCheck', db: srcName, email: e.email, password: e.password, username: e.username, name: e.first_name && e.last_name ? `${e.first_name} ${e.last_name}` : (e.name || ''), address: e.address, city: e.city, state: e.state, zip: e.zip, country: e.country, dob: e.dob });
+                    }
+                }
+
+                const emails    = Array.from(new Set(records.map(x => x.email).filter(Boolean))) as string[];
+                const usernames = Array.from(new Set(records.map(x => x.username).filter(Boolean))) as string[];
+                const names     = Array.from(new Set(records.map(x => x.name).filter(Boolean))) as string[];
+                const passwords = Array.from(new Set(records.map(x => x.password).filter(Boolean))) as string[];
+                const ips       = Array.from(new Set(records.map(x => x.ip).filter(Boolean))) as string[];
+                const dobs      = Array.from(new Set(records.map(x => x.dob).filter(Boolean))) as string[];
+                // Build full-address strings
+                const addressList = records
+                    .map(x => ({
+                        full: [x.address, x.city, x.state, x.zip, x.country].filter(Boolean).join(', '),
+                        rec: x,
+                    }))
+                    .filter(a => a.full.length > 4);
+                const uniqueAddrs = Array.from(new Set(addressList.map(a => a.full)));
+                // "Last known address" — pick the longest/most complete
+                const lastAddress = uniqueAddrs.sort((a, b) => b.length - a.length)[0] || '';
+
+                let r = `\`\`\`ansi\n`;
+                r += `${CY}╔══════════════════════════════════════════════════╗${RST}\n`;
+                r += `${CY}║              EDR · PHONE DOSSIER                 ║${RST}\n`;
+                r += `${CY}╚══════════════════════════════════════════════════╝${RST}\n`;
+                r += `${WH}Target:${RST} ${phoneE164}\n`;
+                r += `${GY}Sources: Veriphone · SEON · Snusbase · Snusbase Beta · LeakCheck${RST}\n`;
+
+                // VALIDATION (Veriphone)
+                r += head('VALIDATION');
+                if (veri?.phone_valid !== undefined) {
+                    r += row('Valid',     veri.phone_valid ? `${GR}YES${RST}` : `${RE}NO${RST}`);
+                    if (veri.e164_format)          r += row('E.164',     veri.e164_format);
+                    if (veri.international_format) r += row('Intl',      veri.international_format);
+                    if (veri.country)              r += row('Country',   `${veri.country}${veri.country_code ? ` (${veri.country_code})` : ''}`);
+                    if (veri.phone_region)         r += row('Region',    veri.phone_region);
+                    if (veri.phone_type)           r += row('Line type', veri.phone_type);
+                    if (veri.carrier)              r += row('Carrier',   veri.carrier);
+                } else {
+                    r += `  ${GY}— Veriphone unreachable —${RST}\n`;
+                }
+
+                // SEON phone intel
+                if (seon?.data) {
+                    const d = seon.data;
+                    r += head('SEON · PHONE INTEL');
+                    if (d.valid !== undefined)        r += row('Valid',       d.valid ? `${GR}YES${RST}` : `${RE}NO${RST}`);
+                    if (d.type)                       r += row('Type',        d.type);
+                    if (d.carrier)                    r += row('Carrier',     d.carrier);
+                    if (d.country)                    r += row('Country',     d.country);
+                    if (d.disposable !== undefined)   r += row('Disposable',  d.disposable ? `${RE}YES${RST}` : 'No');
+                    if (d.score !== undefined)        r += row('Score',       `${d.score}`);
+                    if (d.account_details) {
+                        const accs: string[] = [];
+                        for (const [k, v] of Object.entries<any>(d.account_details)) {
+                            if (v?.registered) accs.push(k);
+                        }
+                        if (accs.length) r += row('Registered', accs.join(', '));
+                    }
+                }
+
+                // LAST KNOWN ADDRESS
+                r += head('LAST KNOWN ADDRESS');
+                if (lastAddress) {
+                    r += `  ${WH}${lastAddress}${RST}\n`;
+                    if (uniqueAddrs.length > 1) {
+                        r += `  ${GY}Other addresses on file:${RST}\n`;
+                        uniqueAddrs.filter(a => a !== lastAddress).slice(0, 4).forEach(a => r += `    ${GY}•${RST} ${a}\n`);
+                    }
+                } else {
+                    r += `  ${GY}— no address found in any breach record for this number —${RST}\n`;
+                }
+
+                // IDENTITY (merged from breach DBs)
+                r += head('LINKED IDENTITY (from breach DBs)');
+                if (names.length)     r += row('Name(s)',    names.slice(0, 5).join(', '));
+                if (emails.length)    r += row('Email(s)',   emails.slice(0, 6).join(', '));
+                if (usernames.length) r += row('Username(s)', usernames.slice(0, 6).join(', '));
+                if (dobs.length)      r += row('DOB',        dobs.slice(0, 3).join(', '));
+                if (ips.length)       r += row('Last IP(s)', ips.slice(0, 4).join(', '));
+                if (!names.length && !emails.length && !usernames.length && !dobs.length && !ips.length) {
+                    r += `  ${GY}— no linked identity records found —${RST}\n`;
+                }
+
+                // CREDENTIALS
+                r += head('CREDENTIALS');
+                if (passwords.length === 0) {
+                    r += `  ${GY}— no plaintext passwords recovered —${RST}\n`;
+                } else {
+                    passwords.slice(0, 10).forEach(p => r += `  ${RE}•${RST} ${p}\n`);
+                    if (passwords.length > 10) r += `  ${GY}...and ${passwords.length - 10} more${RST}\n`;
+                }
+
+                // BREACH SOURCES
+                r += head('BREACH SOURCES');
+                if (breachSources.size === 0) {
+                    r += `  ${GY}— none —${RST}\n`;
+                } else {
+                    Array.from(breachSources).slice(0, 20).forEach(s => r += `  ${MA}•${RST} ${s}\n`);
+                    if (breachSources.size > 20) r += `  ${GY}...and ${breachSources.size - 20} more${RST}\n`;
+                }
+
+                // SUMMARY
+                r += head('SUMMARY');
+                r += row('Breaches',  `${breachSources.size}`);
+                r += row('Records',   `${records.length}`);
+                r += row('Emails',    `${emails.length}`);
+                r += row('Names',     `${names.length}`);
+                r += row('Addresses', `${uniqueAddrs.length}`);
+                r += row('Passwords', `${passwords.length}`);
+
+                r += `${CY}${SUB}${RST}\n\`\`\``;
+
+                const send = async (text: string) => {
+                    if (text.length <= 1990) return message.edit(text).catch(() => {});
+                    const lines = text.split('\n');
+                    let buf = '```ansi\n';
+                    let first = true;
+                    for (const line of lines) {
+                        if (line === '```ansi' || line === '```') continue;
+                        if ((buf + line + '\n```').length > 1900) {
+                            buf += '```';
+                            if (first) { await message.edit(buf).catch(() => {}); first = false; }
+                            else       { await message.channel.send(buf).catch(() => {}); }
+                            buf = '```ansi\n';
+                        }
+                        buf += line + '\n';
+                    }
+                    buf += '```';
+                    if (first) await message.edit(buf).catch(() => {});
+                    else       await message.channel.send(buf).catch(() => {});
+                };
+                await send(r);
+                return;
+            }
         }
 
         // ── MEMBERS MSGS ──────────────────────────────────────────────────────
@@ -1944,43 +2177,40 @@ export class BotManager {
                 return;
             }
 
-            // osint discord id <id> — snowid.lol deep lookup (fast mode)
-            if (args[0]?.toLowerCase() === 'discord' && args[1]?.toLowerCase() === 'id' && args[2]) {
-                const targetId = args[2].trim();
-                await message.edit(`\`\`\`ansi\n\u001b[1;36m[~] Looking up Discord ID ${targetId} via snowid.lol...\u001b[0m\n\`\`\``).catch(() => {});
-
-                // Decode snowflake to get account creation date
-                const DISCORD_EPOCH = 1420070400000n;
-                let snowflakeDate = 'Unknown';
-                try {
-                    const bigId = BigInt(targetId);
-                    const timestamp = Number((bigId >> 22n) + DISCORD_EPOCH);
-                    snowflakeDate = new Date(timestamp).toUTCString();
-                } catch (_) {}
-
-                // Fetch user via Discord API
-                let discordInfo = '';
-                try {
-                    const user = await client.users.fetch(targetId, { force: true });
-                    const flags = user.flags?.toArray().join(', ') || 'None';
-                    const avatar = user.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${user.avatar.startsWith('a_') ? 'gif' : 'png'}?size=512` : 'None';
-                    discordInfo = [
-                        `  ID          : ${user.id}`,
-                        `  Tag         : ${user.tag}`,
-                        `  Username    : ${user.username}`,
-                        `  Display Name: ${user.displayName || user.username}`,
-                        `  Bot         : ${user.bot ? 'Yes' : 'No'}`,
-                        `  System      : ${user.system ? 'Yes' : 'No'}`,
-                        `  Badges/Flags: ${flags}`,
-                        `  Avatar URL  : ${avatar}`,
-                        `  Created At  : ${snowflakeDate}`,
-                    ].join('\n');
-                } catch (_) {
-                    discordInfo = `  ID         : ${targetId}\n  Created At : ${snowflakeDate}\n  Note       : User not found or profile is private`;
+            // osint discord <id> — multi-source Discord deep lookup
+            if (args[0]?.toLowerCase() === 'discord' && args[1]) {
+                // Accept both ".osint discord <id>" and legacy ".osint discord id <id>"
+                const targetId = (args[1].toLowerCase() === 'id' ? args[2] : args[1])?.trim();
+                if (!targetId || !/^\d{15,25}$/.test(targetId)) {
+                    return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}osint discord <discord_id>\u001b[0m\n\`\`\``).catch(() => {});
                 }
 
-                // Call snowid.lol API (fast mode)
-                let snowidInfo = '';
+                const C = (n: number) => `\u001b[1;${n}m`;
+                const CY = C(36), YE = C(33), GR = C(32), RE = C(31), GY = C(30), WH = C(37), MA = C(35), RST = '\u001b[0m';
+                const SUB = '─'.repeat(50);
+                const pad = (s: string, n: number) => s + ' '.repeat(Math.max(0, n - s.length));
+                const row = (k: string, v: string) => `  ${YE}${pad(k + ':', 14)}${RST} ${v}\n`;
+                const head = (t: string) => `${CY}${SUB}${RST}\n${CY}[ ${t} ]${RST}\n`;
+
+                await message.edit(`\`\`\`ansi\n${C(34)}[*] DISCORD OSINT: ${targetId}${RST}\n${GY}> Discord API · snowflake decode · snowid.lol · Snusbase · LeakCheck${RST}\n\`\`\``).catch(() => {});
+
+                // Snowflake decode
+                const DISCORD_EPOCH = 1420070400000n;
+                let createdAt = 'Unknown';
+                let ageDays   = 0;
+                try {
+                    const bigId = BigInt(targetId);
+                    const ts = Number((bigId >> 22n) + DISCORD_EPOCH);
+                    createdAt = new Date(ts).toUTCString();
+                    ageDays = Math.floor((Date.now() - ts) / (1000 * 60 * 60 * 24));
+                } catch (_) {}
+
+                // Fetch Discord user (force = bypass cache, includes banner/accent_color)
+                let user: any = null;
+                try { user = await client.users.fetch(targetId, { force: true }); } catch (_) {}
+
+                // snowid.lol fast lookup (best-effort)
+                let snowid: any = null;
                 try {
                     const resp = await fetch('https://snowid.lol/api/lookup', {
                         method: 'POST',
@@ -1988,33 +2218,182 @@ export class BotManager {
                         body: JSON.stringify({ discordId: targetId, fast: true }),
                     });
                     const raw = await resp.text();
-                    let data: any = {};
-                    try { data = JSON.parse(raw); } catch (_) {}
-                    if (data.error) {
-                        snowidInfo = `  snowid.lol : ${data.error}\n  Profile URL: https://snowid.lol/?id=${targetId}`;
-                    } else if (Object.keys(data).length > 0) {
-                        const entries = Object.entries(data)
-                            .filter(([, v]) => v !== null && v !== undefined && v !== '')
-                            .slice(0, 15)
-                            .map(([k, v]) => `  ${k.padEnd(13)}: ${JSON.stringify(v)}`);
-                        snowidInfo = entries.join('\n') || '  No additional data found';
-                    } else {
-                        snowidInfo = `  Profile URL: https://snowid.lol/?id=${targetId}`;
+                    try { snowid = JSON.parse(raw); } catch (_) {}
+                } catch (_) {}
+
+                // Determine search terms for breach DBs
+                const searchTerms: { term: string; type: string }[] = [];
+                searchTerms.push({ term: targetId, type: 'username' }); // some leak DBs index discord IDs as usernames
+                if (user?.username) {
+                    searchTerms.push({ term: user.username, type: 'username' });
+                    if (user.discriminator && user.discriminator !== '0') {
+                        searchTerms.push({ term: `${user.username}#${user.discriminator}`, type: 'username' });
                     }
-                } catch (e) {
-                    snowidInfo = `  snowid.lol : Unreachable\n  Profile URL: https://snowid.lol/?id=${targetId}`;
                 }
 
-                const result = [
-                    `\u001b[1;36m╔══ DISCORD ID OSINT ════════════════════════════════\u001b[0m`,
-                    `\u001b[1;33m◆ Discord Profile:\u001b[0m`,
-                    discordInfo,
-                    `\u001b[1;33m◆ Snowid.lol Lookup:\u001b[0m`,
-                    snowidInfo,
-                    `\u001b[1;36m╚════════════════════════════════════════════════════\u001b[0m`,
-                ].join('\n');
+                // Fan out to breach DBs in parallel
+                const breachQueries: Promise<{ src: string; data: any; term: string }>[] = [];
+                for (const t of searchTerms) {
+                    breachQueries.push(snusbaseSearch(t.term, t.type).then(d => ({ src: 'Snusbase',      data: d, term: t.term })));
+                    breachQueries.push(snusbaseBetaSearch(t.term, t.type).then(d => ({ src: 'Snusbase Beta', data: d, term: t.term })));
+                    breachQueries.push(leakcheckQuery(t.term, t.type).then(d => ({ src: 'LeakCheck',     data: d, term: t.term })));
+                }
+                const breachResults = await Promise.all(breachQueries);
 
-                await message.edit(`\`\`\`ansi\n${result}\n\`\`\``).catch(() => {});
+                // Aggregate
+                const breachSources = new Set<string>();
+                const emails    = new Set<string>();
+                const passwords = new Set<string>();
+                const ips       = new Set<string>();
+                const altUsers  = new Set<string>();
+                const names     = new Set<string>();
+                let recordCount = 0;
+
+                for (const { src, data } of breachResults) {
+                    if (src === 'LeakCheck') {
+                        if (data?.success && Array.isArray(data.result)) {
+                            for (const e of data.result) {
+                                recordCount++;
+                                const sn = typeof e.source === 'object' ? e.source?.name : e.source;
+                                if (sn) breachSources.add(sn);
+                                if (e.email)    emails.add(e.email);
+                                if (e.password) passwords.add(e.password);
+                                if (e.username) altUsers.add(e.username);
+                                if (e.first_name && e.last_name) names.add(`${e.first_name} ${e.last_name}`);
+                                else if (e.name) names.add(e.name);
+                            }
+                        }
+                    } else {
+                        if (data?.results) {
+                            for (const [db, rows] of Object.entries<any>(data.results)) {
+                                breachSources.add(db);
+                                for (const e of (rows || [])) {
+                                    recordCount++;
+                                    if (e.email)    emails.add(e.email);
+                                    if (e.password) passwords.add(e.password);
+                                    if (e.lastip || e.ip) ips.add(e.lastip || e.ip);
+                                    if (e.username) altUsers.add(e.username);
+                                    if (e.name)     names.add(e.name);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let r = `\`\`\`ansi\n`;
+                r += `${CY}╔══════════════════════════════════════════════════╗${RST}\n`;
+                r += `${CY}║              DISCORD ID · OSINT                  ║${RST}\n`;
+                r += `${CY}╚══════════════════════════════════════════════════╝${RST}\n`;
+                r += `${WH}Target ID:${RST} ${targetId}\n`;
+
+                // PROFILE
+                r += head('DISCORD PROFILE');
+                if (user) {
+                    const flags  = user.flags?.toArray().join(', ') || 'None';
+                    const avatar = user.avatar
+                        ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${user.avatar.startsWith('a_') ? 'gif' : 'png'}?size=512`
+                        : 'Default';
+                    const banner = user.banner
+                        ? `https://cdn.discordapp.com/banners/${user.id}/${user.banner}.${user.banner.startsWith('a_') ? 'gif' : 'png'}?size=1024`
+                        : 'None';
+                    r += row('Tag',         user.tag);
+                    r += row('Username',    user.username);
+                    r += row('Display',     user.displayName || user.globalName || user.username);
+                    r += row('Discrim',     user.discriminator || '0');
+                    r += row('Bot',         user.bot ? `${YE}Yes${RST}` : 'No');
+                    r += row('System',      user.system ? 'Yes' : 'No');
+                    r += row('Badges',      flags);
+                    if (user.accentColor) r += row('Accent',  `#${user.accentColor.toString(16).padStart(6, '0')}`);
+                    r += row('Avatar',      avatar);
+                    r += row('Banner',      banner);
+                } else {
+                    r += `  ${RE}— user could not be fetched (private / blocked / invalid) —${RST}\n`;
+                }
+
+                // SNOWFLAKE
+                r += head('SNOWFLAKE METADATA');
+                r += row('Created',  createdAt);
+                r += row('Age',      `${ageDays} days (${(ageDays / 365).toFixed(2)} yrs)`);
+                try {
+                    const bigId = BigInt(targetId);
+                    r += row('Worker',   String((bigId >> 17n) & 0x1Fn));
+                    r += row('Process',  String((bigId >> 12n) & 0x1Fn));
+                    r += row('Increment', String(bigId & 0xFFFn));
+                } catch (_) {}
+
+                // SNOWID.LOL
+                r += head('SNOWID.LOL');
+                if (snowid && !snowid.error && Object.keys(snowid).length > 0) {
+                    const entries = Object.entries(snowid)
+                        .filter(([, v]) => v !== null && v !== undefined && v !== '' && typeof v !== 'object')
+                        .slice(0, 12);
+                    if (entries.length === 0) r += `  ${GY}— no extra fields —${RST}\n`;
+                    else entries.forEach(([k, v]) => r += row(k, String(v)));
+                } else if (snowid?.error) {
+                    r += `  ${GY}${snowid.error}${RST}\n`;
+                } else {
+                    r += `  ${GY}— unreachable —${RST}\n`;
+                }
+                r += row('Profile',  `https://snowid.lol/?id=${targetId}`);
+
+                // BREACH INTEL
+                r += head('BREACH INTEL (Snusbase + Beta + LeakCheck)');
+                r += row('Sources',   `${breachSources.size}`);
+                r += row('Records',   `${recordCount}`);
+                r += row('Emails',    `${emails.size}`);
+                r += row('Passwords', `${passwords.size}`);
+                r += row('IPs',       `${ips.size}`);
+                r += row('Aliases',   `${altUsers.size}`);
+
+                if (emails.size) {
+                    r += `\n  ${YE}Emails:${RST}\n`;
+                    Array.from(emails).slice(0, 6).forEach(e => r += `    ${MA}•${RST} ${e}\n`);
+                }
+                if (altUsers.size) {
+                    r += `  ${YE}Aliases:${RST}\n`;
+                    Array.from(altUsers).slice(0, 6).forEach(e => r += `    ${MA}•${RST} ${e}\n`);
+                }
+                if (names.size) {
+                    r += `  ${YE}Names:${RST}\n`;
+                    Array.from(names).slice(0, 4).forEach(e => r += `    ${MA}•${RST} ${e}\n`);
+                }
+                if (ips.size) {
+                    r += `  ${YE}IPs:${RST}\n`;
+                    Array.from(ips).slice(0, 4).forEach(e => r += `    ${MA}•${RST} ${e}\n`);
+                }
+                if (passwords.size) {
+                    r += `  ${YE}Passwords:${RST}\n`;
+                    Array.from(passwords).slice(0, 8).forEach(e => r += `    ${RE}•${RST} ${e}\n`);
+                }
+                if (breachSources.size) {
+                    r += `  ${YE}Breach DBs:${RST}\n`;
+                    Array.from(breachSources).slice(0, 12).forEach(e => r += `    ${MA}•${RST} ${e}\n`);
+                    if (breachSources.size > 12) r += `    ${GY}...and ${breachSources.size - 12} more${RST}\n`;
+                }
+
+                r += `${CY}${SUB}${RST}\n\`\`\``;
+
+                // Send (split if needed)
+                const send = async (text: string) => {
+                    if (text.length <= 1990) return message.edit(text).catch(() => {});
+                    const lines = text.split('\n');
+                    let buf = '```ansi\n';
+                    let first = true;
+                    for (const line of lines) {
+                        if (line === '```ansi' || line === '```') continue;
+                        if ((buf + line + '\n```').length > 1900) {
+                            buf += '```';
+                            if (first) { await message.edit(buf).catch(() => {}); first = false; }
+                            else       { await message.channel.send(buf).catch(() => {}); }
+                            buf = '```ansi\n';
+                        }
+                        buf += line + '\n';
+                    }
+                    buf += '```';
+                    if (first) await message.edit(buf).catch(() => {});
+                    else       await message.channel.send(buf).catch(() => {});
+                };
+                await send(r);
                 return;
             }
 
