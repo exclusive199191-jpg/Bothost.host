@@ -176,6 +176,92 @@ function parseCoordinates(input: string): { lat: number, lon: number } | null {
     return null;
 }
 
+// ── WHO IS (Wikidata person lookup) ─────────────────────────────────────────
+// Uses the public Wikipedia + Wikidata APIs (no key, fully ToS-compliant).
+// Returns rich biographical + family info for notable people (public figures,
+// celebrities, athletes, politicians, historical figures). Private individuals
+// will not be in Wikidata — no public free API exists for that.
+const WD_REL = {
+    P22:   'father',
+    P25:   'mother',
+    P26:   'spouse',
+    P40:   'child',
+    P3373: 'sibling',
+    P39:   'position held',
+    P106:  'occupation',
+    P27:   'citizenship',
+    P19:   'place of birth',
+    P20:   'place of death',
+    P569:  'date of birth',
+    P570:  'date of death',
+    P21:   'gender',
+    P735:  'given name',
+    P734:  'family name',
+} as const;
+
+async function wdSearchPerson(name: string): Promise<{ id: string; label: string; description: string } | null> {
+    try {
+        const url = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(name)}&language=en&format=json&limit=5&type=item&origin=*`;
+        const res = await fetch(url, { headers: { 'User-Agent': 'NetrunnerBot/1.0 (osint-whois)' } });
+        if (!res.ok) return null;
+        const data: any = await res.json();
+        const hits = data?.search || [];
+        // Prefer the first hit whose description suggests a person (contains common person-y words)
+        const personHints = /\b(actor|actress|singer|player|politician|writer|author|musician|model|director|footballer|basketball|rapper|producer|engineer|scientist|philosopher|artist|painter|king|queen|emperor|president|ceo|businessman|businesswoman|youtuber|streamer|journalist|chef|athlete|boxer|wrestler|comedian|host|judge|architect|astronaut|monarch|pope|saint|general|admiral|soldier|prince|princess|duke|duchess|noble|footballer|coach|composer)\b/i;
+        const personHit = hits.find((h: any) => personHints.test(h.description || ''));
+        const pick = personHit || hits[0];
+        if (!pick) return null;
+        return { id: pick.id, label: pick.label || name, description: pick.description || '' };
+    } catch { return null; }
+}
+
+async function wdGetEntities(ids: string[]): Promise<Record<string, any>> {
+    if (ids.length === 0) return {};
+    try {
+        const out: Record<string, any> = {};
+        // Wikidata caps wbgetentities at 50 ids per call
+        for (let i = 0; i < ids.length; i += 50) {
+            const chunk = ids.slice(i, i + 50);
+            const url = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${chunk.join('|')}&props=labels|descriptions|claims&languages=en&format=json&origin=*`;
+            const res = await fetch(url, { headers: { 'User-Agent': 'NetrunnerBot/1.0 (osint-whois)' } });
+            if (!res.ok) continue;
+            const data: any = await res.json();
+            Object.assign(out, data?.entities || {});
+        }
+        return out;
+    } catch { return {}; }
+}
+
+function wdClaimIds(entity: any, prop: string): string[] {
+    const claims = entity?.claims?.[prop] || [];
+    return claims
+        .map((c: any) => c?.mainsnak?.datavalue?.value?.id)
+        .filter((x: any): x is string => typeof x === 'string');
+}
+
+function wdClaimTime(entity: any, prop: string): string | null {
+    const claims = entity?.claims?.[prop] || [];
+    const v = claims[0]?.mainsnak?.datavalue?.value?.time;
+    if (!v) return null;
+    // Wikidata times look like "+1980-05-12T00:00:00Z"
+    const m = v.match(/^[+-]?(\d{1,4})-(\d{2})-(\d{2})/);
+    if (!m) return null;
+    const [_, y, mo, d] = m;
+    if (mo === '00' && d === '00') return y;
+    if (d === '00') return `${y}-${mo}`;
+    return `${y}-${mo}-${d}`;
+}
+
+async function wikiSummary(title: string): Promise<string | null> {
+    try {
+        const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+        const res = await fetch(url, { headers: { 'User-Agent': 'NetrunnerBot/1.0 (osint-whois)' } });
+        if (!res.ok) return null;
+        const data: any = await res.json();
+        return data?.extract || null;
+    } catch { return null; }
+}
+
 function osmEmbedUrl(lat: number, lon: number, delta = 0.08): string {
     const left = (lon - delta).toFixed(4);
     const right = (lon + delta).toFixed(4);
@@ -229,6 +315,7 @@ const COMMANDS_LIST = [
     { name: 'email breaches <email>',       desc: 'Search for email across all breach databases.', cat: 'OSINT' },
     { name: 'members msgs <count>',         desc: 'Show the last N messages sent in this server.', cat: 'OSINT' },
     { name: 'ip check <addr>',              desc: 'Full IP lookup with location map.', cat: 'OSINT' },
+    { name: 'who is <full name>',           desc: 'Bio + family OSINT (parents, siblings, spouse, children) via Wikidata.', cat: 'OSINT' },
     { name: 'convert cords <coords>',       desc: 'Reverse-geocode coordinates (DMS or decimal) to an address.', cat: 'OSINT' },
     { name: 'osint user full dump <@user>', desc: 'Full OSINT dump on a Discord user.', cat: 'OSINT' },
     { name: 'osint discord id <id>',        desc: 'Deep lookup on a Discord user ID via snowid.lol.', cat: 'OSINT' },
@@ -1043,6 +1130,118 @@ export class BotManager {
 
             await message.edit(result).catch(() => {});
             await message.channel.send(mapUrl).catch(() => {});
+            return;
+        }
+
+        // ── WHO IS <full name> — biographical + family OSINT via Wikidata ────
+        if (command === 'who' && args[0]?.toLowerCase() === 'is') {
+            const name = args.slice(1).join(' ').trim();
+            if (!name) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}who is <full name>\u001b[0m\n\u001b[1;30mExample: ${prefix}who is Elon Musk\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] WHO IS: ${name}\u001b[0m\n\u001b[1;30m> Searching Wikidata + Wikipedia...\u001b[0m\n\`\`\``).catch(() => {});
+
+            const hit = await wdSearchPerson(name);
+            if (!hit) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] No public record found for "${name}".\u001b[0m\n\u001b[1;30mThis lookup only finds notable / public figures (no private-individual data exists in any free public API).\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            const subj = (await wdGetEntities([hit.id]))[hit.id];
+            if (!subj) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Could not load entity ${hit.id}.\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            // Collect all related entity IDs we need labels for
+            const fatherIds  = wdClaimIds(subj, 'P22');
+            const motherIds  = wdClaimIds(subj, 'P25');
+            const spouseIds  = wdClaimIds(subj, 'P26');
+            const childIds   = wdClaimIds(subj, 'P40');
+            const siblingIds = wdClaimIds(subj, 'P3373');
+            const occIds     = wdClaimIds(subj, 'P106');
+            const citIds     = wdClaimIds(subj, 'P27');
+            const pobIds     = wdClaimIds(subj, 'P19');
+            const podIds     = wdClaimIds(subj, 'P20');
+            const genderIds  = wdClaimIds(subj, 'P21');
+
+            const allIds = Array.from(new Set([
+                ...fatherIds, ...motherIds, ...spouseIds, ...childIds, ...siblingIds,
+                ...occIds, ...citIds, ...pobIds, ...podIds, ...genderIds,
+            ]));
+            const related = await wdGetEntities(allIds);
+            const labelOf = (id: string) => related[id]?.labels?.en?.value || id;
+            const descOf  = (id: string) => related[id]?.descriptions?.en?.value || '';
+
+            const dob = wdClaimTime(subj, 'P569');
+            const dod = wdClaimTime(subj, 'P570');
+
+            // Pull a short bio summary from Wikipedia (use the Wikidata label as title)
+            const bio = await wikiSummary(hit.label);
+            const bioShort = bio ? bio.split('. ').slice(0, 2).join('. ') + (bio.includes('.') ? '.' : '') : '';
+
+            const fmtList = (ids: string[], max = 10) => {
+                if (ids.length === 0) return '—';
+                const names = ids.slice(0, max).map(labelOf);
+                const extra = ids.length > max ? ` (+${ids.length - max} more)` : '';
+                return names.join(', ') + extra;
+            };
+            const fmtFamily = (ids: string[], max = 10) => {
+                if (ids.length === 0) return '—';
+                return ids.slice(0, max).map(id => {
+                    const d = descOf(id);
+                    return d ? `${labelOf(id)} (${d})` : labelOf(id);
+                }).join('\n               ') + (ids.length > max ? `\n               (+${ids.length - max} more)` : '');
+            };
+
+            const wikidataUrl = `https://www.wikidata.org/wiki/${hit.id}`;
+            const wikiUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(hit.label.replace(/ /g, '_'))}`;
+
+            let result = `\`\`\`ansi\n`;
+            result += `\u001b[1;36m╔══════════════════════════════════════════════╗\u001b[0m\n`;
+            result += `\u001b[1;36m║          NETRUNNER · WHO IS REPORT           ║\u001b[0m\n`;
+            result += `\u001b[1;36m╚══════════════════════════════════════════════╝\u001b[0m\n`;
+            result += `\u001b[1;37mTarget:\u001b[0m ${hit.label}\n`;
+            if (hit.description) result += `\u001b[1;30m${hit.description}\u001b[0m\n`;
+            result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
+
+            result += `\u001b[1;36m[ IDENTITY ]\u001b[0m\n`;
+            result += `  \u001b[1;33mName:\u001b[0m         ${hit.label}\n`;
+            result += `  \u001b[1;33mGender:\u001b[0m       ${genderIds.length ? labelOf(genderIds[0]) : '—'}\n`;
+            result += `  \u001b[1;33mOccupation:\u001b[0m   ${fmtList(occIds, 6)}\n`;
+            result += `  \u001b[1;33mCitizenship:\u001b[0m  ${fmtList(citIds, 6)}\n`;
+            result += `  \u001b[1;33mBorn:\u001b[0m         ${dob || '—'}${pobIds.length ? `, ${labelOf(pobIds[0])}` : ''}\n`;
+            if (dod || podIds.length) {
+                result += `  \u001b[1;33mDied:\u001b[0m         ${dod || '—'}${podIds.length ? `, ${labelOf(podIds[0])}` : ''}\n`;
+            }
+
+            result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
+            result += `\u001b[1;36m[ FAMILY ]\u001b[0m\n`;
+            result += `  \u001b[1;33mFather:\u001b[0m       ${fmtFamily(fatherIds, 5)}\n`;
+            result += `  \u001b[1;33mMother:\u001b[0m       ${fmtFamily(motherIds, 5)}\n`;
+            result += `  \u001b[1;33mSpouse(s):\u001b[0m    ${fmtFamily(spouseIds, 8)}\n`;
+            result += `  \u001b[1;33mChildren:\u001b[0m     ${fmtFamily(childIds, 15)}\n`;
+            result += `  \u001b[1;33mSiblings:\u001b[0m     ${fmtFamily(siblingIds, 15)}\n`;
+
+            if (bioShort) {
+                result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
+                result += `\u001b[1;36m[ BIO ]\u001b[0m\n`;
+                // Wrap bio at ~72 chars per line for readability in Discord
+                const words = bioShort.split(/\s+/);
+                let line = '  ';
+                for (const w of words) {
+                    if ((line + w).length > 72) { result += line.trimEnd() + '\n'; line = '  '; }
+                    line += w + ' ';
+                }
+                if (line.trim()) result += line.trimEnd() + '\n';
+            }
+
+            result += `\u001b[1;30m${'─'.repeat(48)}\u001b[0m\n`;
+            result += `\u001b[1;36m[ SOURCES ]\u001b[0m\n`;
+            result += `  \u001b[1;32mWikidata:\u001b[0m  ${wikidataUrl}\n`;
+            result += `  \u001b[1;32mWikipedia:\u001b[0m ${wikiUrl}\n`;
+            result += `\`\`\``;
+
+            await message.edit(result).catch(() => {});
             return;
         }
 
