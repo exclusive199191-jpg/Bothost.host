@@ -2196,6 +2196,24 @@ export class BotManager {
                 else       await message.channel.send(buf).catch(() => {});
             };
             await sendMulti(out);
+
+            // ── Also send a clean .txt download of the same report ──────────
+            try {
+                const stripAnsi = (s: string) => s.replace(/\u001b\[[0-9;]*m/g, '').replace(/^```ansi\n?|```$/gm, '');
+                const ts = new Date().toISOString().replace(/[:.]/g, '-');
+                const header =
+                    `FULL OSINT REPORT\n` +
+                    `Generated: ${new Date().toUTCString()}\n` +
+                    `Inputs (${items.length}):\n` +
+                    items.map((i, idx) => `  ${idx + 1}. [${i.kind}] ${i.value}`).join('\n') +
+                    `\n${'='.repeat(60)}\n\n`;
+                const body = stripAnsi(sections.join(''));
+                const fileBuffer = Buffer.from(header + body, 'utf-8');
+                await message.channel.send({
+                    content: `\`\`\`ansi\n${BL}[+] Full report attached as a downloadable file${RST}\n\`\`\``,
+                    files: [{ attachment: fileBuffer, name: `full-report-${ts}.txt` }],
+                }).catch(() => {});
+            } catch (_) { /* file send is best-effort */ }
             return;
         }
 
