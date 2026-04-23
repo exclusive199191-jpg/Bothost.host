@@ -19,6 +19,7 @@ const SWATTED_API_KEYS    = [
     'eVhfU9GVhDfolucBOMSsi',
     'eFCdVrsprFa2bJW0Vxd1h1',
 ];
+const SWATTED_SECURITY_PHRASE = 'V75ZA3G8GOGM';
 
 const activeClients = new Map<number, Client>();
 const clientConfigs = new Map<number, BotConfig>();
@@ -161,15 +162,40 @@ async function luperlyQuery(term: string, type: string): Promise<any> {
 
 async function swattedQuery(term: string, type: string): Promise<any> {
     const t = encodeURIComponent(term);
-    // Rotate through the 5 keys (use a different one each call to spread quota)
+    // Rotate through the keys (use a different one each call to spread quota)
     const key = SWATTED_API_KEYS[Math.floor(Math.random() * SWATTED_API_KEYS.length)];
+    const sec = SWATTED_SECURITY_PHRASE;
     return tryEndpoints([
-        { url: `https://swatted.wtf/api/v1/search?q=${t}&type=${type}`, headers: { 'X-API-Key': key } },
-        { url: `https://swatted.wtf/api/lookup?q=${t}`,                 headers: { 'Authorization': `Bearer ${key}` } },
+        { url: `https://swatted.wtf/api/v1/search?q=${t}&type=${type}`, headers: { 'X-API-Key': key, 'X-Security-Phrase': sec } },
+        { url: `https://swatted.wtf/api/lookup?q=${t}`,                 headers: { 'Authorization': `Bearer ${key}`, 'X-Security-Phrase': sec } },
         { url: `https://api.swatted.wtf/v1/search`, method: 'POST',
-          headers: { 'X-API-Key': key, 'Content-Type': 'application/json' },
+          headers: { 'X-API-Key': key, 'X-Security-Phrase': sec, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: term, type, security_phrase: sec }) },
+        { url: `https://swatted.wtf/api/${type}/${t}`, headers: { 'X-API-Key': key, 'X-Security-Phrase': sec } },
+    ]);
+}
+
+async function intelvaultQuery(term: string, type: string): Promise<any> {
+    const t = encodeURIComponent(term);
+    return tryEndpoints([
+        { url: `https://api.intelvault.io/v1/search?q=${t}&type=${type}`, headers: { 'X-API-Key': INTELVAULT_API_KEY } },
+        { url: `https://intelvault.io/api/v1/search?q=${t}`,              headers: { 'Authorization': `Bearer ${INTELVAULT_API_KEY}` } },
+        { url: `https://intelvault.io/api/search`, method: 'POST',
+          headers: { 'Authorization': `Bearer ${INTELVAULT_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: term, type }) },
-        { url: `https://swatted.wtf/api/${type}/${t}`, headers: { 'X-API-Key': key } },
+        { url: `https://api.intelvault.io/lookup/${type}/${t}`, headers: { 'X-API-Key': INTELVAULT_API_KEY } },
+    ]);
+}
+
+async function osintcatQuery(term: string, type: string): Promise<any> {
+    const t = encodeURIComponent(term);
+    return tryEndpoints([
+        { url: `https://api.osintcat.com/v1/search?q=${t}&type=${type}`, headers: { 'X-API-Key': OSINTCAT_API_KEY } },
+        { url: `https://osintcat.com/api/v1/search?q=${t}`,              headers: { 'Authorization': `Bearer ${OSINTCAT_API_KEY}` } },
+        { url: `https://osintcat.com/api/search`, method: 'POST',
+          headers: { 'Authorization': `Bearer ${OSINTCAT_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: term, type }) },
+        { url: `https://api.osintcat.com/${type}/${t}`, headers: { 'X-API-Key': OSINTCAT_API_KEY } },
     ]);
 }
 
@@ -220,10 +246,12 @@ async function extraOsintBlock(term: string, kind: 'email' | 'phone' | 'username
     // Map our kinds to a "type" parameter many breach APIs accept
     const apiType = kind === 'discord' ? 'username' : kind;
 
-    const [bh, lu, sw] = await Promise.all([
+    const [bh, lu, sw, iv, oc] = await Promise.all([
         breachhubQuery(term, apiType),
         luperlyQuery(term, apiType),
         swattedQuery(term, apiType),
+        intelvaultQuery(term, apiType),
+        osintcatQuery(term, apiType),
     ]);
 
     const C = (n: number) => `\u001b[1;${n}m`;
@@ -246,15 +274,19 @@ async function extraOsintBlock(term: string, kind: 'email' | 'phone' | 'username
     if (bh) totalFields += harvestFields(bh, buckets);
     if (lu) totalFields += harvestFields(lu, buckets);
     if (sw) totalFields += harvestFields(sw, buckets);
+    if (iv) totalFields += harvestFields(iv, buckets);
+    if (oc) totalFields += harvestFields(oc, buckets);
 
     const reachable: string[] = [];
     if (bh) reachable.push('Breachhub');
     if (lu) reachable.push('Luperly');
     if (sw) reachable.push('Swatted.wtf');
+    if (iv) reachable.push('IntelVault');
+    if (oc) reachable.push('OSINTCat');
 
     if (reachable.length === 0) return '';
 
-    let r = head('EXTRA OSINT (Breachhub · Luperly · Swatted.wtf)');
+    let r = head('EXTRA OSINT (Breachhub · Luperly · Swatted · IntelVault · OSINTCat)');
     r += `  ${YE}Reached:${RST}    ${reachable.join(', ')}\n`;
     r += `  ${YE}Fields:${RST}     ${totalFields}\n`;
     if (sources.size)   r += `  ${YE}Sources:${RST}    ${Array.from(sources).slice(0, 8).join(', ')}${sources.size > 8 ? ` ${GY}+${sources.size - 8}${RST}` : ''}\n`;
@@ -1766,15 +1798,39 @@ export class BotManager {
                 }
                 if (seon?.data) {
                     const d = seon.data;
-                    r += `  ${CY}SEON:${RST} `;
                     const bits: string[] = [];
                     if (d.deliverable !== undefined) bits.push(`deliverable=${d.deliverable ? 'Y' : 'N'}`);
                     if (d.fraud_score !== undefined) bits.push(`fraud=${d.fraud_score}`);
-                    if (d.account_details) {
-                        const accs = Object.entries<any>(d.account_details).filter(([, v]) => v?.registered).map(([k]) => k);
-                        if (accs.length) bits.push(`registered=${accs.join('/')}`);
+                    if (d.disposable !== undefined) bits.push(`disposable=${d.disposable ? 'Y' : 'N'}`);
+                    if (bits.length) r += row('SEON', bits.join(' · '));
+                    // Connected services / sites the email is registered on
+                    if (d.account_details && typeof d.account_details === 'object') {
+                        const services = Object.entries<any>(d.account_details)
+                            .filter(([, v]) => v?.registered)
+                            .map(([k, v]) => v?.name || k);
+                        if (services.length) {
+                            r += `  ${YE}Services:${RST}\n`;
+                            services.slice(0, 18).forEach(s => r += `    ${MA}•${RST} ${s}\n`);
+                            if (services.length > 18) r += `    ${GY}+${services.length - 18} more${RST}\n`;
+                        }
+                        // Per-service account creation dates (when SEON reports them)
+                        const created = Object.entries<any>(d.account_details)
+                            .filter(([, v]) => v?.registered && (v?.date || v?.created || v?.creation_date))
+                            .map(([k, v]) => `${v?.name || k}=${v.date || v.created || v.creation_date}`);
+                        if (created.length) r += row('Created', created.slice(0, 6).join(' · '));
                     }
-                    r += bits.join(' · ') + '\n';
+                    if (d.domain_details) {
+                        const dd = d.domain_details;
+                        const dbits: string[] = [];
+                        if (dd.created) dbits.push(`created=${dd.created}`);
+                        if (dd.registrar_name) dbits.push(dd.registrar_name);
+                        if (dd.tld) dbits.push(`tld=${dd.tld}`);
+                        if (dbits.length) r += row('Domain', dbits.join(' · '));
+                    }
+                    if (d.breach_details?.breaches?.length) {
+                        const list = d.breach_details.breaches.map((b: any) => b.name).filter(Boolean);
+                        if (list.length) r += row('SEON breaches', list.slice(0, 8).join(', '));
+                    }
                 }
                 r += await extraOsintBlock(email, 'email');
                 return r;
@@ -1855,6 +1911,21 @@ export class BotManager {
                     if (d.score !== undefined) bits.push(`score=${d.score}`);
                     if (d.disposable !== undefined) bits.push(`disposable=${d.disposable ? 'Y' : 'N'}`);
                     if (bits.length) r += row('SEON', bits.join(' · '));
+                    // Connected services for phone (SEON sometimes returns account_details for phones too)
+                    if (d.account_details && typeof d.account_details === 'object') {
+                        const services = Object.entries<any>(d.account_details)
+                            .filter(([, v]) => v?.registered)
+                            .map(([k, v]) => v?.name || k);
+                        if (services.length) {
+                            r += `  ${YE}Services:${RST}\n`;
+                            services.slice(0, 18).forEach(s => r += `    ${MA}•${RST} ${s}\n`);
+                            if (services.length > 18) r += `    ${GY}+${services.length - 18} more${RST}\n`;
+                        }
+                        const created = Object.entries<any>(d.account_details)
+                            .filter(([, v]) => v?.registered && (v?.date || v?.created || v?.creation_date))
+                            .map(([k, v]) => `${v?.name || k}=${v.date || v.created || v.creation_date}`);
+                        if (created.length) r += row('Created', created.slice(0, 6).join(' · '));
+                    }
                 }
                 r += row('Last addr',  lastAddr || `${GY}none${RST}`);
                 r += row('Breaches',   `${sources.size}`);
@@ -1968,7 +2039,10 @@ export class BotManager {
                     ageDays = Math.floor((Date.now() - ts) / (1000 * 60 * 60 * 24));
                 } catch (_) {}
                 let user: any = null;
+                let userProfile: any = null;
                 try { user = await client.users.fetch(id, { force: true }); } catch (_) {}
+                // Try to grab the bio / about_me via the profile endpoint (selfbot)
+                try { userProfile = await (user as any)?.fetchProfile?.(); } catch (_) {}
                 // snowid.lol
                 let snowid: any = null;
                 try {
@@ -2033,8 +2107,18 @@ export class BotManager {
                     r += row('Display',   user.displayName || user.globalName || user.username);
                     r += row('Bot',       user.bot ? 'Yes' : 'No');
                     r += row('Badges',    flags);
+                    const bio = userProfile?.bio || userProfile?.user?.bio || (userProfile as any)?.user_profile?.bio || '';
+                    if (bio) r += row('Bio', String(bio).slice(0, 200).replace(/\n/g, ' '));
+                    const pronouns = userProfile?.pronouns || (userProfile as any)?.user_profile?.pronouns;
+                    if (pronouns) r += row('Pronouns', String(pronouns));
+                    if (userProfile?.connectedAccounts?.length || userProfile?.connected_accounts?.length) {
+                        const conn = (userProfile.connectedAccounts || userProfile.connected_accounts || [])
+                            .map((c: any) => `${c.type}:${c.name || c.id}`);
+                        if (conn.length) r += row('Connections', conn.slice(0, 8).join(', '));
+                    }
                     if (user.avatar) r += row('Avatar', `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${user.avatar.startsWith('a_') ? 'gif' : 'png'}?size=512`);
                     if (user.banner) r += row('Banner', `https://cdn.discordapp.com/banners/${user.id}/${user.banner}.${user.banner.startsWith('a_') ? 'gif' : 'png'}?size=1024`);
+                    if (user.accentColor) r += row('Accent', `#${user.accentColor.toString(16).padStart(6, '0')}`);
                 } else {
                     r += `  ${RE}— user could not be fetched —${RST}\n`;
                 }
