@@ -1865,8 +1865,14 @@ export class BotManager {
                 const ips = new Set<string>();
                 const addrs = new Set<string>();
                 const dobs = new Set<string>();
-                const records: { source: string; username?: string; email?: string; password?: string; hash?: string; ip?: string }[] = [];
+                const records: { source: string; username?: string; email?: string; password?: string; hash?: string; ip?: string; lastSeen?: string }[] = [];
+                const nameCount = new Map<string, number>();
+                const lastSeenAll: { source: string; ts: string }[] = [];
                 let recs = 0;
+                const pickLastSeen = (e: any): string | undefined => {
+                    return e.last_seen || e.lastseen || e.last_login || e.lastlogin || e.last_active || e.lastactive
+                         || e.last_ip_date || e.lastpinged || e.last_pinged || e.last_activity || e.last_seen_at;
+                };
                 const eat = (data: any) => {
                     if (!data?.results) return;
                     for (const [db, rows] of Object.entries<any>(data.results)) {
@@ -1876,12 +1882,14 @@ export class BotManager {
                             if (e.email) emails.add(e.email);
                             if (e.password) passwords.add(e.password);
                             if (e.username) usernames.add(e.username);
-                            if (e.name) names.add(e.name);
+                            if (e.name) { names.add(e.name); nameCount.set(e.name, (nameCount.get(e.name) || 0) + 1); }
                             if (e.lastip || e.ip) ips.add(e.lastip || e.ip);
                             const a = [e.address, e.city, e.state, e.zip || e.zipcode, e.country].filter(Boolean).join(', ');
                             if (a.length > 4) addrs.add(a);
                             if (e.dob || e.birthdate) dobs.add(e.dob || e.birthdate);
-                            records.push({ source: db, username: e.username, email: e.email, password: e.password, hash: e.hash, ip: e.lastip || e.ip });
+                            const ls = pickLastSeen(e);
+                            if (ls) lastSeenAll.push({ source: db, ts: String(ls) });
+                            records.push({ source: db, username: e.username, email: e.email, password: e.password, hash: e.hash, ip: e.lastip || e.ip, lastSeen: ls });
                         }
                     }
                 };
@@ -1894,15 +1902,24 @@ export class BotManager {
                         if (e.email) emails.add(e.email);
                         if (e.password) passwords.add(e.password);
                         if (e.username) usernames.add(e.username);
-                        if (e.first_name && e.last_name) names.add(`${e.first_name} ${e.last_name}`);
-                        else if (e.name) names.add(e.name);
+                        const fullName = (e.first_name && e.last_name) ? `${e.first_name} ${e.last_name}` : e.name;
+                        if (fullName) { names.add(fullName); nameCount.set(fullName, (nameCount.get(fullName) || 0) + 1); }
                         const a = [e.address, e.city, e.state, e.zip, e.country].filter(Boolean).join(', ');
                         if (a.length > 4) addrs.add(a);
                         if (e.dob) dobs.add(e.dob);
-                        records.push({ source: sn || 'LeakCheck', username: e.username, email: e.email, password: e.password, hash: e.hash, ip: e.ip });
+                        const ls = pickLastSeen(e);
+                        if (ls) lastSeenAll.push({ source: sn || 'LeakCheck', ts: String(ls) });
+                        records.push({ source: sn || 'LeakCheck', username: e.username, email: e.email, password: e.password, hash: e.hash, ip: e.ip, lastSeen: ls });
                     }
                 }
                 const lastAddr = Array.from(addrs).sort((a, b) => b.length - a.length)[0] || '';
+                // Owner = most-seen name across all breach records
+                const owner = Array.from(nameCount.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+                // Last pinged = newest parseable timestamp across records
+                const lastPinged = lastSeenAll
+                    .map(x => ({ ...x, ms: Date.parse(x.ts) }))
+                    .filter(x => !isNaN(x.ms))
+                    .sort((a, b) => b.ms - a.ms)[0];
 
                 let r = head(`PHONE · ${phoneE164}`);
                 if (veri?.phone_valid !== undefined) {
@@ -1938,7 +1955,10 @@ export class BotManager {
                         if (created.length) r += row('Created', created.join(' · '));
                     }
                 }
-                r += row('Last addr',  lastAddr || `${GY}none${RST}`);
+                r += row('Owner',      owner || `${GY}unknown${RST}`);
+                r += row('Connected',  lastAddr || `${GY}none${RST}`);
+                if (lastPinged) r += row('Last pinged', `${lastPinged.ts} ${GY}(via ${lastPinged.source})${RST}`);
+                else            r += row('Last pinged', `${GY}none recorded in any breach${RST}`);
                 r += row('Breaches',   `${sources.size}`);
                 r += row('Records',    `${recs}`);
                 if (names.size)     r += row('Name(s)',    Array.from(names).join(', '));
@@ -1963,9 +1983,12 @@ export class BotManager {
                         const id = rec.email || rec.username || '—';
                         const cred = rec.password ? rec.password : (rec.hash ? `<hash:${rec.hash.slice(0, 24)}${rec.hash.length > 24 ? '…' : ''}>` : `${GY}(no password)${RST}`);
                         const ipBit = rec.ip ? ` ${GY}[ip:${rec.ip}]${RST}` : '';
-                        r += `    ${MA}•${RST} ${CY}[${rec.source}]${RST} ${id} :: ${RE}${cred}${RST}${ipBit}\n`;
+                        const seenBit = rec.lastSeen ? ` ${GY}[seen:${rec.lastSeen}]${RST}` : '';
+                        r += `    ${MA}•${RST} ${CY}[${rec.source}]${RST} ${id} :: ${RE}${cred}${RST}${ipBit}${seenBit}\n`;
                     }
                 }
+                // Honest disclosure for things that look like they should be in OSINT but aren't.
+                r += `  ${YE}911 / CAD calls:${RST} ${GY}not available — emergency-call records (date/time/transcript) are PSAP CAD/CDR data and are not exposed by any OSINT source. Requires subpoena / law-enforcement portal.${RST}\n`;
                 r += await extraOsintBlock(phoneE164, 'phone');
                 return r;
             };
