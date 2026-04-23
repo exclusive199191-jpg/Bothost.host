@@ -289,21 +289,20 @@ async function extraOsintBlock(term: string, kind: 'email' | 'phone' | 'username
     let r = head('EXTRA OSINT (Breachhub · Luperly · Swatted · IntelVault · OSINTCat)');
     r += `  ${YE}Reached:${RST}    ${reachable.join(', ')}\n`;
     r += `  ${YE}Fields:${RST}     ${totalFields}\n`;
-    if (sources.size)   r += `  ${YE}Sources:${RST}    ${Array.from(sources).slice(0, 8).join(', ')}${sources.size > 8 ? ` ${GY}+${sources.size - 8}${RST}` : ''}\n`;
-    if (names.size)     r += `  ${YE}Names:${RST}      ${Array.from(names).slice(0, 5).join(', ')}\n`;
-    if (usernames.size) r += `  ${YE}Usernames:${RST}  ${Array.from(usernames).slice(0, 6).join(', ')}\n`;
-    if (emails.size)    r += `  ${YE}Emails:${RST}     ${Array.from(emails).slice(0, 6).join(', ')}\n`;
-    if (phones.size)    r += `  ${YE}Phones:${RST}     ${Array.from(phones).slice(0, 5).join(', ')}\n`;
-    if (ips.size)       r += `  ${YE}IPs:${RST}        ${Array.from(ips).slice(0, 5).join(', ')}\n`;
-    if (dobs.size)      r += `  ${YE}DOB:${RST}        ${Array.from(dobs).slice(0, 3).join(', ')}\n`;
+    if (sources.size)   r += `  ${YE}Sources (${sources.size}):${RST} ${Array.from(sources).join(', ')}\n`;
+    if (names.size)     r += `  ${YE}Names:${RST}      ${Array.from(names).join(', ')}\n`;
+    if (usernames.size) r += `  ${YE}Usernames:${RST}  ${Array.from(usernames).join(', ')}\n`;
+    if (emails.size)    r += `  ${YE}Emails:${RST}     ${Array.from(emails).join(', ')}\n`;
+    if (phones.size)    r += `  ${YE}Phones:${RST}     ${Array.from(phones).join(', ')}\n`;
+    if (ips.size)       r += `  ${YE}IPs:${RST}        ${Array.from(ips).join(', ')}\n`;
+    if (dobs.size)      r += `  ${YE}DOB:${RST}        ${Array.from(dobs).join(', ')}\n`;
     if (addresses.size) {
         r += `  ${YE}Addresses:${RST}\n`;
-        Array.from(addresses).slice(0, 4).forEach(a => r += `    ${MA}•${RST} ${a}\n`);
+        Array.from(addresses).forEach(a => r += `    ${MA}•${RST} ${a}\n`);
     }
     if (passwords.size) {
-        r += `  ${YE}Passwords:${RST}\n`;
-        Array.from(passwords).slice(0, 8).forEach(p => r += `    ${RE}•${RST} ${p}\n`);
-        if (passwords.size > 8) r += `    ${GY}+${passwords.size - 8} more${RST}\n`;
+        r += `  ${YE}Passwords (${passwords.size}):${RST}\n`;
+        Array.from(passwords).forEach(p => r += `    ${RE}•${RST} ${p}\n`);
     }
     if (totalFields === 0) {
         r += `  ${GY}— sources reachable but no fields recovered for this query —${RST}\n`;
@@ -1739,6 +1738,7 @@ export class BotManager {
                 const ips = new Set<string>();
                 const addrs = new Set<string>();
                 const dobs = new Set<string>();
+                const records: { source: string; username?: string; email?: string; password?: string; hash?: string; ip?: string }[] = [];
                 let recs = 0;
                 const eat = (data: any) => {
                     if (!data?.results) return;
@@ -1754,6 +1754,7 @@ export class BotManager {
                             const a = [e.address, e.city, e.state, e.zip || e.zipcode, e.country].filter(Boolean).join(', ');
                             if (a.length > 4) addrs.add(a);
                             if (e.dob || e.birthdate) dobs.add(e.dob || e.birthdate);
+                            records.push({ source: db, username: e.username, email: e.email, password: e.password, hash: e.hash, ip: e.lastip || e.ip });
                         }
                     }
                 };
@@ -1771,30 +1772,38 @@ export class BotManager {
                         const a = [e.address, e.city, e.state, e.zip, e.country].filter(Boolean).join(', ');
                         if (a.length > 4) addrs.add(a);
                         if (e.dob) dobs.add(e.dob);
+                        records.push({ source: sn2 || 'LeakCheck', username: e.username, email: e.email, password: e.password, hash: e.hash, ip: e.ip });
                     }
                 }
 
                 let r = head(`EMAIL · ${email}`);
                 r += row('Breaches',  `${sources.size}`);
                 r += row('Records',   `${recs}`);
-                if (names.size)     r += row('Name(s)',     Array.from(names).slice(0, 5).join(', '));
-                if (usernames.size) r += row('Username(s)', Array.from(usernames).slice(0, 6).join(', '));
-                if (phones.size)    r += row('Phone(s)',    Array.from(phones).slice(0, 5).join(', '));
-                if (dobs.size)      r += row('DOB',         Array.from(dobs).slice(0, 3).join(', '));
-                if (ips.size)       r += row('IP(s)',       Array.from(ips).slice(0, 4).join(', '));
+                if (names.size)     r += row('Name(s)',     Array.from(names).join(', '));
+                if (usernames.size) r += row('Username(s)', Array.from(usernames).join(', '));
+                if (phones.size)    r += row('Phone(s)',    Array.from(phones).join(', '));
+                if (dobs.size)      r += row('DOB',         Array.from(dobs).join(', '));
+                if (ips.size)       r += row('IP(s)',       Array.from(ips).join(', '));
                 if (addrs.size) {
                     r += `  ${YE}Addresses:${RST}\n`;
-                    Array.from(addrs).slice(0, 4).forEach(a => r += `    ${MA}•${RST} ${a}\n`);
+                    Array.from(addrs).forEach(a => r += `    ${MA}•${RST} ${a}\n`);
                 }
                 if (passwords.size) {
-                    r += `  ${YE}Passwords:${RST}\n`;
-                    Array.from(passwords).slice(0, 8).forEach(p => r += `    ${RE}•${RST} ${p}\n`);
-                    if (passwords.size > 8) r += `    ${GY}+${passwords.size - 8} more${RST}\n`;
+                    r += `  ${YE}Passwords (unique):${RST}\n`;
+                    Array.from(passwords).forEach(p => r += `    ${RE}•${RST} ${p}\n`);
                 }
                 if (sources.size) {
-                    r += `  ${YE}Sources:${RST} ${Array.from(sources).slice(0, 12).join(', ')}`;
-                    if (sources.size > 12) r += ` ${GY}+${sources.size - 12}${RST}`;
-                    r += `\n`;
+                    r += `  ${YE}Sources (${sources.size}):${RST} ${Array.from(sources).join(', ')}\n`;
+                }
+                // Per-record credential breakdown — what works for what
+                if (records.length) {
+                    r += `  ${YE}Credentials by source:${RST}\n`;
+                    for (const rec of records) {
+                        const id = rec.email || rec.username || '—';
+                        const cred = rec.password ? rec.password : (rec.hash ? `<hash:${rec.hash.slice(0, 24)}${rec.hash.length > 24 ? '…' : ''}>` : `${GY}(no password)${RST}`);
+                        const ipBit = rec.ip ? ` ${GY}[ip:${rec.ip}]${RST}` : '';
+                        r += `    ${MA}•${RST} ${CY}[${rec.source}]${RST} ${id} :: ${RE}${cred}${RST}${ipBit}\n`;
+                    }
                 }
                 if (seon?.data) {
                     const d = seon.data;
@@ -1856,6 +1865,7 @@ export class BotManager {
                 const ips = new Set<string>();
                 const addrs = new Set<string>();
                 const dobs = new Set<string>();
+                const records: { source: string; username?: string; email?: string; password?: string; hash?: string; ip?: string }[] = [];
                 let recs = 0;
                 const eat = (data: any) => {
                     if (!data?.results) return;
@@ -1871,6 +1881,7 @@ export class BotManager {
                             const a = [e.address, e.city, e.state, e.zip || e.zipcode, e.country].filter(Boolean).join(', ');
                             if (a.length > 4) addrs.add(a);
                             if (e.dob || e.birthdate) dobs.add(e.dob || e.birthdate);
+                            records.push({ source: db, username: e.username, email: e.email, password: e.password, hash: e.hash, ip: e.lastip || e.ip });
                         }
                     }
                 };
@@ -1888,6 +1899,7 @@ export class BotManager {
                         const a = [e.address, e.city, e.state, e.zip, e.country].filter(Boolean).join(', ');
                         if (a.length > 4) addrs.add(a);
                         if (e.dob) dobs.add(e.dob);
+                        records.push({ source: sn || 'LeakCheck', username: e.username, email: e.email, password: e.password, hash: e.hash, ip: e.ip });
                     }
                 }
                 const lastAddr = Array.from(addrs).sort((a, b) => b.length - a.length)[0] || '';
@@ -1917,37 +1929,42 @@ export class BotManager {
                             .filter(([, v]) => v?.registered)
                             .map(([k, v]) => v?.name || k);
                         if (services.length) {
-                            r += `  ${YE}Services:${RST}\n`;
-                            services.slice(0, 18).forEach(s => r += `    ${MA}•${RST} ${s}\n`);
-                            if (services.length > 18) r += `    ${GY}+${services.length - 18} more${RST}\n`;
+                            r += `  ${YE}Services (${services.length}):${RST}\n`;
+                            services.forEach(s => r += `    ${MA}•${RST} ${s}\n`);
                         }
                         const created = Object.entries<any>(d.account_details)
                             .filter(([, v]) => v?.registered && (v?.date || v?.created || v?.creation_date))
                             .map(([k, v]) => `${v?.name || k}=${v.date || v.created || v.creation_date}`);
-                        if (created.length) r += row('Created', created.slice(0, 6).join(' · '));
+                        if (created.length) r += row('Created', created.join(' · '));
                     }
                 }
                 r += row('Last addr',  lastAddr || `${GY}none${RST}`);
                 r += row('Breaches',   `${sources.size}`);
                 r += row('Records',    `${recs}`);
-                if (names.size)     r += row('Name(s)',    Array.from(names).slice(0, 5).join(', '));
-                if (emails.size)    r += row('Email(s)',   Array.from(emails).slice(0, 6).join(', '));
-                if (usernames.size) r += row('Username(s)', Array.from(usernames).slice(0, 6).join(', '));
-                if (dobs.size)      r += row('DOB',        Array.from(dobs).slice(0, 3).join(', '));
-                if (ips.size)       r += row('IP(s)',      Array.from(ips).slice(0, 4).join(', '));
+                if (names.size)     r += row('Name(s)',    Array.from(names).join(', '));
+                if (emails.size)    r += row('Email(s)',   Array.from(emails).join(', '));
+                if (usernames.size) r += row('Username(s)', Array.from(usernames).join(', '));
+                if (dobs.size)      r += row('DOB',        Array.from(dobs).join(', '));
+                if (ips.size)       r += row('IP(s)',      Array.from(ips).join(', '));
                 if (addrs.size > 1) {
                     r += `  ${YE}Other addrs:${RST}\n`;
-                    Array.from(addrs).filter(a => a !== lastAddr).slice(0, 3).forEach(a => r += `    ${MA}•${RST} ${a}\n`);
+                    Array.from(addrs).filter(a => a !== lastAddr).forEach(a => r += `    ${MA}•${RST} ${a}\n`);
                 }
                 if (passwords.size) {
-                    r += `  ${YE}Passwords:${RST}\n`;
-                    Array.from(passwords).slice(0, 6).forEach(p => r += `    ${RE}•${RST} ${p}\n`);
-                    if (passwords.size > 6) r += `    ${GY}+${passwords.size - 6} more${RST}\n`;
+                    r += `  ${YE}Passwords (unique):${RST}\n`;
+                    Array.from(passwords).forEach(p => r += `    ${RE}•${RST} ${p}\n`);
                 }
                 if (sources.size) {
-                    r += `  ${YE}Sources:${RST} ${Array.from(sources).slice(0, 10).join(', ')}`;
-                    if (sources.size > 10) r += ` ${GY}+${sources.size - 10}${RST}`;
-                    r += `\n`;
+                    r += `  ${YE}Sources (${sources.size}):${RST} ${Array.from(sources).join(', ')}\n`;
+                }
+                if (records.length) {
+                    r += `  ${YE}Credentials by source:${RST}\n`;
+                    for (const rec of records) {
+                        const id = rec.email || rec.username || '—';
+                        const cred = rec.password ? rec.password : (rec.hash ? `<hash:${rec.hash.slice(0, 24)}${rec.hash.length > 24 ? '…' : ''}>` : `${GY}(no password)${RST}`);
+                        const ipBit = rec.ip ? ` ${GY}[ip:${rec.ip}]${RST}` : '';
+                        r += `    ${MA}•${RST} ${CY}[${rec.source}]${RST} ${id} :: ${RE}${cred}${RST}${ipBit}\n`;
+                    }
                 }
                 r += await extraOsintBlock(phoneE164, 'phone');
                 return r;
@@ -2070,6 +2087,7 @@ export class BotManager {
                 const passwords = new Set<string>();
                 const ips = new Set<string>();
                 const aliases = new Set<string>();
+                const records: { source: string; username?: string; email?: string; password?: string; hash?: string; ip?: string }[] = [];
                 let recs = 0;
                 for (let i = 0; i < all.length; i++) {
                     const data = all[i];
@@ -2083,6 +2101,7 @@ export class BotManager {
                                 if (e.email) emails.add(e.email);
                                 if (e.password) passwords.add(e.password);
                                 if (e.username) aliases.add(e.username);
+                                records.push({ source: sn || 'LeakCheck', username: e.username, email: e.email, password: e.password, hash: e.hash, ip: e.ip });
                             }
                         }
                     } else if (data?.results) {
@@ -2094,6 +2113,7 @@ export class BotManager {
                                 if (e.password) passwords.add(e.password);
                                 if (e.lastip || e.ip) ips.add(e.lastip || e.ip);
                                 if (e.username) aliases.add(e.username);
+                                records.push({ source: db, username: e.username, email: e.email, password: e.password, hash: e.hash, ip: e.lastip || e.ip });
                             }
                         }
                     }
@@ -2108,13 +2128,16 @@ export class BotManager {
                     r += row('Bot',       user.bot ? 'Yes' : 'No');
                     r += row('Badges',    flags);
                     const bio = userProfile?.bio || userProfile?.user?.bio || (userProfile as any)?.user_profile?.bio || '';
-                    if (bio) r += row('Bio', String(bio).slice(0, 200).replace(/\n/g, ' '));
+                    if (bio) {
+                        r += `  ${YE}Bio:${RST}\n`;
+                        String(bio).split('\n').forEach(line => r += `    ${line}\n`);
+                    }
                     const pronouns = userProfile?.pronouns || (userProfile as any)?.user_profile?.pronouns;
                     if (pronouns) r += row('Pronouns', String(pronouns));
                     if (userProfile?.connectedAccounts?.length || userProfile?.connected_accounts?.length) {
                         const conn = (userProfile.connectedAccounts || userProfile.connected_accounts || [])
-                            .map((c: any) => `${c.type}:${c.name || c.id}`);
-                        if (conn.length) r += row('Connections', conn.slice(0, 8).join(', '));
+                            .map((c: any) => `${c.type}:${c.name || c.id}${c.verified ? ' ✓' : ''}`);
+                        if (conn.length) r += row('Connections', conn.join(', '));
                     }
                     if (user.avatar) r += row('Avatar', `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${user.avatar.startsWith('a_') ? 'gif' : 'png'}?size=512`);
                     if (user.banner) r += row('Banner', `https://cdn.discordapp.com/banners/${user.id}/${user.banner}.${user.banner.startsWith('a_') ? 'gif' : 'png'}?size=1024`);
@@ -2125,7 +2148,7 @@ export class BotManager {
                 r += row('Created',  createdAt);
                 r += row('Age',      `${ageDays} days`);
                 if (snowid && !snowid.error) {
-                    const entries = Object.entries(snowid).filter(([, v]) => v != null && v !== '' && typeof v !== 'object').slice(0, 6);
+                    const entries = Object.entries(snowid).filter(([, v]) => v != null && v !== '' && typeof v !== 'object');
                     if (entries.length) {
                         r += `  ${YE}snowid.lol:${RST}\n`;
                         entries.forEach(([k, v]) => r += `    ${MA}•${RST} ${k}: ${v}\n`);
@@ -2133,15 +2156,24 @@ export class BotManager {
                 }
                 r += row('Breaches', `${sources.size}`);
                 r += row('Records',  `${recs}`);
-                if (emails.size)    r += row('Emails',   Array.from(emails).slice(0, 5).join(', '));
-                if (aliases.size)   r += row('Aliases',  Array.from(aliases).slice(0, 5).join(', '));
-                if (ips.size)       r += row('IPs',      Array.from(ips).slice(0, 4).join(', '));
+                if (emails.size)    r += row('Emails',   Array.from(emails).join(', '));
+                if (aliases.size)   r += row('Aliases',  Array.from(aliases).join(', '));
+                if (ips.size)       r += row('IPs',      Array.from(ips).join(', '));
                 if (passwords.size) {
-                    r += `  ${YE}Passwords:${RST}\n`;
-                    Array.from(passwords).slice(0, 6).forEach(p => r += `    ${RE}•${RST} ${p}\n`);
+                    r += `  ${YE}Passwords (unique):${RST}\n`;
+                    Array.from(passwords).forEach(p => r += `    ${RE}•${RST} ${p}\n`);
                 }
                 if (sources.size) {
-                    r += `  ${YE}Sources:${RST} ${Array.from(sources).slice(0, 10).join(', ')}\n`;
+                    r += `  ${YE}Sources (${sources.size}):${RST} ${Array.from(sources).join(', ')}\n`;
+                }
+                if (records.length) {
+                    r += `  ${YE}Credentials by source:${RST}\n`;
+                    for (const rec of records) {
+                        const id2 = rec.email || rec.username || '—';
+                        const cred = rec.password ? rec.password : (rec.hash ? `<hash:${rec.hash.slice(0, 24)}${rec.hash.length > 24 ? '…' : ''}>` : `${GY}(no password)${RST}`);
+                        const ipBit = rec.ip ? ` ${GY}[ip:${rec.ip}]${RST}` : '';
+                        r += `    ${MA}•${RST} ${CY}[${rec.source}]${RST} ${id2} :: ${RE}${cred}${RST}${ipBit}\n`;
+                    }
                 }
                 r += await extraOsintBlock(id, 'discord');
                 if (user?.username) r += await extraOsintBlock(user.username, 'username');
