@@ -48,3 +48,4 @@ ADMIN_PASSWORD = "i7693pr79Lqd0Dzp"
 
 [agent]
 expertMode = true
+stack = "FULLSTACK_JS"
