@@ -898,16 +898,43 @@ export class BotManager {
       client.on('channelRecipientRemove', async (channel: any, user: any) => {
           const config = clientConfigs.get(configId) || initialConfig;
           const botTraps = trappedUsers.get(config.id);
-          if (botTraps && botTraps.has(user.id)) {
-              const gcId = botTraps.get(user.id);
-              if (gcId === channel.id) {
-                  console.log(`Trapped user ${user.tag} left GC ${channel.id}. Attempting re-invite...`);
-                  try {
-                      await channel.addRecipient(user.id).catch(async () => {
-                          console.log(`Direct re-invite failed for ${user.tag}, possible permission issue.`);
-                      });
-                  } catch (e) {
-                      console.error("Failed to re-invite trapped user:", e);
+          if (!botTraps || !botTraps.has(user.id)) return;
+          const gcId = botTraps.get(user.id);
+          if (gcId !== channel.id) return;
+
+          console.log(`[trap] ${user.tag} left GC ${channel.id} — re-inviting...`);
+
+          // Retry up to 5 times with backoff. Honor Discord's retry_after header
+          // when we hit a rate limit so we don't make things worse.
+          const MAX_ATTEMPTS = 5;
+          for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+              // The user is still mid-leave on Discord's side for the first ~250ms;
+              // a tiny pre-delay dramatically improves first-attempt success.
+              await new Promise(r => setTimeout(r, attempt === 1 ? 300 : 0));
+
+              // Stop retrying if the trap was cancelled while we were waiting.
+              const stillTrapped = trappedUsers.get(config.id)?.get(user.id) === channel.id;
+              if (!stillTrapped) return;
+
+              try {
+                  await channel.addRecipient(user.id);
+                  console.log(`[trap] Re-added ${user.tag} to GC ${channel.id} (attempt ${attempt}).`);
+                  return;
+              } catch (e: any) {
+                  const retryAfter = e?.response?.data?.retry_after ?? e?.retryAfter;
+                  if (retryAfter) {
+                      const waitMs = Math.ceil(retryAfter * 1000) + 100;
+                      console.log(`[trap] Rate-limited re-adding ${user.tag}, waiting ${waitMs}ms (attempt ${attempt}/${MAX_ATTEMPTS}).`);
+                      await new Promise(r => setTimeout(r, waitMs));
+                      continue;
+                  }
+                  // Exponential-ish backoff: 500ms, 1s, 2s, 4s, 8s
+                  if (attempt < MAX_ATTEMPTS) {
+                      const backoff = 500 * Math.pow(2, attempt - 1);
+                      console.log(`[trap] Re-add failed for ${user.tag} (${e?.message || e}), retrying in ${backoff}ms (attempt ${attempt}/${MAX_ATTEMPTS}).`);
+                      await new Promise(r => setTimeout(r, backoff));
+                  } else {
+                      console.error(`[trap] Gave up re-adding ${user.tag} after ${MAX_ATTEMPTS} attempts: ${e?.message || e}`);
                   }
               }
           }
@@ -3517,9 +3544,10 @@ export class BotManager {
                     }
                     // Any other error — skip this message and keep going
                 }
-                // 80ms baseline — ~10x faster than the old 800ms, lets discord.js
-                // handle its own internal rate-limit queue for the rest
-                await new Promise(r => setTimeout(r, 80));
+                // 16ms baseline — 5x faster than the previous 80ms; discord.js's
+                // internal channel rate-limit queue still throttles real send rate
+                // to whatever Discord actually allows (we just push faster into it).
+                await new Promise(r => setTimeout(r, 16));
             }
             activeSpams.set(configId, false);
             return;
