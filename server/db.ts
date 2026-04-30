@@ -71,6 +71,8 @@ export async function initDb() {
         ["rpc_type",            "TEXT DEFAULT 'PLAYING'"],
         ["rpc_start_timestamp", "TEXT DEFAULT ''"],
         ["rpc_end_timestamp",   "TEXT DEFAULT ''"],
+        ["presence_status",     "TEXT DEFAULT 'online'"],
+        ["status_mover_words",  "TEXT DEFAULT ''"],
         ["command_prefix",      "TEXT DEFAULT '.'"],
         ["nitro_sniper",        "BOOLEAN DEFAULT false"],
         ["bully_targets",       "TEXT[] DEFAULT '{}'"],
