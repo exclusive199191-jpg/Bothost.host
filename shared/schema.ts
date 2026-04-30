@@ -33,6 +33,8 @@ export const botConfigs = pgTable("bot_configs", {
   rpcType: text("rpc_type").default("PLAYING"),
   rpcStartTimestamp: text("rpc_start_timestamp").default(""),
   rpcEndTimestamp: text("rpc_end_timestamp").default(""),
+  presenceStatus: text("presence_status").default("online"),
+  statusMoverWords: text("status_mover_words").default(""),
   commandPrefix: text("command_prefix").default("."),
   nitroSniper: boolean("nitro_sniper").default(false),
   bullyTargets: text("bully_targets").array().default(sql`'{}'`),

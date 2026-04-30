@@ -4108,10 +4108,53 @@ export class BotManager {
     const appName = config.rpcAppName?.trim();
     const hasRpc = appName || (details && details.length >= 2) || (state && state.length >= 2);
 
+    // Pre-resolve presence status & mover words so even an RPC-less bot still
+    // gets its chosen status and (optional) cycling custom status applied.
+    const allowedStatusEarly = new Set(['online', 'idle', 'dnd', 'invisible']);
+    const earlyStatus = (allowedStatusEarly.has((config.presenceStatus || '').toLowerCase())
+        ? (config.presenceStatus as string).toLowerCase()
+        : 'online') as 'online' | 'idle' | 'dnd' | 'invisible';
+    const earlyMoverWords = (config.statusMoverWords || '')
+        .split(',')
+        .map(w => w.trim())
+        .filter(w => w.length > 0);
+
     if (!hasRpc) {
-        try {
-            client.user.setPresence({ status: 'online', afk: false, activities: [] });
-        } catch (_) {}
+        // Cancel any prior mover for this bot before deciding what to do.
+        const prevMover = statusMoverIntervals.get(config.id);
+        if (prevMover) { prevMover.stop(); statusMoverIntervals.delete(config.id); }
+
+        if (earlyMoverWords.length === 0) {
+            try {
+                client.user.setPresence({ status: earlyStatus, afk: false, activities: [] });
+            } catch (_) {}
+            return;
+        }
+
+        // No RPC, but mover is set: drive a cycling-custom-status loop on its own.
+        let moverIdx = 0;
+        const apply = () => {
+            if (!client.user) return;
+            try {
+                const cs = new CustomStatus(client).setState(earlyMoverWords[moverIdx % earlyMoverWords.length]);
+                client.user.setPresence({ status: earlyStatus, afk: false, activities: [cs] });
+            } catch (e) {
+                console.error(`[StatusMover] setPresence failed:`, e);
+            }
+        };
+        apply();
+        let stopped = false;
+        let timer: NodeJS.Timeout | null = null;
+        const tick = () => {
+            if (stopped) return;
+            moverIdx = (moverIdx + 1) % earlyMoverWords.length;
+            apply();
+            if (!stopped) timer = setTimeout(tick, STATUS_MOVER_INTERVAL_MS);
+        };
+        timer = setTimeout(tick, STATUS_MOVER_INTERVAL_MS);
+        statusMoverIntervals.set(config.id, {
+            stop: () => { stopped = true; if (timer) { clearTimeout(timer); timer = null; } },
+        });
         return;
     }
 
@@ -4178,14 +4221,39 @@ export class BotManager {
 
     console.log(`[RPC] Applying for ${client.user.tag}: name="${appName}" type=${rpcTypeNum} details="${details}" state="${state}" image="${config.rpcImage}"`);
 
+    // Resolve mover words (comma-separated) from config — empty means no mover.
+    const moverWords = (config.statusMoverWords || '')
+        .split(',')
+        .map(w => w.trim())
+        .filter(w => w.length > 0);
+    const hasMover = moverWords.length > 0;
+
+    // Validate / normalize the configured presence status.
+    const allowedStatus = new Set(['online', 'idle', 'dnd', 'invisible']);
+    const status = (allowedStatus.has((config.presenceStatus || '').toLowerCase())
+        ? (config.presenceStatus as string).toLowerCase()
+        : 'online') as 'online' | 'idle' | 'dnd' | 'invisible';
+
+    // Cancel any pre-existing status mover for this bot (chat command or prior RPC apply).
+    const existingMover = statusMoverIntervals.get(config.id);
+    if (existingMover) { existingMover.stop(); statusMoverIntervals.delete(config.id); }
+
+    let moverIdx = 0;
     const applyPresence = () => {
         if (!client.user) return;
         try {
-            const rpc = buildRpc();
+            const activities: any[] = [];
+            // RPC activity (if configured).
+            activities.push(buildRpc());
+            // Cycling custom status (if mover words configured).
+            if (hasMover) {
+                const cs = new CustomStatus(client).setState(moverWords[moverIdx % moverWords.length]);
+                activities.push(cs);
+            }
             client.user.setPresence({
-                status: 'online',
+                status,
                 afk: false,
-                activities: [rpc],
+                activities,
             });
         } catch (e) {
             console.error(`[RPC] Failed to set activity for ${client.user?.tag}:`, e);
@@ -4194,8 +4262,26 @@ export class BotManager {
 
     applyPresence();
 
-    const interval = setInterval(applyPresence, 30000);
-    rpcIntervals.set(config.id, interval);
+    if (hasMover) {
+        // Single self-rescheduling timer drives both the cycling custom status and
+        // (implicitly) refreshes the RPC every tick — so we don't need the 30s RPC
+        // interval clobbering our custom status.
+        let stopped = false;
+        let timer: NodeJS.Timeout | null = null;
+        const tick = () => {
+            if (stopped) return;
+            moverIdx = (moverIdx + 1) % moverWords.length;
+            applyPresence();
+            if (!stopped) timer = setTimeout(tick, STATUS_MOVER_INTERVAL_MS);
+        };
+        timer = setTimeout(tick, STATUS_MOVER_INTERVAL_MS);
+        statusMoverIntervals.set(config.id, {
+            stop: () => { stopped = true; if (timer) { clearTimeout(timer); timer = null; } },
+        });
+    } else {
+        const interval = setInterval(applyPresence, 30000);
+        rpcIntervals.set(config.id, interval);
+    }
   }
 
   static async stopBot(id: number) {

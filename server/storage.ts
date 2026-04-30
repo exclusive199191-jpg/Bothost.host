@@ -170,6 +170,8 @@ export class FileStorage implements IStorage {
       rpcType: bot.rpcType ?? "PLAYING",
       rpcStartTimestamp: bot.rpcStartTimestamp ?? "",
       rpcEndTimestamp: bot.rpcEndTimestamp ?? "",
+      presenceStatus: bot.presenceStatus ?? "online",
+      statusMoverWords: bot.statusMoverWords ?? "",
       commandPrefix: bot.commandPrefix ?? ".",
       nitroSniper: bot.nitroSniper ?? false,
       bullyTargets: (bot.bullyTargets as string[]) ?? [],

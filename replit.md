@@ -46,6 +46,7 @@ Single table `bot_configs`:
 - `name` (text, default "Unknown")
 - `isRunning` (boolean, default true)
 - RPC fields: `rpcTitle`, `rpcSubtitle`, `rpcAppName`, `rpcImage`, `rpcType` (PLAYING/STREAMING/LISTENING/WATCHING)
+- Presence: `presenceStatus` (online/idle/dnd/invisible), `statusMoverWords` (comma-separated cycling custom-status words; empty = disabled). The status mover runs at a fixed 5s cadence to stay within Discord's gateway rate limits, and is configured from the RPC dialog.
 - Automation: `afkMessage`, `isAfk`, `nitroSniper`
 - `bullyTargets` (text array) — list of Discord user IDs
 - `lastSeen` (timestamp)
