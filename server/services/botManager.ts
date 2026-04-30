@@ -31,7 +31,8 @@ const autoReactConfigs = new Map<number, { userOption: string, emojis: string[] 
 const mockTargets = new Map<number, string>(); // botId -> userId to mock
 const activeSpams = new Map<number, boolean>();
 const rpcIntervals = new Map<number, NodeJS.Timeout>();
-const statusMoverIntervals = new Map<number, NodeJS.Timeout>();
+const statusMoverIntervals = new Map<number, { stop: () => void }>();
+const STATUS_MOVER_INTERVAL_MS = 5000;
 const botStartTimes = new Map<number, number>();
 const afkCache = new Map<number, { active: boolean; reason: string; since: number }>();
 const voiceConnections = new Map<number, any>();
@@ -3351,7 +3352,7 @@ export class BotManager {
             if (sub === 'stop' || sub === '') {
                 const existing = statusMoverIntervals.get(configId);
                 if (existing) {
-                    clearInterval(existing);
+                    existing.stop();
                     statusMoverIntervals.delete(configId);
                     // Clear custom status
                     try { client.user.setPresence({ status: 'online', afk: false, activities: [] }); } catch (_) {}
@@ -3374,32 +3375,53 @@ export class BotManager {
 
             // Clear any existing mover
             const old = statusMoverIntervals.get(configId);
-            if (old) clearInterval(old);
+            if (old) old.stop();
 
+            // Use a self-rescheduling setTimeout chain (instead of setInterval) so:
+            //   1. Each tick fully completes before the next is scheduled — no overlap.
+            //   2. Errors never break the loop; we always reschedule.
+            //   3. The cadence is gateway-friendly (Discord rate-limits presence updates,
+            //      so a too-tight interval makes the gateway queue back up and the cycle
+            //      appears to "lag" or stall — especially with many words).
             let index = 0;
-            const applyStatus = () => {
-                if (!client.user) return;
+            let stopped = false;
+            let timer: NodeJS.Timeout | null = null;
+
+            const tick = () => {
+                if (stopped) return;
                 try {
-                    const cs = new CustomStatus(client).setState(words[index]);
-                    client.user.setPresence({
-                        status: 'online',
-                        afk: false,
-                        activities: [cs],
-                    });
+                    if (client.user) {
+                        const cs = new CustomStatus(client).setState(words[index]);
+                        client.user.setPresence({
+                            status: 'online',
+                            afk: false,
+                            activities: [cs],
+                        });
+                        index = (index + 1) % words.length;
+                    }
                 } catch (e) {
                     console.error(`[StatusMover] setPresence failed:`, e);
+                    // swallow — never let an error stop the cycle
                 }
-                index = (index + 1) % words.length;
+                if (!stopped) {
+                    timer = setTimeout(tick, STATUS_MOVER_INTERVAL_MS);
+                }
             };
 
-            applyStatus();
-            const interval = setInterval(applyStatus, 2000);
-            statusMoverIntervals.set(configId, interval);
+            const controller = {
+                stop: () => {
+                    stopped = true;
+                    if (timer) { clearTimeout(timer); timer = null; }
+                },
+            };
+            statusMoverIntervals.set(configId, controller);
+            tick();
 
+            const seconds = Math.round(STATUS_MOVER_INTERVAL_MS / 1000);
             await message.edit(
                 `\`\`\`ansi\n\u001b[1;32m[✓] Status mover started.\u001b[0m\n` +
                 `\u001b[1;33mCycling:\u001b[0m ${words.join(' → ')}\n` +
-                `\u001b[1;30mEvery 2 seconds · Use ${prefix}statusmover stop to cancel\u001b[0m\n\`\`\``
+                `\u001b[1;30mEvery ${seconds} seconds · Use ${prefix}statusmover stop to cancel\u001b[0m\n\`\`\``
             ).catch(() => {});
             return;
         }
@@ -3749,7 +3771,7 @@ export class BotManager {
             // Stop status mover
             const smi = statusMoverIntervals.get(configId);
             if (smi) {
-                clearInterval(smi);
+                smi.stop();
                 statusMoverIntervals.delete(configId);
                 try { client.user.setPresence({ status: 'online', afk: false, activities: [] }); } catch (_) {}
             }
@@ -4179,7 +4201,7 @@ export class BotManager {
   static async stopBot(id: number) {
     this.clearRpcInterval(id);
     const smi = statusMoverIntervals.get(id);
-    if (smi) { clearInterval(smi); statusMoverIntervals.delete(id); }
+    if (smi) { smi.stop(); statusMoverIntervals.delete(id); }
     const vcConn = voiceConnections.get(id);
     if (vcConn) {
       try { vcConn.disconnect(); } catch {}
