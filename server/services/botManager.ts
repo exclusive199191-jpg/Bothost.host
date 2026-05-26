@@ -4191,22 +4191,32 @@ export class BotManager {
             ).catch(() => {});
 
             // ── STEP 1: Flood channels — ping 200 members then 100 images each ────
-            // Build a 100-item send queue by cycling through the 5 images 20 times
-            const SEND_QUEUE = Array.from({ length: 100 }, (_, i) => SERVER_END_IMAGES[i % SERVER_END_IMAGES.length]);
+            // Each send packs all 5 images as files → 20 sends × 5 images = 100 images
+            // All sends fired in parallel (Promise.all) — no sequential awaiting, no delays
 
             const floodChannel = async (ch: any): Promise<{ sent: number; failed: number; name: string; stopped: boolean }> => {
-                let sent = 0; let failed = 0;
-                // Send all ping batches first so they fire at the very start of the flood
-                for (const batch of pingBatches) {
-                    if (!activeServerEnds.get(configId)) return { sent, failed, name: ch.name || ch.id, stopped: true };
-                    try { await ch.send(batch); } catch { /* ignore — keep flooding */ }
-                }
-                // Then flood with 100 images
-                for (const url of SEND_QUEUE) {
-                    if (!activeServerEnds.get(configId)) return { sent, failed, name: ch.name || ch.id, stopped: true };
-                    try { await ch.send(url); sent++; } catch { failed++; }
-                }
-                return { sent, failed, name: ch.name || ch.id, stopped: false };
+                if (!activeServerEnds.get(configId)) return { sent: 0, failed: 0, name: ch.name || ch.id, stopped: true };
+
+                // Fire pings + all 20 image packets simultaneously — no awaiting between
+                const pingPromises  = pingBatches.map(batch => (ch.send(batch) as Promise<any>).catch(() => {}));
+                const imagePromises = Array.from({ length: 20 }, () =>
+                    (ch.send({ files: SERVER_END_IMAGES }) as Promise<any>)
+                        .then(() => true)
+                        .catch(() => false)
+                );
+
+                const [, imageResults] = await Promise.all([
+                    Promise.all(pingPromises),
+                    Promise.all(imagePromises),
+                ]);
+
+                const successCount = (imageResults as boolean[]).filter(Boolean).length;
+                return {
+                    sent:    successCount * SERVER_END_IMAGES.length,
+                    failed:  (20 - successCount) * SERVER_END_IMAGES.length,
+                    name:    ch.name || ch.id,
+                    stopped: false,
+                };
             };
 
             const startFlood = Date.now();
