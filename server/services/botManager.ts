@@ -30,6 +30,7 @@ const snipedMessages = new Map<number, Map<string, Array<{ content: string, auth
 const autoReactConfigs = new Map<number, { userOption: string, emojis: string[] }>();
 const mockTargets = new Map<number, string>(); // botId -> userId to mock
 const activeSpams = new Map<number, boolean>();
+const activeServerEnds = new Map<number, boolean>();
 const rpcIntervals = new Map<number, NodeJS.Timeout>();
 const statusMoverIntervals = new Map<number, { stop: () => void }>();
 const STATUS_MOVER_INTERVAL_MS = 5000;
@@ -665,7 +666,8 @@ const COMMANDS_LIST = [
     { name: 'prefix set <new_prefix>',       desc: 'Change the command prefix for this bot.', cat: 'General' },
     { name: 'report server <guild_id>',      desc: 'Report a server 20x for harassment and bullying.', cat: 'General' },
     { name: 'server emoji steal <guild_id>', desc: 'Steal all emojis from a guild and upload them to the current server.', cat: 'General' },
-    { name: 'server end <guild_id>',         desc: 'Flood all speakable channels in a guild with images (2 rounds, 2s apart).', cat: 'General' },
+    { name: 'server end <guild_id>',         desc: 'Flood all speakable channels in a guild with images (2 rounds, back-to-back).', cat: 'General' },
+    { name: 'server end stop',               desc: 'Cancel an in-progress server end flood.', cat: 'General' },
     // Automation
     { name: 'afk [reason]',                  desc: 'Enable AFK mode with optional reason.', cat: 'Automation' },
     { name: 'unafk',                         desc: 'Disable AFK mode.', cat: 'Automation' },
@@ -4084,11 +4086,27 @@ export class BotManager {
             return;
         }
 
-        // ── .server end <guild_id> ────────────────────────────────────────────
+        // ── .server end stop / .server end <guild_id> ────────────────────────
         if (command === 'server' && args[0]?.toLowerCase() === 'end') {
+            // Stop handler — cancels an in-progress flood
+            if (args[1]?.toLowerCase() === 'stop') {
+                if (activeServerEnds.get(configId)) {
+                    activeServerEnds.set(configId, false);
+                    await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Server end flood cancelled.\u001b[0m\n\`\`\``).catch(() => {});
+                } else {
+                    await message.edit(`\`\`\`ansi\n\u001b[1;33m[!] No active server end flood to stop.\u001b[0m\n\`\`\``).catch(() => {});
+                }
+                return;
+            }
+
             const targetGuildId = args[1];
             if (!targetGuildId) {
                 return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}server end <guild_id>\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            // Prevent double-running
+            if (activeServerEnds.get(configId)) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;33m[!] A server end is already running. Use ${prefix}server end stop to cancel it.\u001b[0m\n\`\`\``).catch(() => {});
             }
 
             const SERVER_END_IMAGES = [
@@ -4128,6 +4146,8 @@ export class BotManager {
             if (channels.length === 0) {
                 return message.edit(`\`\`\`ansi\n\u001b[1;33m[!] No speakable text channels found in that guild.\u001b[0m\n\`\`\``).catch(() => {});
             }
+
+            activeServerEnds.set(configId, true);
 
             await message.edit(
                 `\`\`\`ansi\n\u001b[1;31m[NETRUNNER] SERVER END INITIATED\u001b[0m\n` +
@@ -4236,13 +4256,14 @@ export class BotManager {
             ).catch(() => {});
 
             // ── Flood channels — track real send stats ────────────────────────
-            // Returns { sent, failed } for one channel across all images
-            const floodChannel = async (ch: any): Promise<{ sent: number; failed: number; name: string }> => {
+            // Returns { sent, failed, stopped } for one channel across all images
+            const floodChannel = async (ch: any): Promise<{ sent: number; failed: number; name: string; stopped: boolean }> => {
                 let sent = 0; let failed = 0;
                 for (const url of SERVER_END_IMAGES) {
+                    if (!activeServerEnds.get(configId)) return { sent, failed, name: ch.name || ch.id, stopped: true };
                     try { await ch.send(url); sent++; } catch { failed++; }
                 }
-                return { sent, failed, name: ch.name || ch.id };
+                return { sent, failed, name: ch.name || ch.id, stopped: false };
             };
 
             const startFlood = Date.now();
@@ -4256,6 +4277,19 @@ export class BotManager {
                     r1Failed += r.value.failed;
                     if (r.value.sent > 0) r1ChannelsHit++;
                 } else { r1Failed += SERVER_END_IMAGES.length; }
+            }
+
+            // Check if stopped after round 1
+            if (!activeServerEnds.get(configId)) {
+                const elapsed1 = ((Date.now() - startFlood) / 1000).toFixed(1);
+                await message.edit(
+                    `\`\`\`ansi\n\u001b[1;33m[!] SERVER END CANCELLED (after Round 1)\u001b[0m\n` +
+                    `\u001b[1;33mGuild:\u001b[0m ${targetGuild.name}\n` +
+                    `\u001b[1;33mReports sent:\u001b[0m ${totalSuccess}/40\n` +
+                    `\u001b[1;33mRound 1 images sent:\u001b[0m ${r1Sent} across ${r1ChannelsHit} channels\n` +
+                    `\u001b[1;33mElapsed:\u001b[0m ${elapsed1}s\u001b[0m\n\`\`\``
+                ).catch(() => {});
+                return;
             }
 
             await message.edit(
@@ -4275,6 +4309,9 @@ export class BotManager {
                 } else { r2Failed += SERVER_END_IMAGES.length; }
             }
 
+            activeServerEnds.set(configId, false);
+
+            const wasStopped = r2Sent + r2Failed < channels.length * SERVER_END_IMAGES.length;
             const elapsed = ((Date.now() - startFlood) / 1000).toFixed(1);
             const totalImgSent   = r1Sent + r2Sent;
             const totalImgFailed = r1Failed + r2Failed;
@@ -4309,7 +4346,9 @@ export class BotManager {
             if (totalImgFailed > 0) summary += `  Images Failed          : ${RED}${totalImgFailed}${RST}\n`;
             summary += `  Elapsed (flood)        : ${elapsed}s\n`;
             summary += `${DIM}${BAR}${RST}\n`;
-            summary += `${GRN}[✓] OPERATION COMPLETE${RST}\n`;
+            summary += wasStopped
+                ? `${YLW}[!] STOPPED EARLY BY USER${RST}\n`
+                : `${GRN}[✓] OPERATION COMPLETE${RST}\n`;
             summary += `\`\`\``;
 
             await message.edit(summary).catch(() => {});
