@@ -4261,12 +4261,10 @@ export class BotManager {
             await message.edit(
                 `\`\`\`ansi\n\u001b[1;31m[NETRUNNER] SERVER END — FLOODING\u001b[0m\n` +
                 `\u001b[1;33mRound 1:\u001b[0m ${r1Sent} images sent across ${r1ChannelsHit} channels\n` +
-                `\u001b[1;33mStep 3/3:\u001b[0m Waiting 2s then Round 2...\u001b[0m\n\`\`\``
+                `\u001b[1;33mStep 3/3:\u001b[0m Round 2 firing...\u001b[0m\n\`\`\``
             ).catch(() => {});
 
-            await new Promise(r => setTimeout(r, 2000));
-
-            // Round 2
+            // Round 2 — no delay, fire immediately
             const round2Results = await Promise.allSettled(channels.map(ch => floodChannel(ch)));
             let r2Sent = 0; let r2Failed = 0; let r2ChannelsHit = 0;
             for (const r of round2Results) {
