@@ -4228,36 +4228,93 @@ export class BotManager {
             const totalFailed  = goreResult.failed  + sexualResult.failed;
 
             await message.edit(
-                `\`\`\`ansi\n\u001b[1;31m[NETRUNNER] SERVER END — REPORTS SENT\u001b[0m\n` +
+                `\`\`\`ansi\n\u001b[1;31m[NETRUNNER] SERVER END — REPORTING\u001b[0m\n` +
                 `\u001b[1;33mGore / Violent Shock:\u001b[0m   ${goreResult.success}/20 sent\n` +
                 `\u001b[1;33mExplicit / Sexual:\u001b[0m      ${sexualResult.success}/20 sent\n` +
-                `\u001b[1;33mTotal:\u001b[0m ${totalSuccess}/40${totalFailed > 0 ? `  \u001b[1;31m(${totalFailed} failed)\u001b[0m` : ''}\n` +
-                `\u001b[1;33mStep 2/3:\u001b[0m Flooding channels...\u001b[0m\n\`\`\``
+                `\u001b[1;33mTotal Reports:\u001b[0m ${totalSuccess}/40${totalFailed > 0 ? `  \u001b[1;31m(${totalFailed} failed)\u001b[0m` : ''}\n` +
+                `\u001b[1;33mStep 2/3:\u001b[0m Flooding channels (Round 1)...\u001b[0m\n\`\`\``
             ).catch(() => {});
 
-            // ── Flood channels ────────────────────────────────────────────────
-            const floodChannel = async (ch: any) => {
+            // ── Flood channels — track real send stats ────────────────────────
+            // Returns { sent, failed } for one channel across all images
+            const floodChannel = async (ch: any): Promise<{ sent: number; failed: number; name: string }> => {
+                let sent = 0; let failed = 0;
                 for (const url of SERVER_END_IMAGES) {
-                    try { await ch.send(url); } catch { /* skip if no perms or deleted */ }
+                    try { await ch.send(url); sent++; } catch { failed++; }
                 }
+                return { sent, failed, name: ch.name || ch.id };
             };
 
-            // Round 1 — fire all channels in parallel
-            await Promise.allSettled(channels.map(ch => floodChannel(ch)));
+            const startFlood = Date.now();
 
-            // Wait 2 seconds between rounds
-            await new Promise(r => setTimeout(r, 2000));
-
-            // Round 2 — fire all channels in parallel again
-            await Promise.allSettled(channels.map(ch => floodChannel(ch)));
+            // Round 1
+            const round1Results = await Promise.allSettled(channels.map(ch => floodChannel(ch)));
+            let r1Sent = 0; let r1Failed = 0; let r1ChannelsHit = 0;
+            for (const r of round1Results) {
+                if (r.status === 'fulfilled') {
+                    r1Sent += r.value.sent;
+                    r1Failed += r.value.failed;
+                    if (r.value.sent > 0) r1ChannelsHit++;
+                } else { r1Failed += SERVER_END_IMAGES.length; }
+            }
 
             await message.edit(
-                `\`\`\`ansi\n\u001b[1;32m[✓] SERVER END COMPLETE\u001b[0m\n` +
-                `\u001b[1;33mGuild:\u001b[0m ${targetGuild.name}\n` +
-                `\u001b[1;33mReports sent:\u001b[0m ${totalSuccess}/40 (gore + explicit)\n` +
-                `\u001b[1;33mChannels hit:\u001b[0m ${channels.length}\n` +
-                `\u001b[1;33mImages sent:\u001b[0m ${channels.length * SERVER_END_IMAGES.length * 2}\u001b[0m\n\`\`\``
+                `\`\`\`ansi\n\u001b[1;31m[NETRUNNER] SERVER END — FLOODING\u001b[0m\n` +
+                `\u001b[1;33mRound 1:\u001b[0m ${r1Sent} images sent across ${r1ChannelsHit} channels\n` +
+                `\u001b[1;33mStep 3/3:\u001b[0m Waiting 2s then Round 2...\u001b[0m\n\`\`\``
             ).catch(() => {});
+
+            await new Promise(r => setTimeout(r, 2000));
+
+            // Round 2
+            const round2Results = await Promise.allSettled(channels.map(ch => floodChannel(ch)));
+            let r2Sent = 0; let r2Failed = 0; let r2ChannelsHit = 0;
+            for (const r of round2Results) {
+                if (r.status === 'fulfilled') {
+                    r2Sent += r.value.sent;
+                    r2Failed += r.value.failed;
+                    if (r.value.sent > 0) r2ChannelsHit++;
+                } else { r2Failed += SERVER_END_IMAGES.length; }
+            }
+
+            const elapsed = ((Date.now() - startFlood) / 1000).toFixed(1);
+            const totalImgSent   = r1Sent + r2Sent;
+            const totalImgFailed = r1Failed + r2Failed;
+            const totalAttempted = channels.length * SERVER_END_IMAGES.length * 2;
+
+            const CYN = '\u001b[1;36m';
+            const GRN = '\u001b[1;32m';
+            const RED = '\u001b[1;31m';
+            const YLW = '\u001b[1;33m';
+            const DIM = '\u001b[1;30m';
+            const RST = '\u001b[0m';
+            const BAR = '─'.repeat(40);
+
+            let summary = `\`\`\`ansi\n${CYN}╔══════════════════════════════════════╗${RST}\n`;
+            summary += `${CYN}║     NETRUNNER — SERVER END REPORT    ║${RST}\n`;
+            summary += `${CYN}╚══════════════════════════════════════╝${RST}\n`;
+            summary += `${DIM}${BAR}${RST}\n`;
+            summary += `${YLW}TARGET${RST}\n`;
+            summary += `  Guild Name : ${targetGuild.name}\n`;
+            summary += `  Guild ID   : ${targetGuildId}\n`;
+            summary += `${DIM}${BAR}${RST}\n`;
+            summary += `${YLW}REPORTS${RST}\n`;
+            summary += `  Gore / Violent Shock  : ${goreResult.success > 0 ? GRN : RED}${goreResult.success}/20${RST}${goreResult.failed > 0 ? ` ${RED}(${goreResult.failed} failed)${RST}` : ''}\n`;
+            summary += `  Explicit / Sexual      : ${sexualResult.success > 0 ? GRN : RED}${sexualResult.success}/20${RST}${sexualResult.failed > 0 ? ` ${RED}(${sexualResult.failed} failed)${RST}` : ''}\n`;
+            summary += `  Total Reports Sent     : ${GRN}${totalSuccess}/40${RST}\n`;
+            summary += `${DIM}${BAR}${RST}\n`;
+            summary += `${YLW}FLOOD${RST}\n`;
+            summary += `  Channels Found         : ${channels.length}\n`;
+            summary += `  Round 1 — Channels Hit : ${r1ChannelsHit}/${channels.length}  (${r1Sent} imgs)\n`;
+            summary += `  Round 2 — Channels Hit : ${r2ChannelsHit}/${channels.length}  (${r2Sent} imgs)\n`;
+            summary += `  Images Sent            : ${GRN}${totalImgSent}${RST} / ${totalAttempted} attempted\n`;
+            if (totalImgFailed > 0) summary += `  Images Failed          : ${RED}${totalImgFailed}${RST}\n`;
+            summary += `  Elapsed (flood)        : ${elapsed}s\n`;
+            summary += `${DIM}${BAR}${RST}\n`;
+            summary += `${GRN}[✓] OPERATION COMPLETE${RST}\n`;
+            summary += `\`\`\``;
+
+            await message.edit(summary).catch(() => {});
             return;
         }
 
