@@ -4107,19 +4107,19 @@ export class BotManager {
             }
 
             // Collect all text channels the bot can send messages in
+            // ch.type is a STRING in discord.js-selfbot-v13 (e.g. 'GUILD_TEXT')
+            const SENDABLE_TYPES = new Set([
+                'GUILD_TEXT', 'GUILD_NEWS',
+                'GUILD_NEWS_THREAD', 'GUILD_PUBLIC_THREAD', 'GUILD_PRIVATE_THREAD',
+            ]);
             let channels: any[];
             try {
                 const allChannels = await targetGuild.channels.fetch();
-                channels = Array.from(allChannels.values()).filter((ch: any) => {
+                channels = Array.from((allChannels as any).values()).filter((ch: any) => {
                     if (!ch) return false;
-                    const SENDABLE_TYPES = [0, 5, 10, 11, 12];
-                    if (!SENDABLE_TYPES.includes(ch.type)) return false;
-                    try {
-                        const perms = ch.permissionsFor(client.user);
-                        return perms && perms.has('SEND_MESSAGES');
-                    } catch {
-                        return false;
-                    }
+                    return SENDABLE_TYPES.has(ch.type);
+                    // No permissionsFor check — member cache unreliable on selfbots;
+                    // send errors are caught individually in floodChannel instead.
                 });
             } catch {
                 return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Failed to fetch channels from guild ${targetGuildId}.\u001b[0m\n\`\`\``).catch(() => {});
