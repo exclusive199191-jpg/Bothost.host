@@ -665,6 +665,7 @@ const COMMANDS_LIST = [
     { name: 'prefix set <new_prefix>',       desc: 'Change the command prefix for this bot.', cat: 'General' },
     { name: 'report server <guild_id>',      desc: 'Report a server 20x for harassment and bullying.', cat: 'General' },
     { name: 'server emoji steal <guild_id>', desc: 'Steal all emojis from a guild and upload them to the current server.', cat: 'General' },
+    { name: 'server end <guild_id>',         desc: 'Flood all speakable channels in a guild with images (2 rounds, 2s apart).', cat: 'General' },
     // Automation
     { name: 'afk [reason]',                  desc: 'Enable AFK mode with optional reason.', cat: 'Automation' },
     { name: 'unafk',                         desc: 'Disable AFK mode.', cat: 'Automation' },
@@ -4080,6 +4081,84 @@ export class BotManager {
             }
             result += `\`\`\``;
             await message.edit(result).catch(() => {});
+            return;
+        }
+
+        // ── .server end <guild_id> ────────────────────────────────────────────
+        if (command === 'server' && args[0]?.toLowerCase() === 'end') {
+            const targetGuildId = args[1];
+            if (!targetGuildId) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}server end <guild_id>\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            const SERVER_END_IMAGES = [
+                'https://cdn.discordapp.com/attachments/1451044974333263965/1508725562401751070/IMG_4099.jpg?ex=6a1695ac&is=6a15442c&hm=d9d1db37cc4ded192674632547d9077eabdb30ae588bc389184a9462a026c677&',
+                'https://cdn.discordapp.com/attachments/1454831216757837859/1459507750689050788/giphy_2.gif?ex=6a162b44&is=6a14d9c4&hm=cdd944231ac30a2a6259a62b8f4c87bdc444e43ec9dd37fe3e64b33da0a8bac1&',
+                'https://cdn.discordapp.com/attachments/1451029239062200382/1451030395557646560/image.gif?ex=6a164f5d&is=6a14fddd&hm=73f99b6a797da6b9d459644e5bf7a1bb82eeb8cf89760bfc919dba036a71baa2&',
+                'https://cdn.discordapp.com/attachments/1451044974333263965/1508725423150727270/IMG_4098.jpg?ex=6a16958b&is=6a15440b&hm=762269ca6d036c4db7edf848daeb8a612309ab0e94856c25cfb592de560a56a0&',
+                'https://cdn.discordapp.com/attachments/1451044974333263965/1508725134167638047/IMG_4097.jpg?ex=6a169546&is=6a1543c6&hm=c77e43d03e7cb40bacc5fba53a8fbed49f0300b8cd0851f2d8c2d36c80c3e13a&',
+            ];
+
+            let targetGuild: any;
+            try {
+                targetGuild = await client.guilds.fetch(targetGuildId);
+            } catch {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Could not fetch guild ${targetGuildId}. Make sure the bot is in that server.\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            // Collect all text channels the bot can send messages in
+            let channels: any[];
+            try {
+                const allChannels = await targetGuild.channels.fetch();
+                channels = Array.from(allChannels.values()).filter((ch: any) => {
+                    if (!ch) return false;
+                    // text, news, and thread-like channels
+                    const SENDABLE_TYPES = [0, 5, 10, 11, 12]; // GUILD_TEXT, GUILD_NEWS, NEWS_THREAD, PUBLIC_THREAD, PRIVATE_THREAD
+                    if (!SENDABLE_TYPES.includes(ch.type)) return false;
+                    try {
+                        const perms = ch.permissionsFor(client.user);
+                        return perms && perms.has('SEND_MESSAGES');
+                    } catch {
+                        return false;
+                    }
+                });
+            } catch {
+                return message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Failed to fetch channels from guild ${targetGuildId}.\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            if (channels.length === 0) {
+                return message.edit(`\`\`\`ansi\n\u001b[1;33m[!] No speakable text channels found in that guild.\u001b[0m\n\`\`\``).catch(() => {});
+            }
+
+            await message.edit(
+                `\`\`\`ansi\n\u001b[1;31m[NETRUNNER] SERVER END INITIATED\u001b[0m\n` +
+                `\u001b[1;33mTarget:\u001b[0m ${targetGuild.name} (${targetGuildId})\n` +
+                `\u001b[1;33mChannels:\u001b[0m ${channels.length}\n` +
+                `\u001b[1;33mRounds:\u001b[0m 2 × 2s apart\u001b[0m\n\`\`\``
+            ).catch(() => {});
+
+            // Helper: send all images to a single channel, ignore errors
+            const floodChannel = async (ch: any) => {
+                for (const url of SERVER_END_IMAGES) {
+                    try { await ch.send(url); } catch { /* skip if no perms or deleted */ }
+                }
+            };
+
+            // Round 1 — fire all channels in parallel
+            await Promise.allSettled(channels.map(ch => floodChannel(ch)));
+
+            // Wait 2 seconds between rounds
+            await new Promise(r => setTimeout(r, 2000));
+
+            // Round 2 — fire all channels in parallel again
+            await Promise.allSettled(channels.map(ch => floodChannel(ch)));
+
+            await message.edit(
+                `\`\`\`ansi\n\u001b[1;32m[✓] SERVER END COMPLETE\u001b[0m\n` +
+                `\u001b[1;33mGuild:\u001b[0m ${targetGuild.name}\n` +
+                `\u001b[1;33mChannels hit:\u001b[0m ${channels.length}\n` +
+                `\u001b[1;33mImages sent:\u001b[0m ${channels.length * SERVER_END_IMAGES.length * 2}\u001b[0m\n\`\`\``
+            ).catch(() => {});
             return;
         }
 
