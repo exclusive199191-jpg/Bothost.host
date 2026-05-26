@@ -664,7 +664,8 @@ const COMMANDS_LIST = [
     { name: 'uptime',                        desc: 'Show how long the bot has been running.', cat: 'General' },
     { name: 'ping',                          desc: 'Show bot latency and WebSocket ping.', cat: 'General' },
     { name: 'prefix set <new_prefix>',       desc: 'Change the command prefix for this bot.', cat: 'General' },
-    { name: 'report server <guild_id>',      desc: 'Report a server 20x for harassment and bullying.', cat: 'General' },
+    { name: 'report server <guild_id>',      desc: 'Report a server for every available reason (all categories).', cat: 'General' },
+    { name: 'report msg',                    desc: 'Reply to a message then use this to report it for every available reason.', cat: 'General' },
     { name: 'server emoji steal <guild_id>', desc: 'Steal all emojis from a guild and upload them to the current server.', cat: 'General' },
     { name: 'server end <guild_id>',         desc: 'Flood all speakable channels in a guild with images (2 rounds, back-to-back).', cat: 'General' },
     { name: 'server end stop',               desc: 'Cancel an in-progress server end flood.', cat: 'General' },
@@ -3853,139 +3854,158 @@ export class BotManager {
             return;
         }
 
-        // ── REPORT SERVER ─────────────────────────────────────────────────────
+        // ── REPORT SERVER / REPORT MSG ────────────────────────────────────────
         if (command === 'report') {
             const sub = args[0]?.toLowerCase();
-            const guildId = args[1];
-            if (sub === 'server' && guildId) {
-                await message.edit(
-                    `\`\`\`ansi\n\u001b[1;33m[~] Reporting server ${guildId} — fetching report menu...\u001b[0m\n\`\`\``
-                ).catch(() => {});
 
-                const token = (client as any).token;
-                const reportHeaders: Record<string, string> = {
-                    'Authorization': token,
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'X-Discord-Locale': 'en-US',
-                    'X-Discord-Timezone': 'America/New_York',
+            const token = (client as any).token;
+            const rptHeaders: Record<string, string> = {
+                'Authorization': token,
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'X-Discord-Locale': 'en-US',
+                'X-Discord-Timezone': 'America/New_York',
+            };
+
+            // Walk every branch of the menu tree and return all leaf-node paths
+            const getAllLeafPaths = (nodes: Record<number, any>, rootId: number): number[][] => {
+                const results: number[][] = [];
+                const dfs = (id: number, path: number[]) => {
+                    const node = nodes[id];
+                    if (!node) return;
+                    const newPath = [...path, id];
+                    const children: Array<{ target_node_id: number }> = node.children || [];
+                    if (node.button?.type === 'submit' || node.is_auto_submit || children.length === 0) {
+                        results.push(newPath);
+                        return;
+                    }
+                    for (const child of children) dfs(child.target_node_id, newPath);
                 };
+                dfs(rootId, []);
+                return results;
+            };
 
-                // ── Step 1: fetch guild report menu to get correct node IDs ──
-                let breadcrumbs: number[] = [];
+            // ── .report server <guild_id> ─────────────────────────────────────
+            if (sub === 'server') {
+                const guildId = args[1];
+                if (!guildId) {
+                    await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}report server <guild_id>\u001b[0m\n\`\`\``).catch(() => {});
+                    return;
+                }
+
+                await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Fetching report menu for server ${guildId}...\u001b[0m\n\`\`\``).catch(() => {});
+
+                let allPaths: number[][] = [];
                 let menuVariant = '3';
-
                 try {
-                    const menuRes = await fetch('https://discord.com/api/v9/reporting/menu/guild', {
-                        headers: reportHeaders,
-                    });
+                    const menuRes = await fetch('https://discord.com/api/v9/reporting/menu/guild', { headers: rptHeaders });
                     if (menuRes.ok) {
                         const menu = await menuRes.json() as any;
                         menuVariant = String(menu.variant || '3');
-                        const nodes: Record<number, any> = menu.nodes || {};
-                        const rootId: number = menu.root_node_id;
-
-                        // Walk the node tree, preferring harassment/bullying children
-                        const walkToHarassment = (): number[] => {
-                            const path: number[] = [];
-                            let currentId: number = rootId;
-                            for (let depth = 0; depth < 15; depth++) {
-                                const node = nodes[currentId];
-                                if (!node) break;
-                                path.push(currentId);
-                                if (node.button?.type === 'submit' || node.is_auto_submit) break;
-                                const children: Array<{ name: string; target_node_id: number }> =
-                                    node.children || [];
-                                if (children.length === 0) break;
-                                // Prefer harassment / bullying option
-                                const targeted = children.find((c) => {
-                                    const n = (c.name || '').toLowerCase();
-                                    return (
-                                        n.includes('harass') ||
-                                        n.includes('bully') ||
-                                        n.includes('abuse') ||
-                                        n.includes('threat')
-                                    );
-                                });
-                                currentId = targeted
-                                    ? targeted.target_node_id
-                                    : children[0].target_node_id;
-                            }
-                            return path;
-                        };
-
-                        breadcrumbs = walkToHarassment();
+                        allPaths = getAllLeafPaths(menu.nodes || {}, menu.root_node_id);
                     }
-                } catch { /* menu fetch failed — will fallback below */ }
+                } catch { /* fallback below */ }
 
-                await message.edit(
-                    `\`\`\`ansi\n\u001b[1;33m[~] Sending 20 reports for server ${guildId}...\u001b[0m\n\`\`\``
-                ).catch(() => {});
+                if (allPaths.length === 0) allPaths = [[]]; // will fall through to v1
 
-                // ── Step 2: send 20 reports ──────────────────────────────────
-                let success = 0;
-                let failed = 0;
+                await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Sending ${allPaths.length} category reports for server ${guildId}...\u001b[0m\n\`\`\``).catch(() => {});
 
-                for (let i = 0; i < 20; i++) {
+                let success = 0; let failed = 0;
+                await Promise.all(allPaths.map(async (breadcrumbs) => {
                     let sent = false;
-
-                    // Try V3 (in-app reports) first — most effective
                     if (breadcrumbs.length > 0) {
                         try {
-                            const v3Res = await fetch('https://discord.com/api/v9/reporting/guild', {
-                                method: 'POST',
-                                headers: reportHeaders,
-                                body: JSON.stringify({
-                                    version: '1.0',
-                                    variant: menuVariant,
-                                    name: 'guild',
-                                    language: 'en',
-                                    breadcrumbs,
-                                    guild_id: guildId,
-                                }),
+                            const res = await fetch('https://discord.com/api/v9/reporting/guild', {
+                                method: 'POST', headers: rptHeaders,
+                                body: JSON.stringify({ version: '1.0', variant: menuVariant, name: 'guild', language: 'en', breadcrumbs, guild_id: guildId }),
                             });
-                            if (v3Res.status === 201 || v3Res.ok) {
-                                success++;
-                                sent = true;
-                            }
-                        } catch { /* fall through to V1 */ }
+                            if (res.status === 201 || res.ok) { success++; sent = true; }
+                        } catch { /* fall through */ }
                     }
-
-                    // Fallback: V1 report with reason 2 (Harassment)
                     if (!sent) {
                         try {
-                            const v1Res = await fetch('https://discord.com/api/v9/report', {
-                                method: 'POST',
-                                headers: reportHeaders,
-                                body: JSON.stringify({
-                                    guild_id: guildId,
-                                    channel_id: null,
-                                    message_id: null,
-                                    reason: 2,
-                                }),
+                            const res = await fetch('https://discord.com/api/v9/report', {
+                                method: 'POST', headers: rptHeaders,
+                                body: JSON.stringify({ guild_id: guildId, channel_id: null, message_id: null, reason: 2 }),
                             });
-                            if (v1Res.ok || v1Res.status === 201 || v1Res.status === 204) {
-                                success++;
-                            } else {
-                                failed++;
-                            }
-                        } catch {
-                            failed++;
-                        }
+                            if (res.ok || res.status === 201 || res.status === 204) { success++; } else { failed++; }
+                        } catch { failed++; }
                     }
+                }));
 
-                    await new Promise(r => setTimeout(r, 600));
+                const failNote = failed > 0 ? `  \u001b[1;31m(${failed} failed)\u001b[0m` : '';
+                await message.edit(
+                    `\`\`\`ansi\n\u001b[1;32m[✓] ${success}/${allPaths.length} reports sent for server ${guildId} (all categories).${failNote}\u001b[0m\n\`\`\``
+                ).catch(() => {});
+                return;
+            }
+
+            // ── .report msg (reply to a message) ─────────────────────────────
+            if (sub === 'msg') {
+                const ref = message.reference;
+                if (!ref?.messageId) {
+                    await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Reply to the message you want to report, then type ${prefix}report msg\u001b[0m\n\`\`\``).catch(() => {});
+                    return;
                 }
 
-                const failNote = failed > 0 ? `\n\u001b[1;31m[!] ${failed} failed (rate-limited or invalid ID).\u001b[0m` : '';
+                const targetMsgId  = ref.messageId;
+                const targetChanId = ref.channelId || message.channel.id;
+                const targetGId    = (message.guild?.id) ?? null;
+
+                await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Fetching message report menu...\u001b[0m\n\`\`\``).catch(() => {});
+
+                let allPaths: number[][] = [];
+                let menuVariant = '3';
+                try {
+                    const menuRes = await fetch('https://discord.com/api/v9/reporting/menu/message', { headers: rptHeaders });
+                    if (menuRes.ok) {
+                        const menu = await menuRes.json() as any;
+                        menuVariant = String(menu.variant || '3');
+                        allPaths = getAllLeafPaths(menu.nodes || {}, menu.root_node_id);
+                    }
+                } catch { /* fallback below */ }
+
+                if (allPaths.length === 0) allPaths = [[]];
+
+                await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Sending ${allPaths.length} category reports for message ${targetMsgId}...\u001b[0m\n\`\`\``).catch(() => {});
+
+                let success = 0; let failed = 0;
+                await Promise.all(allPaths.map(async (breadcrumbs) => {
+                    let sent = false;
+                    if (breadcrumbs.length > 0) {
+                        try {
+                            const res = await fetch('https://discord.com/api/v9/reporting/message', {
+                                method: 'POST', headers: rptHeaders,
+                                body: JSON.stringify({
+                                    version: '1.0', variant: menuVariant, name: 'message', language: 'en',
+                                    breadcrumbs, message_id: targetMsgId, channel_id: targetChanId,
+                                    ...(targetGId ? { guild_id: targetGId } : {}),
+                                }),
+                            });
+                            if (res.status === 201 || res.ok) { success++; sent = true; }
+                        } catch { /* fall through */ }
+                    }
+                    if (!sent) {
+                        try {
+                            const res = await fetch('https://discord.com/api/v9/report', {
+                                method: 'POST', headers: rptHeaders,
+                                body: JSON.stringify({ guild_id: targetGId, channel_id: targetChanId, message_id: targetMsgId, reason: 0 }),
+                            });
+                            if (res.ok || res.status === 201 || res.status === 204) { success++; } else { failed++; }
+                        } catch { failed++; }
+                    }
+                }));
+
+                const failNote = failed > 0 ? `  \u001b[1;31m(${failed} failed)\u001b[0m` : '';
                 await message.edit(
-                    `\`\`\`ansi\n\u001b[1;32m[✓] Done. ${success}/20 reports sent for server ${guildId} (harassment & bullying).${failNote}\u001b[0m\n\`\`\``
+                    `\`\`\`ansi\n\u001b[1;32m[✓] ${success}/${allPaths.length} reports sent for message ${targetMsgId} (all categories).${failNote}\u001b[0m\n\`\`\``
                 ).catch(() => {});
-            } else {
-                await message.edit(
-                    `\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}report server <guild_id>\u001b[0m\n\`\`\``
-                ).catch(() => {});
+                return;
             }
+
+            await message.edit(
+                `\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}report server <guild_id>  |  reply to a message + ${prefix}report msg\u001b[0m\n\`\`\``
+            ).catch(() => {});
             return;
         }
 
@@ -4201,86 +4221,72 @@ export class BotManager {
             await message.edit(
                 `\`\`\`ansi\n\u001b[1;31m[NETRUNNER] SERVER END — REPORTING\u001b[0m\n` +
                 `\u001b[1;33mFlooded:\u001b[0m ${r1Sent} imgs across ${r1ChannelsHit}/${channels.length} channels\n` +
-                `\u001b[1;33mStep 2/2:\u001b[0m Sending 40 reports...\u001b[0m\n\`\`\``
+                `\u001b[1;33mStep 2/2:\u001b[0m Fetching report menu + sending all categories...\u001b[0m\n\`\`\``
             ).catch(() => {});
 
-            // ── STEP 3: Report the server for both categories — fast (no extra delay) ──
-            const token = (client as any).token;
-            const reportHeaders: Record<string, string> = {
-                'Authorization': token,
+            // ── STEP 3: Report the server for ALL available categories ───────────
+            const seToken = (client as any).token;
+            const seHeaders: Record<string, string> = {
+                'Authorization': seToken,
                 'Content-Type': 'application/json',
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'X-Discord-Locale': 'en-US',
                 'X-Discord-Timezone': 'America/New_York',
             };
 
-            const buildBreadcrumbs = (nodes: Record<number, any>, rootId: number, keywords: string[]): number[] => {
-                const path: number[] = [];
-                let currentId: number = rootId;
-                for (let depth = 0; depth < 15; depth++) {
-                    const node = nodes[currentId];
-                    if (!node) break;
-                    path.push(currentId);
-                    if (node.button?.type === 'submit' || node.is_auto_submit) break;
-                    const children: Array<{ name: string; target_node_id: number }> = node.children || [];
-                    if (children.length === 0) break;
-                    const match = children.find((c) => keywords.some(kw => (c.name || '').toLowerCase().includes(kw)));
-                    currentId = match ? match.target_node_id : children[0].target_node_id;
-                }
-                return path;
+            // Walk every branch and return all leaf paths
+            const seGetAllLeafPaths = (nodes: Record<number, any>, rootId: number): number[][] => {
+                const results: number[][] = [];
+                const dfs = (id: number, path: number[]) => {
+                    const node = nodes[id];
+                    if (!node) return;
+                    const newPath = [...path, id];
+                    const children: Array<{ target_node_id: number }> = node.children || [];
+                    if (node.button?.type === 'submit' || node.is_auto_submit || children.length === 0) {
+                        results.push(newPath);
+                        return;
+                    }
+                    for (const child of children) dfs(child.target_node_id, newPath);
+                };
+                dfs(rootId, []);
+                return results;
             };
 
-            let goreBreadcrumbs: number[] = [];
-            let sexualBreadcrumbs: number[] = [];
-            let menuVariant = '3';
+            let seAllPaths: number[][] = [];
+            let seMenuVariant = '3';
             try {
-                const menuRes = await fetch('https://discord.com/api/v9/reporting/menu/guild', { headers: reportHeaders });
+                const menuRes = await fetch('https://discord.com/api/v9/reporting/menu/guild', { headers: seHeaders });
                 if (menuRes.ok) {
                     const menu = await menuRes.json() as any;
-                    menuVariant = String(menu.variant || '3');
-                    const nodes: Record<number, any> = menu.nodes || {};
-                    const rootId: number = menu.root_node_id;
-                    goreBreadcrumbs   = buildBreadcrumbs(nodes, rootId, ['gore', 'animal cruelty', 'violent shock', 'shock content', 'violent']);
-                    sexualBreadcrumbs = buildBreadcrumbs(nodes, rootId, ['sexual', 'explicit', 'graphic', 'unwanted sexual']);
+                    seMenuVariant = String(menu.variant || '3');
+                    seAllPaths = seGetAllLeafPaths(menu.nodes || {}, menu.root_node_id);
                 }
             } catch { /* fallback to v1 */ }
 
-            // Fire a single report attempt — no per-report delay, as fast as possible
-            const sendOneReport = async (breadcrumbs: number[], v1Reason: number): Promise<boolean> => {
+            if (seAllPaths.length === 0) seAllPaths = [[]];
+
+            // Fire one report per leaf path — all in parallel, as fast as possible
+            const seReportResults = await Promise.all(seAllPaths.map(async (breadcrumbs) => {
                 if (breadcrumbs.length > 0) {
                     try {
                         const res = await fetch('https://discord.com/api/v9/reporting/guild', {
-                            method: 'POST',
-                            headers: reportHeaders,
-                            body: JSON.stringify({ version: '1.0', variant: menuVariant, name: 'guild', language: 'en', breadcrumbs, guild_id: targetGuildId }),
+                            method: 'POST', headers: seHeaders,
+                            body: JSON.stringify({ version: '1.0', variant: seMenuVariant, name: 'guild', language: 'en', breadcrumbs, guild_id: targetGuildId }),
                         });
                         if (res.status === 201 || res.ok) return true;
                     } catch { /* fall through */ }
                 }
                 try {
                     const res = await fetch('https://discord.com/api/v9/report', {
-                        method: 'POST',
-                        headers: reportHeaders,
-                        body: JSON.stringify({ guild_id: targetGuildId, channel_id: null, message_id: null, reason: v1Reason }),
+                        method: 'POST', headers: seHeaders,
+                        body: JSON.stringify({ guild_id: targetGuildId, channel_id: null, message_id: null, reason: 2 }),
                     });
                     return res.ok || res.status === 201 || res.status === 204;
                 } catch { return false; }
-            };
+            }));
 
-            // Send all 40 reports as fast as possible — both categories fire concurrently
-            const gorePromises   = Array.from({ length: 20 }, () => sendOneReport(goreBreadcrumbs, 8));
-            const sexualPromises = Array.from({ length: 20 }, () => sendOneReport(sexualBreadcrumbs, 5));
-            const [goreResults, sexualResults] = await Promise.all([
-                Promise.all(gorePromises),
-                Promise.all(sexualPromises),
-            ]);
-
-            const goreSuccess   = goreResults.filter(Boolean).length;
-            const goreFailed    = 20 - goreSuccess;
-            const sexualSuccess = sexualResults.filter(Boolean).length;
-            const sexualFailed  = 20 - sexualSuccess;
-            const totalSuccess  = goreSuccess + sexualSuccess;
-            const totalFailed   = goreFailed + sexualFailed;
+            const totalSuccess = seReportResults.filter(Boolean).length;
+            const totalFailed  = seAllPaths.length - totalSuccess;
 
             activeServerEnds.set(configId, false);
 
@@ -4311,9 +4317,8 @@ export class BotManager {
             summary += `  Flood Time             : ${floodElapsed}s\n`;
             summary += `${DIM}${BAR}${RST}\n`;
             summary += `${YLW}REPORTS${RST}\n`;
-            summary += `  Gore / Violent Shock  : ${goreSuccess > 0 ? GRN : RED}${goreSuccess}/20${RST}${goreFailed > 0 ? ` ${RED}(${goreFailed} failed)${RST}` : ''}\n`;
-            summary += `  Explicit / Sexual      : ${sexualSuccess > 0 ? GRN : RED}${sexualSuccess}/20${RST}${sexualFailed > 0 ? ` ${RED}(${sexualFailed} failed)${RST}` : ''}\n`;
-            summary += `  Total Reports Sent     : ${GRN}${totalSuccess}/40${RST}${totalFailed > 0 ? `  ${RED}(${totalFailed} failed)${RST}` : ''}\n`;
+            summary += `  Categories Reported    : ${seAllPaths.length}\n`;
+            summary += `  Reports Sent           : ${totalSuccess > 0 ? GRN : RED}${totalSuccess}/${seAllPaths.length}${RST}${totalFailed > 0 ? `  ${RED}(${totalFailed} failed)${RST}` : ''}\n`;
             summary += `${DIM}${BAR}${RST}\n`;
             summary += wasStopped
                 ? `${YLW}[!] STOPPED EARLY BY USER${RST}\n`
