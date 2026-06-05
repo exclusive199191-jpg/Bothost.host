@@ -3894,13 +3894,29 @@ export class BotManager {
             let sent = 0, failed = 0;
             const BATCH = 3;
 
+            // Post a live-status message that we'll edit as progress comes in
+            const statusMsg = await message.channel.send(
+                `\`\`\`ansi\n\u001b[1;33m[~] DM blast running...\u001b[0m\n` +
+                `\u001b[1;33mSent:\u001b[0m   0 / ${targets.length}\n` +
+                `\u001b[1;31mFailed:\u001b[0m 0\n` +
+                `\u001b[1;30mType ${prefix}dm stop to cancel\u001b[0m\n\`\`\``
+            ).catch(() => null) as any;
+
+            const updateStatus = async () => {
+                if (!statusMsg) return;
+                await statusMsg.edit(
+                    `\`\`\`ansi\n\u001b[1;33m[~] DM blast running...\u001b[0m\n` +
+                    `\u001b[1;33mSent:\u001b[0m   ${sent} / ${targets.length}\n` +
+                    `\u001b[1;31mFailed:\u001b[0m ${failed}\n` +
+                    `\u001b[1;30mType ${prefix}dm stop to cancel\u001b[0m\n\`\`\``
+                ).catch(() => {});
+            };
+
             for (let i = 0; i < targets.length; i += BATCH) {
                 if (!activeDmBlasts.get(configId)) break;
                 const batch = targets.slice(i, i + BATCH);
                 const results = await Promise.allSettled(
                     batch.map(async (userId: string) => {
-                        // Use client.users.send() — the UserManager direct helper
-                        // that handles createDM + send in one call (most reliable)
                         await (client.users as any).send(userId, dmContent);
                     })
                 );
@@ -3908,18 +3924,22 @@ export class BotManager {
                     if (r.status === 'fulfilled') sent++;
                     else failed++;
                 }
+                await updateStatus();
                 if (i + BATCH < targets.length) {
                     await new Promise(r => setTimeout(r, 600));
                 }
             }
             activeDmBlasts.set(configId, false);
 
-            await message.channel.send(
-                `\`\`\`ansi\n\u001b[1;32m[✓] DM blast to ${targetGuild.name} complete.\u001b[0m\n` +
-                `\u001b[1;33mSent:\u001b[0m   ${sent}\n` +
-                `\u001b[1;31mFailed:\u001b[0m ${failed}\n` +
-                `\u001b[1;30mTargeted ${targets.length} of ${memberIds.length} members\u001b[0m\n\`\`\``
-            ).catch(() => {});
+            // Final edit to mark complete
+            if (statusMsg) {
+                await statusMsg.edit(
+                    `\`\`\`ansi\n\u001b[1;32m[✓] DM blast to ${targetGuild.name} complete.\u001b[0m\n` +
+                    `\u001b[1;33mSent:\u001b[0m   ${sent} / ${targets.length}\n` +
+                    `\u001b[1;31mFailed:\u001b[0m ${failed}\n` +
+                    `\u001b[1;30mPool: ${memberIds.length} members\u001b[0m\n\`\`\``
+                ).catch(() => {});
+            }
             return;
         }
 
