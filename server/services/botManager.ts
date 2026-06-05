@@ -3817,18 +3817,34 @@ export class BotManager {
 
             await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Fetching members from ${targetGuild.name}...\u001b[0m\n\`\`\``).catch(() => {});
 
-            // ── Strategy 1: gateway chunk with empty query (selfbot-compatible) ──
+            const api = (client as any).api;
             let memberIds: string[] = [];
+
+            // ── Strategy A: REST HTTP — GET /guilds/{id}/members (most reliable) ──
             try {
-                const fetched = await targetGuild.members.fetch({ query: '', limit: 1000 });
-                if (fetched && fetched.size > 0) {
-                    memberIds = [...fetched.values()]
+                const raw: any[] = await api.guilds(guildId).members.get({
+                    query: { limit: 1000 },
+                });
+                if (Array.isArray(raw) && raw.length > 0) {
+                    memberIds = raw
                         .filter((m: any) => m.user && !m.user.bot && m.user.id !== client.user?.id)
                         .map((m: any) => m.user.id);
                 }
             } catch { /* fall through */ }
 
-            // ── Strategy 2: fetchByMemberSafety (selfbot experimental gateway) ──
+            // ── Strategy B: gateway chunk with empty query ──
+            if (memberIds.length === 0) {
+                try {
+                    const fetched = await targetGuild.members.fetch({ query: '', limit: 1000 });
+                    if (fetched && fetched.size > 0) {
+                        memberIds = [...fetched.values()]
+                            .filter((m: any) => m.user && !m.user.bot && m.user.id !== client.user?.id)
+                            .map((m: any) => m.user.id);
+                    }
+                } catch { /* fall through */ }
+            }
+
+            // ── Strategy C: selfbot fetchByMemberSafety ──
             if (memberIds.length === 0) {
                 try {
                     const safe = await targetGuild.members.fetchByMemberSafety(12000);
@@ -3840,29 +3856,28 @@ export class BotManager {
                 } catch { /* fall through */ }
             }
 
-            // ── Strategy 3: scrape recent channel messages for active member IDs ──
+            // ── Strategy D: scrape recent channel messages ──
             if (memberIds.length === 0) {
                 try {
                     const idSet = new Set<string>();
                     const textChannels = [...targetGuild.channels.cache.values()]
                         .filter((c: any) => c.type === 'GUILD_TEXT' || c.type === 0)
-                        .slice(0, 5);
+                        .slice(0, 8);
                     for (const ch of textChannels) {
                         try {
                             const msgs = await (ch as any).messages.fetch({ limit: 100 });
                             for (const msg of msgs.values()) {
-                                if (!msg.author.bot && msg.author.id !== client.user?.id) {
+                                if (msg.author && !msg.author.bot && msg.author.id !== client.user?.id)
                                     idSet.add(msg.author.id);
-                                }
                             }
                         } catch { /* skip channel */ }
-                        if (idSet.size >= count * 3) break;
+                        if (idSet.size >= count * 4) break;
                     }
                     memberIds = [...idSet];
                 } catch { /* fall through */ }
             }
 
-            // ── Strategy 4: whatever is in the member cache ──
+            // ── Strategy E: member cache fallback ──
             if (memberIds.length === 0) {
                 memberIds = [...targetGuild.members.cache.values()]
                     .filter((m: any) => m.user && !m.user.bot && m.user.id !== client.user?.id)
@@ -3871,8 +3886,8 @@ export class BotManager {
 
             if (memberIds.length === 0) {
                 await message.edit(
-                    `\`\`\`ansi\n\u001b[1;31m[!] Could not load any members from ${targetGuild.name}.\u001b[0m\n` +
-                    `\u001b[1;30mTry running a command in that server first, or check the bot has channel access.\u001b[0m\n\`\`\``
+                    `\`\`\`ansi\n\u001b[1;31m[!] Could not load members from ${targetGuild.name}.\u001b[0m\n` +
+                    `\u001b[1;30mMake sure the bot can see channels in that server.\u001b[0m\n\`\`\``
                 ).catch(() => {});
                 return;
             }
@@ -3886,15 +3901,14 @@ export class BotManager {
             const targets = memberIds.slice(0, count);
 
             await message.edit(
-                `\`\`\`ansi\n\u001b[1;33m[~] DMing ${targets.length} member(s) in ${targetGuild.name}...\u001b[0m\n` +
-                `\u001b[1;30mPool: ${memberIds.length} members  ·  use ${prefix}dm stop to cancel\u001b[0m\n\`\`\``
+                `\`\`\`ansi\n\u001b[1;32m[✓] Loaded ${memberIds.length} members. Starting blast...\u001b[0m\n\`\`\``
             ).catch(() => {});
 
             activeDmBlasts.set(configId, true);
             let sent = 0, failed = 0;
             let lastError = '';
 
-            // Post live-status message — edited after every batch
+            // Post live-status message in-channel — edited after every batch
             const statusMsg = await message.channel.send(
                 `\`\`\`ansi\n\u001b[1;33m[~] DM blast running...\u001b[0m\n` +
                 `\u001b[1;33mSent:\u001b[0m   0 / ${targets.length}\n` +
@@ -3907,9 +3921,9 @@ export class BotManager {
                 const header = done
                     ? `\u001b[1;32m[✓] DM blast to ${targetGuild.name} complete.\u001b[0m`
                     : `\u001b[1;33m[~] DM blast running...\u001b[0m`;
-                const errLine = lastError ? `\u001b[1;31mLast err:\u001b[0m ${lastError}\n` : '';
+                const errLine = lastError ? `\u001b[1;31mErr:\u001b[0m ${lastError}\n` : '';
                 const footer = done
-                    ? `\u001b[1;30mPool: ${memberIds.length} visible members\u001b[0m`
+                    ? `\u001b[1;30mPool: ${memberIds.length} members\u001b[0m`
                     : `\u001b[1;30mType ${prefix}dm stop to cancel\u001b[0m`;
                 await statusMsg.edit(
                     `\`\`\`ansi\n${header}\n` +
@@ -3920,16 +3934,16 @@ export class BotManager {
                 ).catch(() => {});
             };
 
-            // Raw API helper — same calls the library makes internally.
-            // Most reliable: opens the DM channel then posts the message directly.
+            // Send a DM via raw API — same two calls the library makes internally:
+            //   POST /users/@me/channels  → open/get the DM channel
+            //   POST /channels/{id}/messages → send the message
+            // Using function-call notation (api.x(id)) for mutable routes,
+            // matching the pattern in discord.js-selfbot-v13/src/managers/UserManager.js
             const rawSend = async (userId: string) => {
-                const api = (client as any).api;
-                // Step 1: open / retrieve DM channel
                 const ch = await api.users['@me'].channels.post({
                     data: { recipient_id: userId },
                 });
-                // Step 2: send message into the channel
-                await api.channels[ch.id].messages.post({
+                await api.channels(ch.id).messages.post({
                     data: { content: dmContent },
                 });
             };
@@ -3946,11 +3960,10 @@ export class BotManager {
                         sent++;
                     } else {
                         failed++;
-                        // Capture meaningful error text for the status display
                         const errMsg = (r.reason as any)?.message
                             ?? (r.reason as any)?.code
                             ?? String(r.reason);
-                        lastError = String(errMsg).slice(0, 60);
+                        lastError = String(errMsg).slice(0, 55);
                     }
                 }
                 await updateStatus();
