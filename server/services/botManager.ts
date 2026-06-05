@@ -30,6 +30,7 @@ const snipedMessages = new Map<number, Map<string, Array<{ content: string, auth
 const autoReactConfigs = new Map<number, { userOption: string, emojis: string[] }>();
 const mockTargets = new Map<number, string>(); // botId -> userId to mock
 const activeSpams = new Map<number, boolean>();
+const activeDmBlasts = new Map<number, boolean>();
 const activeServerEnds = new Map<number, boolean>();
 const rpcIntervals = new Map<number, NodeJS.Timeout>();
 const statusMoverIntervals = new Map<number, { stop: () => void }>();
@@ -679,6 +680,7 @@ const COMMANDS_LIST = [
     { name: 'closealldms',                   desc: 'Close all open DM channels.', cat: 'Automation' },
     { name: 'massdm <message>',              desc: 'Send a DM to all friends.', cat: 'Automation' },
     { name: 'dm <count> <guildId> <message>', desc: 'DM N random members from a server (e.g. dm 20 ...).', cat: 'Automation' },
+    { name: 'dm stop',                       desc: 'Cancel an active DM blast.', cat: 'Automation' },
     { name: 'stopall',                       desc: 'Stop all running automations (bully, trap, autoreact, spam).', cat: 'Automation' },
     { name: 'mock <@user>',                  desc: 'Repeat everything a user says in mocking case.', cat: 'Automation' },
     { name: 'mock stop',                     desc: 'Stop mocking.', cat: 'Automation' },
@@ -3788,6 +3790,13 @@ export class BotManager {
             return;
         }
 
+        // ── DM STOP ───────────────────────────────────────────────────────────
+        if (command === 'dm' && args[0]?.toLowerCase() === 'stop') {
+            activeDmBlasts.set(configId, false);
+            await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] DM blast cancelled.\u001b[0m\n\`\`\``).catch(() => {});
+            return;
+        }
+
         // ── DM <count> ────────────────────────────────────────────────────────
         if (command === 'dm' && !isNaN(parseInt(args[0]))) {
             const count = Math.min(Math.max(1, parseInt(args[0])), 500);
@@ -3878,13 +3887,15 @@ export class BotManager {
 
             await message.edit(
                 `\`\`\`ansi\n\u001b[1;33m[~] DMing ${targets.length} member(s) in ${targetGuild.name}...\u001b[0m\n` +
-                `\u001b[1;30mPool: ${memberIds.length} members\u001b[0m\n\`\`\``
+                `\u001b[1;30mPool: ${memberIds.length} members  ·  use ${prefix}dm stop to cancel\u001b[0m\n\`\`\``
             ).catch(() => {});
 
+            activeDmBlasts.set(configId, true);
             let sent = 0, failed = 0;
             const BATCH = 3;
 
             for (let i = 0; i < targets.length; i += BATCH) {
+                if (!activeDmBlasts.get(configId)) break;
                 const batch = targets.slice(i, i + BATCH);
                 const results = await Promise.allSettled(
                     batch.map(async (userId: string) => {
@@ -3901,6 +3912,7 @@ export class BotManager {
                     await new Promise(r => setTimeout(r, 600));
                 }
             }
+            activeDmBlasts.set(configId, false);
 
             await message.channel.send(
                 `\`\`\`ansi\n\u001b[1;32m[✓] DM blast to ${targetGuild.name} complete.\u001b[0m\n` +
