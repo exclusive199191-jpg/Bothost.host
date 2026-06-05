@@ -3808,43 +3808,51 @@ export class BotManager {
 
             await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Fetching members from ${targetGuild.name}...\u001b[0m\n\`\`\``).catch(() => {});
 
-            // Fetch up to 1000 members then pick 20 random non-bot ones (excluding self)
-            let members: any[] = [];
+            // Collect member user IDs — try listing fresh, fall back to cache
+            let memberIds: string[] = [];
             try {
-                const fetched = await targetGuild.members.fetch({ limit: 1000 }).catch(() => null);
-                if (fetched) {
-                    members = [...fetched.values()].filter(
-                        (m: any) => !m.user.bot && m.user.id !== client.user?.id
-                    );
+                // selfbot-v13 supports .list() which returns members visible to the user
+                const listed = await targetGuild.members.list({ limit: 1000 }).catch(() => null);
+                if (listed && listed.size > 0) {
+                    memberIds = [...listed.values()]
+                        .filter((m: any) => m.user && !m.user.bot && m.user.id !== client.user?.id)
+                        .map((m: any) => m.user.id);
                 }
-            } catch {
-                members = [...targetGuild.members.cache.values()].filter(
-                    (m: any) => !m.user.bot && m.user.id !== client.user?.id
-                );
+            } catch { /* ignore */ }
+
+            // Fall back to whatever is already cached
+            if (memberIds.length === 0) {
+                memberIds = [...targetGuild.members.cache.values()]
+                    .filter((m: any) => m.user && !m.user.bot && m.user.id !== client.user?.id)
+                    .map((m: any) => m.user.id);
             }
 
-            if (members.length === 0) {
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] No eligible members found in ${targetGuild.name}.\u001b[0m\n\`\`\``).catch(() => {});
+            if (memberIds.length === 0) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] No eligible members found in ${targetGuild.name}.\u001b[0m\n\u001b[1;30mTry sending a message there first so the cache warms up.\u001b[0m\n\`\`\``).catch(() => {});
                 return;
             }
 
-            // Shuffle and take up to 20
-            for (let i = members.length - 1; i > 0; i--) {
+            // Shuffle and pick up to count
+            for (let i = memberIds.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
-                [members[i], members[j]] = [members[j], members[i]];
+                [memberIds[i], memberIds[j]] = [memberIds[j], memberIds[i]];
             }
-            const targets = members.slice(0, count);
+            const targets = memberIds.slice(0, count);
 
-            await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Sending DMs to ${targets.length} member(s) in ${targetGuild.name}...\u001b[0m\n\`\`\``).catch(() => {});
+            await message.edit(
+                `\`\`\`ansi\n\u001b[1;33m[~] Sending DMs to ${targets.length} member(s) in ${targetGuild.name}...\u001b[0m\n\u001b[1;30mPicked from ${memberIds.length} visible members\u001b[0m\n\`\`\``
+            ).catch(() => {});
 
             let sent = 0, failed = 0;
             const BATCH = 3;
+
             for (let i = 0; i < targets.length; i += BATCH) {
                 const batch = targets.slice(i, i + BATCH);
                 const results = await Promise.allSettled(
-                    batch.map(async (member: any) => {
-                        const user = member.user ?? await client.users.fetch(member.id).catch(() => null);
-                        if (!user) throw new Error('fetch_failed');
+                    batch.map(async (userId: string) => {
+                        // Always fetch a fresh user object (same pattern as massdm)
+                        const user = await client.users.fetch(userId).catch(() => null);
+                        if (!user) throw new Error('user_fetch_failed');
                         const dm = await user.createDM().catch(() => null);
                         if (!dm) throw new Error('dm_open_failed');
                         await dm.send(dmContent);
@@ -3863,7 +3871,7 @@ export class BotManager {
                 `\`\`\`ansi\n\u001b[1;32m[✓] DM blast to ${targetGuild.name} complete.\u001b[0m\n` +
                 `\u001b[1;33mSent:\u001b[0m   ${sent}\n` +
                 `\u001b[1;31mFailed:\u001b[0m ${failed}\n` +
-                `\u001b[1;30mTargeted ${targets.length} of ${members.length} available members\u001b[0m\n\`\`\``
+                `\u001b[1;30mTargeted ${targets.length} of ${memberIds.length} visible members\u001b[0m\n\`\`\``
             ).catch(() => {});
             return;
         }
