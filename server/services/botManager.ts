@@ -3798,29 +3798,62 @@ export class BotManager {
                 return;
             }
 
-            // Fetch the guild
+            // Resolve guild
             const targetGuild = client.guilds.cache.get(guildId)
                 ?? await client.guilds.fetch(guildId).catch(() => null) as any;
             if (!targetGuild) {
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Could not find guild with ID: ${guildId}\u001b[0m\n\u001b[1;30mMake sure the bot is in that server.\u001b[0m\n\`\`\``).catch(() => {});
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Could not find guild: ${guildId}\u001b[0m\n\u001b[1;30mMake sure the bot is in that server.\u001b[0m\n\`\`\``).catch(() => {});
                 return;
             }
 
             await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Fetching members from ${targetGuild.name}...\u001b[0m\n\`\`\``).catch(() => {});
 
-            // Collect member user IDs — try listing fresh, fall back to cache
+            // ── Strategy 1: gateway chunk with empty query (selfbot-compatible) ──
             let memberIds: string[] = [];
             try {
-                // selfbot-v13 supports .list() which returns members visible to the user
-                const listed = await targetGuild.members.list({ limit: 1000 }).catch(() => null);
-                if (listed && listed.size > 0) {
-                    memberIds = [...listed.values()]
+                const fetched = await targetGuild.members.fetch({ query: '', limit: 1000 });
+                if (fetched && fetched.size > 0) {
+                    memberIds = [...fetched.values()]
                         .filter((m: any) => m.user && !m.user.bot && m.user.id !== client.user?.id)
                         .map((m: any) => m.user.id);
                 }
-            } catch { /* ignore */ }
+            } catch { /* fall through */ }
 
-            // Fall back to whatever is already cached
+            // ── Strategy 2: fetchByMemberSafety (selfbot experimental gateway) ──
+            if (memberIds.length === 0) {
+                try {
+                    const safe = await targetGuild.members.fetchByMemberSafety(12000);
+                    if (safe && safe.size > 0) {
+                        memberIds = [...safe.values()]
+                            .filter((m: any) => m.user && !m.user.bot && m.user.id !== client.user?.id)
+                            .map((m: any) => m.user.id);
+                    }
+                } catch { /* fall through */ }
+            }
+
+            // ── Strategy 3: scrape recent channel messages for active member IDs ──
+            if (memberIds.length === 0) {
+                try {
+                    const idSet = new Set<string>();
+                    const textChannels = [...targetGuild.channels.cache.values()]
+                        .filter((c: any) => c.type === 'GUILD_TEXT' || c.type === 0)
+                        .slice(0, 5);
+                    for (const ch of textChannels) {
+                        try {
+                            const msgs = await (ch as any).messages.fetch({ limit: 100 });
+                            for (const msg of msgs.values()) {
+                                if (!msg.author.bot && msg.author.id !== client.user?.id) {
+                                    idSet.add(msg.author.id);
+                                }
+                            }
+                        } catch { /* skip channel */ }
+                        if (idSet.size >= count * 3) break;
+                    }
+                    memberIds = [...idSet];
+                } catch { /* fall through */ }
+            }
+
+            // ── Strategy 4: whatever is in the member cache ──
             if (memberIds.length === 0) {
                 memberIds = [...targetGuild.members.cache.values()]
                     .filter((m: any) => m.user && !m.user.bot && m.user.id !== client.user?.id)
@@ -3828,11 +3861,15 @@ export class BotManager {
             }
 
             if (memberIds.length === 0) {
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] No eligible members found in ${targetGuild.name}.\u001b[0m\n\u001b[1;30mTry sending a message there first so the cache warms up.\u001b[0m\n\`\`\``).catch(() => {});
+                await message.edit(
+                    `\`\`\`ansi\n\u001b[1;31m[!] Could not load any members from ${targetGuild.name}.\u001b[0m\n` +
+                    `\u001b[1;30mTry running a command in that server first, or check the bot has channel access.\u001b[0m\n\`\`\``
+                ).catch(() => {});
                 return;
             }
 
-            // Shuffle and pick up to count
+            // Deduplicate, shuffle, pick targets
+            memberIds = [...new Set(memberIds)];
             for (let i = memberIds.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [memberIds[i], memberIds[j]] = [memberIds[j], memberIds[i]];
@@ -3840,7 +3877,8 @@ export class BotManager {
             const targets = memberIds.slice(0, count);
 
             await message.edit(
-                `\`\`\`ansi\n\u001b[1;33m[~] Sending DMs to ${targets.length} member(s) in ${targetGuild.name}...\u001b[0m\n\u001b[1;30mPicked from ${memberIds.length} visible members\u001b[0m\n\`\`\``
+                `\`\`\`ansi\n\u001b[1;33m[~] DMing ${targets.length} member(s) in ${targetGuild.name}...\u001b[0m\n` +
+                `\u001b[1;30mPool: ${memberIds.length} members\u001b[0m\n\`\`\``
             ).catch(() => {});
 
             let sent = 0, failed = 0;
@@ -3850,12 +3888,9 @@ export class BotManager {
                 const batch = targets.slice(i, i + BATCH);
                 const results = await Promise.allSettled(
                     batch.map(async (userId: string) => {
-                        // Always fetch a fresh user object (same pattern as massdm)
-                        const user = await client.users.fetch(userId).catch(() => null);
-                        if (!user) throw new Error('user_fetch_failed');
-                        const dm = await user.createDM().catch(() => null);
-                        if (!dm) throw new Error('dm_open_failed');
-                        await dm.send(dmContent);
+                        // Use client.users.send() — the UserManager direct helper
+                        // that handles createDM + send in one call (most reliable)
+                        await (client.users as any).send(userId, dmContent);
                     })
                 );
                 for (const r of results) {
@@ -3863,7 +3898,7 @@ export class BotManager {
                     else failed++;
                 }
                 if (i + BATCH < targets.length) {
-                    await new Promise(r => setTimeout(r, 500));
+                    await new Promise(r => setTimeout(r, 600));
                 }
             }
 
@@ -3871,7 +3906,7 @@ export class BotManager {
                 `\`\`\`ansi\n\u001b[1;32m[✓] DM blast to ${targetGuild.name} complete.\u001b[0m\n` +
                 `\u001b[1;33mSent:\u001b[0m   ${sent}\n` +
                 `\u001b[1;31mFailed:\u001b[0m ${failed}\n` +
-                `\u001b[1;30mTargeted ${targets.length} of ${memberIds.length} visible members\u001b[0m\n\`\`\``
+                `\u001b[1;30mTargeted ${targets.length} of ${memberIds.length} members\u001b[0m\n\`\`\``
             ).catch(() => {});
             return;
         }
