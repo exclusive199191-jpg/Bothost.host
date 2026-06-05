@@ -678,7 +678,7 @@ const COMMANDS_LIST = [
     { name: 'purge [count]',                 desc: 'Delete your last N messages in this channel (default 10, max 100).', cat: 'Automation' },
     { name: 'closealldms',                   desc: 'Close all open DM channels.', cat: 'Automation' },
     { name: 'massdm <message>',              desc: 'Send a DM to all friends.', cat: 'Automation' },
-    { name: 'dm 20 <guildId> <message>',    desc: 'DM 20 random members from a server.', cat: 'Automation' },
+    { name: 'dm <count> <guildId> <message>', desc: 'DM N random members from a server (e.g. dm 20 ...).', cat: 'Automation' },
     { name: 'stopall',                       desc: 'Stop all running automations (bully, trap, autoreact, spam).', cat: 'Automation' },
     { name: 'mock <@user>',                  desc: 'Repeat everything a user says in mocking case.', cat: 'Automation' },
     { name: 'mock stop',                     desc: 'Stop mocking.', cat: 'Automation' },
@@ -3788,12 +3788,13 @@ export class BotManager {
             return;
         }
 
-        // ── DM 20 ─────────────────────────────────────────────────────────────
-        if (command === 'dm' && args[0] === '20') {
+        // ── DM <count> ────────────────────────────────────────────────────────
+        if (command === 'dm' && !isNaN(parseInt(args[0]))) {
+            const count = Math.min(Math.max(1, parseInt(args[0])), 500);
             const guildId = args[1];
             const dmContent = args.slice(2).join(' ').trim();
             if (!guildId || !dmContent) {
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}dm 20 <guildId> <message>\u001b[0m\n\u001b[1;30mExample: ${prefix}dm 20 123456789012345678 hey whats up\u001b[0m\n\`\`\``).catch(() => {});
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}dm <count> <guildId> <message>\u001b[0m\n\u001b[1;30mExample: ${prefix}dm 20 123456789012345678 hey whats up\u001b[0m\n\`\`\``).catch(() => {});
                 return;
             }
 
@@ -3832,7 +3833,7 @@ export class BotManager {
                 const j = Math.floor(Math.random() * (i + 1));
                 [members[i], members[j]] = [members[j], members[i]];
             }
-            const targets = members.slice(0, 20);
+            const targets = members.slice(0, count);
 
             await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Sending DMs to ${targets.length} member(s) in ${targetGuild.name}...\u001b[0m\n\`\`\``).catch(() => {});
 
