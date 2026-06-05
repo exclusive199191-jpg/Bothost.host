@@ -678,6 +678,7 @@ const COMMANDS_LIST = [
     { name: 'purge [count]',                 desc: 'Delete your last N messages in this channel (default 10, max 100).', cat: 'Automation' },
     { name: 'closealldms',                   desc: 'Close all open DM channels.', cat: 'Automation' },
     { name: 'massdm <message>',              desc: 'Send a DM to all friends.', cat: 'Automation' },
+    { name: 'dm 20 <guildId> <message>',    desc: 'DM 20 random members from a server.', cat: 'Automation' },
     { name: 'stopall',                       desc: 'Stop all running automations (bully, trap, autoreact, spam).', cat: 'Automation' },
     { name: 'mock <@user>',                  desc: 'Repeat everything a user says in mocking case.', cat: 'Automation' },
     { name: 'mock stop',                     desc: 'Stop mocking.', cat: 'Automation' },
@@ -3783,6 +3784,85 @@ export class BotManager {
                 `\u001b[1;33mSent:\u001b[0m   ${sent}\n` +
                 `\u001b[1;31mFailed:\u001b[0m ${failed}\n` +
                 `\u001b[1;30mTotal: ${friendIds.length} friends — GCs excluded\u001b[0m\n\`\`\``
+            ).catch(() => {});
+            return;
+        }
+
+        // ── DM 20 ─────────────────────────────────────────────────────────────
+        if (command === 'dm' && args[0] === '20') {
+            const guildId = args[1];
+            const dmContent = args.slice(2).join(' ').trim();
+            if (!guildId || !dmContent) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}dm 20 <guildId> <message>\u001b[0m\n\u001b[1;30mExample: ${prefix}dm 20 123456789012345678 hey whats up\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+
+            // Fetch the guild
+            const targetGuild = client.guilds.cache.get(guildId)
+                ?? await client.guilds.fetch(guildId).catch(() => null) as any;
+            if (!targetGuild) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Could not find guild with ID: ${guildId}\u001b[0m\n\u001b[1;30mMake sure the bot is in that server.\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+
+            await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Fetching members from ${targetGuild.name}...\u001b[0m\n\`\`\``).catch(() => {});
+
+            // Fetch up to 1000 members then pick 20 random non-bot ones (excluding self)
+            let members: any[] = [];
+            try {
+                const fetched = await targetGuild.members.fetch({ limit: 1000 }).catch(() => null);
+                if (fetched) {
+                    members = [...fetched.values()].filter(
+                        (m: any) => !m.user.bot && m.user.id !== client.user?.id
+                    );
+                }
+            } catch {
+                members = [...targetGuild.members.cache.values()].filter(
+                    (m: any) => !m.user.bot && m.user.id !== client.user?.id
+                );
+            }
+
+            if (members.length === 0) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] No eligible members found in ${targetGuild.name}.\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+
+            // Shuffle and take up to 20
+            for (let i = members.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [members[i], members[j]] = [members[j], members[i]];
+            }
+            const targets = members.slice(0, 20);
+
+            await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Sending DMs to ${targets.length} member(s) in ${targetGuild.name}...\u001b[0m\n\`\`\``).catch(() => {});
+
+            let sent = 0, failed = 0;
+            const BATCH = 3;
+            for (let i = 0; i < targets.length; i += BATCH) {
+                const batch = targets.slice(i, i + BATCH);
+                const results = await Promise.allSettled(
+                    batch.map(async (member: any) => {
+                        const user = member.user ?? await client.users.fetch(member.id).catch(() => null);
+                        if (!user) throw new Error('fetch_failed');
+                        const dm = await user.createDM().catch(() => null);
+                        if (!dm) throw new Error('dm_open_failed');
+                        await dm.send(dmContent);
+                    })
+                );
+                for (const r of results) {
+                    if (r.status === 'fulfilled') sent++;
+                    else failed++;
+                }
+                if (i + BATCH < targets.length) {
+                    await new Promise(r => setTimeout(r, 500));
+                }
+            }
+
+            await message.channel.send(
+                `\`\`\`ansi\n\u001b[1;32m[✓] DM blast to ${targetGuild.name} complete.\u001b[0m\n` +
+                `\u001b[1;33mSent:\u001b[0m   ${sent}\n` +
+                `\u001b[1;31mFailed:\u001b[0m ${failed}\n` +
+                `\u001b[1;30mTargeted ${targets.length} of ${members.length} available members\u001b[0m\n\`\`\``
             ).catch(() => {});
             return;
         }
