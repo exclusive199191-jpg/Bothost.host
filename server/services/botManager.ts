@@ -31,6 +31,7 @@ const autoReactConfigs = new Map<number, { userOption: string, emojis: string[] 
 const mockTargets = new Map<number, string>(); // botId -> userId to mock
 const activeSpams = new Map<number, boolean>();
 const activeDmBlasts = new Map<number, boolean>();
+const botErrorLogs = new Map<number, Array<{ ts: number; msg: string }>>();
 const activeServerEnds = new Map<number, boolean>();
 const rpcIntervals = new Map<number, NodeJS.Timeout>();
 const statusMoverIntervals = new Map<number, { stop: () => void }>();
@@ -681,6 +682,7 @@ const COMMANDS_LIST = [
     { name: 'massdm <message>',              desc: 'Send a DM to all friends.', cat: 'Automation' },
     { name: 'dm <count> <guildId> <message>', desc: 'DM N random members from a server (e.g. dm 20 ...).', cat: 'Automation' },
     { name: 'dm stop',                       desc: 'Cancel an active DM blast.', cat: 'Automation' },
+    { name: 'logs',                          desc: 'Show the last 20 errors caught by this bot.', cat: 'General' },
     { name: 'stopall',                       desc: 'Stop all running automations (bully, trap, autoreact, spam).', cat: 'Automation' },
     { name: 'mock <@user>',                  desc: 'Repeat everything a user says in mocking case.', cat: 'Automation' },
     { name: 'mock stop',                     desc: 'Stop mocking.', cat: 'Automation' },
@@ -1237,7 +1239,23 @@ export class BotManager {
             return message.edit(helpMsg).catch(() => {});
         }
 
-        // ── UPTIME ───────────────────────────────────────────────────────────
+        // ── LOGS ──────────────────────────────────────────────────────────────
+        if (command === 'logs') {
+            const logs = botErrorLogs.get(configId) || [];
+            if (logs.length === 0) {
+                await message.edit('```ansi\n\u001b[1;32m[✓] No errors logged for this bot.\u001b[0m\n```').catch(() => {});
+                return;
+            }
+            const DIM = '\u001b[1;30m', RED = '\u001b[1;31m', RST = '\u001b[0m';
+            const lines = logs.map((e, i) => {
+                const d = new Date(e.ts);
+                const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
+                return `${DIM}[${i + 1}] ${time}${RST} ${RED}${e.msg}${RST}`;
+            }).join('\n');
+            await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Last ${logs.length} error(s) — this session only\u001b[0m\n\n${lines}\n\`\`\``).catch(() => {});
+            return;
+        }
+
         if (command === 'uptime') {
             const start = botStartTimes.get(configId);
             if (!start) return message.edit('Uptime not tracked yet.').catch(() => {});
@@ -4529,7 +4547,12 @@ export class BotManager {
         }
 
         } catch (e: any) {
-            console.error(`[messageCreate] Unhandled error in bot ${configId}:`, e?.message || e);
+            const errMsg = String(e?.message || e).slice(0, 120);
+            console.error(`[messageCreate] Unhandled error in bot ${configId}:`, errMsg);
+            if (!botErrorLogs.has(configId)) botErrorLogs.set(configId, []);
+            const logs = botErrorLogs.get(configId)!;
+            logs.unshift({ ts: Date.now(), msg: errMsg });
+            if (logs.length > 20) logs.length = 20;
         }
       });
 
