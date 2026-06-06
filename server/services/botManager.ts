@@ -816,8 +816,50 @@ export class BotManager {
     if (activeClients.has(configId)) return { success: true };
 
     try {
+      // Capsolver-backed hCaptcha solver — used when Discord challenges a request
+      const capsolverKey = process.env.CAPSOLVER_API_KEY;
+      const captchaSolver = async (captcha: any, userAgent: string) => {
+        if (!capsolverKey) return null;
+        try {
+          const createRes = await fetch('https://api.capsolver.com/createTask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              clientKey: capsolverKey,
+              task: {
+                type: 'HCaptchaTaskProxyLess',
+                websiteURL: 'https://discord.com',
+                websiteKey: captcha.captcha_sitekey,
+                isInvisible: false,
+                enterprisePayload: { rqdata: captcha.captcha_rqdata ?? '' },
+                userAgent,
+              },
+            }),
+          });
+          const createData: any = await createRes.json();
+          if (createData.errorId !== 0) return null;
+          const taskId = createData.taskId;
+          // Poll up to 60 s for the solution
+          for (let i = 0; i < 30; i++) {
+            await new Promise(r => setTimeout(r, 2000));
+            const resultRes = await fetch('https://api.capsolver.com/getTaskResult', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ clientKey: capsolverKey, taskId }),
+            });
+            const result: any = await resultRes.json();
+            if (result.status === 'ready') {
+              return result.solution?.gRecaptchaResponse ?? null;
+            }
+          }
+        } catch { /* network error — fall through */ }
+        return null;
+      };
+
       let clientOptions: any = {
         checkUpdate: false,
+        captchaSolver,
+        captchaRetryLimit: 3,
         ws: {
           properties: {
             browser: "Discord iOS"
