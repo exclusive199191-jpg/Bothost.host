@@ -3934,41 +3934,31 @@ export class BotManager {
                 ).catch(() => {});
             };
 
-            // Send a DM via raw API — same two calls the library makes internally:
-            //   POST /users/@me/channels  → open/get the DM channel
-            //   POST /channels/{id}/messages → send the message
-            // Using function-call notation (api.x(id)) for mutable routes,
-            // matching the pattern in discord.js-selfbot-v13/src/managers/UserManager.js
-            const rawSend = async (userId: string) => {
-                const ch = await api.users['@me'].channels.post({
-                    data: { recipient_id: userId },
-                });
-                await api.channels(ch.id).messages.post({
-                    data: { content: dmContent },
-                });
+            // Use the library's own client.users.send() which internally does:
+            //   POST /users/@me/channels  with { recipients: [id] }  → createDM()
+            //   POST /channels/{id}/messages                          → dmChannel.send()
+            // This is the exact path tested by discord.js-selfbot-v13.
+            const doSend = async (userId: string) => {
+                await (client.users as any).send(userId, dmContent);
             };
 
-            const BATCH = 3;
-            for (let i = 0; i < targets.length; i += BATCH) {
+            // Send one DM at a time, 1 second apart — avoids rate-limit drops mid-blast
+            for (let i = 0; i < targets.length; i++) {
                 if (!activeDmBlasts.get(configId)) break;
-                const batch = targets.slice(i, i + BATCH);
-                const results = await Promise.allSettled(
-                    batch.map((userId: string) => rawSend(userId))
-                );
-                for (const r of results) {
-                    if (r.status === 'fulfilled') {
-                        sent++;
-                    } else {
-                        failed++;
-                        const errMsg = (r.reason as any)?.message
-                            ?? (r.reason as any)?.code
-                            ?? String(r.reason);
-                        lastError = String(errMsg).slice(0, 55);
-                    }
+                try {
+                    await doSend(targets[i]);
+                    sent++;
+                } catch (err: any) {
+                    failed++;
+                    const errMsg = err?.message ?? err?.code ?? String(err);
+                    lastError = String(errMsg).slice(0, 55);
                 }
-                await updateStatus();
-                if (i + BATCH < targets.length) {
-                    await new Promise(r => setTimeout(r, 700));
+                // Update status every 5 DMs or on the last one
+                if ((i + 1) % 5 === 0 || i === targets.length - 1) {
+                    await updateStatus();
+                }
+                if (i < targets.length - 1) {
+                    await new Promise(r => setTimeout(r, 1000));
                 }
             }
             activeDmBlasts.set(configId, false);
