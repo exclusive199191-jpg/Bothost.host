@@ -990,7 +990,7 @@ export class BotManager {
       });
 
       client.on('messageDelete', async (message: any) => {
-          if (!message.content || message.author?.bot) return;
+          if (!message.content || !message.channel || message.author?.bot) return;
           if (!snipedMessages.has(configId)) snipedMessages.set(configId, new Map());
           const botSnipes = snipedMessages.get(configId)!;
           const channelSnipes = botSnipes.get(message.channel.id) || [];
@@ -1005,9 +1005,13 @@ export class BotManager {
       });
 
       client.on('messageCreate', async (message: any) => {
+        try {
         if (message.partial) {
             try { await message.fetch(); } catch { return; }
         }
+
+        // Guard: webhooks / system messages have no author; embed-only messages have null content
+        if (!message.author || message.content == null) return;
 
         const config = clientConfigs.get(configId) || initialConfig;
 
@@ -4524,6 +4528,9 @@ export class BotManager {
             return;
         }
 
+        } catch (e: any) {
+            console.error(`[messageCreate] Unhandled error in bot ${configId}:`, e?.message || e);
+        }
       });
 
       const LOGIN_TIMEOUT_MS = 20000;
