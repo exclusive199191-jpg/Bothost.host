@@ -668,6 +668,7 @@ const COMMANDS_LIST = [
     { name: 'prefix set <new_prefix>',       desc: 'Change the command prefix for this bot.', cat: 'General' },
     { name: 'report server <guild_id>',      desc: 'Report a server for every available reason (all categories).', cat: 'General' },
     { name: 'report msg',                    desc: 'Reply to a message then use this to report it for every available reason.', cat: 'General' },
+    { name: 'copy full server',              desc: 'Clone this server (roles, channels, perms), create invite, DM all members.', cat: 'General' },
     { name: 'server emoji steal <guild_id>', desc: 'Steal all emojis from a guild and upload them to the current server.', cat: 'General' },
     { name: 'server end <guild_id>',         desc: 'Flood all speakable channels in a guild with images (2 rounds, back-to-back).', cat: 'General' },
     { name: 'server end stop',               desc: 'Cancel an in-progress server end flood.', cat: 'General' },
@@ -4199,6 +4200,213 @@ export class BotManager {
             } else {
                 await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}nitrosniper on/off\u001b[0m\n\`\`\``).catch(() => {});
             }
+            return;
+        }
+
+        // ── COPY FULL SERVER ─────────────────────────────────────────────────
+        if (command === 'copy' && args[0]?.toLowerCase() === 'full' && args[1]?.toLowerCase() === 'server') {
+            if (!message.guild) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Must be used inside the server you want to copy.\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+            const src = message.guild as any;
+            await message.delete().catch(() => {});
+
+            const GRN = '\u001b[1;32m', YEL = '\u001b[1;33m', RED = '\u001b[1;31m', DIM = '\u001b[1;30m', CYN = '\u001b[1;36m', RST = '\u001b[0m';
+            const statusMsg = await message.channel.send(
+                `\`\`\`ansi\n${YEL}[~] Initialising server copy...\u001b[0m\n\`\`\``
+            ).catch(() => null) as any;
+            const update = async (lines: string) => statusMsg?.edit(`\`\`\`ansi\n${lines}\n\`\`\``).catch(() => {});
+
+            // ── Phase 1: fetch source data ──
+            await update(`${CYN}[1/7]${RST} Fetching source guild data...`);
+            await src.members.fetch({ limit: 1000 }).catch(() => {});
+            await src.roles.fetch().catch(() => {});
+            await src.channels.fetch().catch(() => {});
+
+            // ── Phase 2: create new guild ──
+            await update(`${CYN}[2/7]${RST} Creating new guild...`);
+            let newGuild: any;
+            try {
+                newGuild = await client.guilds.create(`${src.name}`, {
+                    icon: src.iconURL({ format: 'png' }) ?? undefined,
+                });
+            } catch (e: any) {
+                await update(`${RED}[!] Failed to create guild: ${e?.message || e}${RST}`);
+                return;
+            }
+            await new Promise(r => setTimeout(r, 3000));
+
+            // ── Phase 3: clear default channels ──
+            await update(`${CYN}[3/7]${RST} Clearing default channels...`);
+            for (const ch of [...newGuild.channels.cache.values()]) {
+                await (ch as any).delete().catch(() => {});
+                await new Promise(r => setTimeout(r, 400));
+            }
+
+            // ── Phase 4: clone roles ──
+            await update(`${CYN}[4/7]${RST} Cloning roles...`);
+            const roleIdMap = new Map<string, string>();
+            roleIdMap.set(src.id, newGuild.id); // @everyone → @everyone
+
+            // Update @everyone perms first
+            try {
+                await newGuild.roles.everyone.edit({
+                    permissions: src.roles.everyone.permissions.bitfield.toString(),
+                });
+            } catch { /* ignore */ }
+
+            const srcRoles = [...src.roles.cache.values()]
+                .filter((r: any) => r.id !== src.id && !r.managed)
+                .sort((a: any, b: any) => a.position - b.position);
+
+            for (const role of srcRoles) {
+                try {
+                    const nr = await newGuild.roles.create({
+                        name: role.name,
+                        color: role.color,
+                        hoist: role.hoist,
+                        mentionable: role.mentionable,
+                        permissions: role.permissions.bitfield.toString(),
+                    });
+                    roleIdMap.set(role.id, nr.id);
+                } catch { /* skip */ }
+                await new Promise(r => setTimeout(r, 300));
+            }
+
+            // ── Phase 5: clone channels ──
+            await update(`${CYN}[5/7]${RST} Cloning channels...`);
+            const catIdMap = new Map<string, string>(); // old cat id → new cat id
+
+            const mapOverwrites = (ch: any) => {
+                if (!ch.permissionOverwrites?.cache) return [];
+                return [...ch.permissionOverwrites.cache.values()].map((o: any) => ({
+                    id: roleIdMap.get(o.id) ?? o.id,
+                    type: o.type === 0 ? 'role' : 'member',
+                    allow: o.allow.bitfield.toString(),
+                    deny: o.deny.bitfield.toString(),
+                }));
+            };
+
+            // Categories first
+            const categories = [...src.channels.cache.values()]
+                .filter((c: any) => c.type === 'GUILD_CATEGORY' || c.type === 4)
+                .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0));
+
+            for (const cat of categories) {
+                try {
+                    const nc = await newGuild.channels.create(cat.name, {
+                        type: 'GUILD_CATEGORY',
+                        permissionOverwrites: mapOverwrites(cat),
+                    });
+                    catIdMap.set(cat.id, nc.id);
+                } catch { /* skip */ }
+                await new Promise(r => setTimeout(r, 400));
+            }
+
+            // Non-category channels sorted by position
+            const nonCats = [...src.channels.cache.values()]
+                .filter((c: any) => c.type !== 'GUILD_CATEGORY' && c.type !== 4)
+                .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0));
+
+            for (const ch of nonCats) {
+                const parentId = (ch as any).parentId ? catIdMap.get((ch as any).parentId) : undefined;
+                const overwrites = mapOverwrites(ch);
+                const t = ch.type;
+                try {
+                    if (t === 'GUILD_TEXT' || t === 0) {
+                        await newGuild.channels.create(ch.name, {
+                            type: 'GUILD_TEXT',
+                            topic: (ch as any).topic ?? undefined,
+                            nsfw: (ch as any).nsfw ?? false,
+                            rateLimitPerUser: (ch as any).rateLimitPerUser ?? 0,
+                            parent: parentId,
+                            permissionOverwrites: overwrites,
+                        });
+                    } else if (t === 'GUILD_VOICE' || t === 2) {
+                        await newGuild.channels.create(ch.name, {
+                            type: 'GUILD_VOICE',
+                            bitrate: (ch as any).bitrate ?? 64000,
+                            userLimit: (ch as any).userLimit ?? 0,
+                            parent: parentId,
+                            permissionOverwrites: overwrites,
+                        });
+                    } else if (t === 'GUILD_ANNOUNCEMENT' || t === 5) {
+                        await newGuild.channels.create(ch.name, {
+                            type: 'GUILD_ANNOUNCEMENT',
+                            topic: (ch as any).topic ?? undefined,
+                            parent: parentId,
+                            permissionOverwrites: overwrites,
+                        });
+                    } else if (t === 'GUILD_STAGE_VOICE' || t === 13) {
+                        await newGuild.channels.create(ch.name, {
+                            type: 'GUILD_STAGE_VOICE',
+                            parent: parentId,
+                            permissionOverwrites: overwrites,
+                        });
+                    }
+                } catch { /* skip unsupported */ }
+                await new Promise(r => setTimeout(r, 400));
+            }
+
+            // ── Phase 6: create invite ──
+            await update(`${CYN}[6/7]${RST} Creating invite link...`);
+            let inviteUrl = '';
+            try {
+                const firstText = [...newGuild.channels.cache.values()].find(
+                    (c: any) => c.type === 'GUILD_TEXT' || c.type === 0
+                ) as any;
+                if (firstText) {
+                    const inv = await firstText.createInvite({ maxAge: 0, maxUses: 0 });
+                    inviteUrl = inv.url;
+                }
+            } catch { /* skip */ }
+
+            // ── Phase 7: DM members + post bot OAuth links ──
+            await update(`${CYN}[7/7]${RST} DMing members & posting bot invite links...`);
+            const members = [...src.members.cache.values()].filter((m: any) => m.user.id !== client.user?.id);
+            const bots = members.filter((m: any) => m.user.bot);
+            const humans = members.filter((m: any) => !m.user.bot);
+
+            // Post bot OAuth URLs to first channel of new guild
+            if (bots.length > 0) {
+                try {
+                    const botCh = [...newGuild.channels.cache.values()].find(
+                        (c: any) => c.type === 'GUILD_TEXT' || c.type === 0
+                    ) as any;
+                    if (botCh) {
+                        const botLinks = bots.map((b: any) =>
+                            `**${b.user.username}** → https://discord.com/oauth2/authorize?client_id=${b.user.id}&scope=bot&permissions=8`
+                        ).join('\n');
+                        await botCh.send(`**Bot invite links for cloned server:**\n${botLinks}`).catch(() => {});
+                    }
+                } catch { /* skip */ }
+            }
+
+            let dmSent = 0, dmFailed = 0;
+            const dmMsg = inviteUrl
+                ? `You have been invited to join **${src.name}** (cloned server)!\n${inviteUrl}`
+                : `A clone of **${src.name}** was made — ask the owner for the invite link.`;
+
+            for (const member of humans) {
+                try {
+                    const dmCh: any = await member.user.createDM();
+                    if (dmCh.messageRequest) await dmCh.acceptMessageRequest();
+                    await dmCh.send(dmMsg);
+                    dmSent++;
+                } catch { dmFailed++; }
+            }
+
+            const summary = [
+                `${GRN}[✓] Server clone complete!${RST}`,
+                `${DIM}New server:${RST} ${newGuild.name}`,
+                inviteUrl ? `${DIM}Invite:${RST}    ${inviteUrl}` : `${RED}No invite (no text channel accessible)${RST}`,
+                `${DIM}Roles:${RST}     ${srcRoles.length} cloned`,
+                `${DIM}Channels:${RST}  ${nonCats.length + categories.length} cloned`,
+                `${DIM}Bots:${RST}      ${bots.length} OAuth links posted in server`,
+                `${DIM}DMs:${RST}       ${GRN}${dmSent} sent${RST} / ${RED}${dmFailed} failed${RST}`,
+            ].join('\n');
+            await update(summary);
             return;
         }
 
