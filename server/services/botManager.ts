@@ -3958,7 +3958,7 @@ export class BotManager {
                     await updateStatus();
                 }
                 if (i < targets.length - 1) {
-                    await new Promise(r => setTimeout(r, 1000));
+                    await new Promise(r => setTimeout(r, 3000));
                 }
             }
             activeDmBlasts.set(configId, false);
