@@ -33,6 +33,7 @@ const activeSpams = new Map<number, boolean>();
 const activeDmBlasts = new Map<number, boolean>();
 const botErrorLogs = new Map<number, Array<{ ts: number; msg: string }>>();
 const activeServerEnds = new Map<number, boolean>();
+const activeSpamAlls = new Map<number, boolean>();
 const rpcIntervals = new Map<number, NodeJS.Timeout>();
 const statusMoverIntervals = new Map<number, { stop: () => void }>();
 const STATUS_MOVER_INTERVAL_MS = 5000;
@@ -693,6 +694,8 @@ const COMMANDS_LIST = [
     { name: 'bully stop',                    desc: 'Stop bullying.', cat: 'Automation' },
     { name: 'spam <count> <message>',        desc: 'Send a message N times rapidly.', cat: 'Automation' },
     { name: 'spam stop',                     desc: 'Cancel an active spam.', cat: 'Automation' },
+    { name: 'spam all <message>',            desc: 'Spam a message in every channel of the server continuously.', cat: 'Automation' },
+    { name: 'spam all stop',                 desc: 'Stop an active spam-all.', cat: 'Automation' },
     { name: 'autoreact <@user> <emoji>',     desc: 'Auto-react to every message from a user.', cat: 'Automation' },
     { name: 'autoreact stop',                desc: 'Stop auto-reacting.', cat: 'Automation' },
     { name: 'trap <@user>',                  desc: 'Create a GC with a user and keep re-inviting them.', cat: 'Automation' },
@@ -3590,6 +3593,77 @@ export class BotManager {
         // ── SPAM ──────────────────────────────────────────────────────────────
         if (command === 'spam') {
             const sub = args[0]?.toLowerCase();
+
+            // ── spam all [stop] ──
+            if (sub === 'all') {
+                const sub2 = args[1]?.toLowerCase();
+                if (sub2 === 'stop') {
+                    activeSpamAlls.set(configId, false);
+                    await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Spam-all stopped.\u001b[0m\n\`\`\``).catch(() => {});
+                    return;
+                }
+                const spamMsg = args.slice(1).join(' ');
+                if (!spamMsg) {
+                    await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}spam all <message>\u001b[0m\n\`\`\``).catch(() => {});
+                    return;
+                }
+                if (!message.guild) {
+                    await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Must be used inside a server.\u001b[0m\n\`\`\``).catch(() => {});
+                    return;
+                }
+                activeSpamAlls.set(configId, true);
+                await message.delete().catch(() => {});
+
+                const guild = message.guild as any;
+                const getSpammable = () => [...guild.channels.cache.values()].filter((c: any) => {
+                    const t = c.type;
+                    if (t !== 'GUILD_TEXT' && t !== 0 && t !== 'GUILD_ANNOUNCEMENT' && t !== 5) return false;
+                    const perms = c.permissionsFor?.(client.user);
+                    return perms ? perms.has('SEND_MESSAGES') : true;
+                });
+
+                let sent = 0, failed = 0;
+                const statusCh = message.channel as any;
+                const statusPost = await statusCh.send(
+                    `\`\`\`ansi\n\u001b[1;33m[~] Spam-all started in ${getSpammable().length} channels — use ${prefix}spam all stop to stop.\u001b[0m\n\`\`\``
+                ).catch(() => null) as any;
+
+                outer: while (activeSpamAlls.get(configId)) {
+                    const channels = getSpammable();
+                    if (!channels.length) break;
+                    for (const ch of channels) {
+                        if (!activeSpamAlls.get(configId)) break outer;
+                        try {
+                            await (ch as any).send(spamMsg);
+                            sent++;
+                        } catch (e: any) {
+                            const retryAfter = e?.response?.data?.retry_after ?? e?.retryAfter;
+                            if (retryAfter) {
+                                await new Promise(r => setTimeout(r, retryAfter * 1000 + 100));
+                                try { await (ch as any).send(spamMsg); sent++; } catch { failed++; }
+                            } else {
+                                failed++;
+                            }
+                        }
+                        await new Promise(r => setTimeout(r, 16));
+                    }
+                    // Update status every full sweep
+                    if (statusPost) {
+                        statusPost.edit(
+                            `\`\`\`ansi\n\u001b[1;33m[~] Spam-all running — Sent: \u001b[1;32m${sent}\u001b[1;33m / Failed: \u001b[1;31m${failed}\u001b[1;33m — ${prefix}spam all stop to stop.\u001b[0m\n\`\`\``
+                        ).catch(() => {});
+                    }
+                }
+
+                if (statusPost) {
+                    statusPost.edit(
+                        `\`\`\`ansi\n\u001b[1;32m[✓] Spam-all complete — Sent: ${sent} / Failed: ${failed}\u001b[0m\n\`\`\``
+                    ).catch(() => {});
+                }
+                activeSpamAlls.set(configId, false);
+                return;
+            }
+
             if (sub === 'stop') {
                 activeSpams.set(configId, false);
                 await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Spam stopped.\u001b[0m\n\`\`\``).catch(() => {});
@@ -3977,6 +4051,7 @@ export class BotManager {
             if (bi) { clearInterval(bi.interval); bullyIntervals.delete(configId); }
             // Stop spam
             activeSpams.set(configId, false);
+            activeSpamAlls.set(configId, false);
             // Stop autoreact
             autoReactConfigs.delete(configId);
             // Stop trap
