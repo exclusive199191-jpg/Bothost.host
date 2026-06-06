@@ -3815,85 +3815,21 @@ export class BotManager {
                 return;
             }
 
-            await message.edit(`\`\`\`ansi\n\u001b[1;33m[~] Fetching members from ${targetGuild.name}...\u001b[0m\n\`\`\``).catch(() => {});
-
-            const api = (client as any).api;
-            let memberIds: string[] = [];
-
-            // ── Strategy A: REST HTTP — GET /guilds/{id}/members (most reliable) ──
-            try {
-                const raw: any[] = await api.guilds(guildId).members.get({
-                    query: { limit: 1000 },
-                });
-                if (Array.isArray(raw) && raw.length > 0) {
-                    memberIds = raw
-                        .filter((m: any) => m.user && !m.user.bot && m.user.id !== client.user?.id)
-                        .map((m: any) => m.user.id);
-                }
-            } catch { /* fall through */ }
-
-            // ── Strategy B: gateway chunk with empty query ──
-            if (memberIds.length === 0) {
-                try {
-                    const fetched = await targetGuild.members.fetch({ query: '', limit: 1000 });
-                    if (fetched && fetched.size > 0) {
-                        memberIds = [...fetched.values()]
-                            .filter((m: any) => m.user && !m.user.bot && m.user.id !== client.user?.id)
-                            .map((m: any) => m.user.id);
-                    }
-                } catch { /* fall through */ }
-            }
-
-            // ── Strategy C: selfbot fetchByMemberSafety ──
-            if (memberIds.length === 0) {
-                try {
-                    const safe = await targetGuild.members.fetchByMemberSafety(12000);
-                    if (safe && safe.size > 0) {
-                        memberIds = [...safe.values()]
-                            .filter((m: any) => m.user && !m.user.bot && m.user.id !== client.user?.id)
-                            .map((m: any) => m.user.id);
-                    }
-                } catch { /* fall through */ }
-            }
-
-            // ── Strategy D: scrape recent channel messages ──
-            if (memberIds.length === 0) {
-                try {
-                    const idSet = new Set<string>();
-                    const textChannels = [...targetGuild.channels.cache.values()]
-                        .filter((c: any) => c.type === 'GUILD_TEXT' || c.type === 0)
-                        .slice(0, 8);
-                    for (const ch of textChannels) {
-                        try {
-                            const msgs = await (ch as any).messages.fetch({ limit: 100 });
-                            for (const msg of msgs.values()) {
-                                if (msg.author && !msg.author.bot && msg.author.id !== client.user?.id)
-                                    idSet.add(msg.author.id);
-                            }
-                        } catch { /* skip channel */ }
-                        if (idSet.size >= count * 4) break;
-                    }
-                    memberIds = [...idSet];
-                } catch { /* fall through */ }
-            }
-
-            // ── Strategy E: member cache fallback ──
-            if (memberIds.length === 0) {
-                memberIds = [...targetGuild.members.cache.values()]
-                    .filter((m: any) => m.user && !m.user.bot && m.user.id !== client.user?.id)
-                    .map((m: any) => m.user.id);
-            }
+            // Use cached members only — no fetching, starts instantly
+            let memberIds = [...targetGuild.members.cache.values()]
+                .filter((m: any) => m.user && !m.user.bot && m.user.id !== client.user?.id)
+                .map((m: any) => m.user.id);
+            memberIds = [...new Set(memberIds)];
 
             if (memberIds.length === 0) {
                 await message.edit(
-                    `\`\`\`ansi\n\u001b[1;31m[!] Could not load members from ${targetGuild.name}.\u001b[0m\n` +
-                    `\u001b[1;30mMake sure the bot can see channels in that server.\u001b[0m\n\`\`\``
+                    `\`\`\`ansi\n\u001b[1;31m[!] No cached members in ${targetGuild.name}.\u001b[0m\n` +
+                    `\u001b[1;30mSend a message in that server first so the bot sees some members.\u001b[0m\n\`\`\``
                 ).catch(() => {});
                 return;
             }
 
-            // Deduplicate, shuffle, pick targets
-            memberIds = [...new Set(memberIds)];
+            // Shuffle and pick targets
             for (let i = memberIds.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [memberIds[i], memberIds[j]] = [memberIds[j], memberIds[i]];
@@ -3901,7 +3837,7 @@ export class BotManager {
             const targets = memberIds.slice(0, count);
 
             await message.edit(
-                `\`\`\`ansi\n\u001b[1;32m[✓] Loaded ${memberIds.length} members. Starting blast...\u001b[0m\n\`\`\``
+                `\`\`\`ansi\n\u001b[1;32m[✓] ${memberIds.length} cached members found. Blasting ${targets.length}...\u001b[0m\n\`\`\``
             ).catch(() => {});
 
             activeDmBlasts.set(configId, true);
