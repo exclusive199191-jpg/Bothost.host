@@ -3957,9 +3957,6 @@ export class BotManager {
                 if ((i + 1) % 5 === 0 || i === targets.length - 1) {
                     await updateStatus();
                 }
-                if (i < targets.length - 1) {
-                    await new Promise(r => setTimeout(r, 3000));
-                }
             }
             activeDmBlasts.set(configId, false);
             await updateStatus(true);
