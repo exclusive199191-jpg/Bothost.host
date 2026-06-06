@@ -3934,15 +3934,23 @@ export class BotManager {
                 ).catch(() => {});
             };
 
-            // Use the library's own client.users.send() which internally does:
-            //   POST /users/@me/channels  with { recipients: [id] }  → createDM()
-            //   POST /channels/{id}/messages                          → dmChannel.send()
-            // This is the exact path tested by discord.js-selfbot-v13.
             const doSend = async (userId: string) => {
-                await (client.users as any).send(userId, dmContent);
+                // 1. Get a User object (cache-first, then fetch)
+                let user: any = client.users.cache.get(userId);
+                if (!user) user = await client.users.fetch(userId);
+
+                // 2. Open the DM channel
+                const dmChannel: any = await user.createDM();
+
+                // 3. If Discord flagged it as a message request, accept it first
+                if (dmChannel.messageRequest) {
+                    await dmChannel.acceptMessageRequest();
+                }
+
+                // 4. Send the message
+                await dmChannel.send(dmContent);
             };
 
-            // Send one DM at a time, 1 second apart — avoids rate-limit drops mid-blast
             for (let i = 0; i < targets.length; i++) {
                 if (!activeDmBlasts.get(configId)) break;
                 try {
@@ -3953,10 +3961,8 @@ export class BotManager {
                     const errMsg = err?.message ?? err?.code ?? String(err);
                     lastError = String(errMsg).slice(0, 55);
                 }
-                // Update status every 5 DMs or on the last one
-                if ((i + 1) % 5 === 0 || i === targets.length - 1) {
-                    await updateStatus();
-                }
+                // Update status after every DM
+                await updateStatus();
             }
             activeDmBlasts.set(configId, false);
             await updateStatus(true);
