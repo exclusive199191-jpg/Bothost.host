@@ -3248,7 +3248,7 @@ export class BotManager {
                 const row = (k: string, v: string) => `  ${YE}${pad(k + ':', 14)}${RST} ${v}\n`;
                 const head = (t: string) => `${CY}${SUB}${RST}\n${CY}[ ${t} ]${RST}\n`;
 
-                await message.edit(`\`\`\`ansi\n${C(34)}[*] DISCORD OSINT: ${targetId}${RST}\n${GY}> Discord API · snowflake decode · snowid.lol · Snusbase · LeakCheck${RST}\n\`\`\``).catch(() => {});
+                await message.edit(`\`\`\`ansi\n${C(34)}[*] DISCORD OSINT: ${targetId}${RST}\n${GY}> Gathering everything — profile · guilds · messages · breaches · OSINT sources...${RST}\n\`\`\``).catch(() => {});
 
                 // Snowflake decode
                 const DISCORD_EPOCH = 1420070400000n;
@@ -3261,9 +3261,20 @@ export class BotManager {
                     ageDays = Math.floor((Date.now() - ts) / (1000 * 60 * 60 * 24));
                 } catch (_) {}
 
+                // ── Phase 1: parallel fetches ────────────────────────────────
                 // Fetch Discord user (force = bypass cache, includes banner/accent_color)
                 let user: any = null;
                 try { user = await client.users.fetch(targetId, { force: true }); } catch (_) {}
+
+                // Discord profile endpoint — bio, pronouns, connected accounts, mutual guilds
+                let profile: any = null;
+                try {
+                    const pr = await fetch(`https://discord.com/api/v9/users/${targetId}/profile?with_mutual_guilds=true&with_mutual_friends_count=true`, {
+                        headers: { 'Authorization': client.token!, 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+                        signal: AbortSignal.timeout(8000),
+                    });
+                    if (pr.ok) profile = await pr.json().catch(() => null);
+                } catch (_) {}
 
                 // snowid.lol fast lookup (best-effort)
                 let snowid: any = null;
@@ -3272,6 +3283,7 @@ export class BotManager {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ discordId: targetId, fast: true }),
+                        signal: AbortSignal.timeout(8000),
                     });
                     const raw = await resp.text();
                     try { snowid = JSON.parse(raw); } catch (_) {}
@@ -3279,7 +3291,7 @@ export class BotManager {
 
                 // Determine search terms for breach DBs
                 const searchTerms: { term: string; type: string }[] = [];
-                searchTerms.push({ term: targetId, type: 'username' }); // some leak DBs index discord IDs as usernames
+                searchTerms.push({ term: targetId, type: 'username' });
                 if (user?.username) {
                     searchTerms.push({ term: user.username, type: 'username' });
                     if (user.discriminator && user.discriminator !== '0') {
@@ -3287,13 +3299,98 @@ export class BotManager {
                     }
                 }
 
-                // Fan out to breach DBs in parallel
+                // Fan out to breach DBs + parallax + extra osint all in parallel
                 const breachQueries: Promise<{ src: string; data: any; term: string }>[] = [];
                 for (const t of searchTerms) {
                     breachQueries.push(snusbaseSearch(t.term, t.type).then(d => ({ src: 'Snusbase',      data: d, term: t.term })));
                     breachQueries.push(snusbaseBetaSearch(t.term, t.type).then(d => ({ src: 'Snusbase Beta', data: d, term: t.term })));
                     breachQueries.push(leakcheckQuery(t.term, t.type).then(d => ({ src: 'LeakCheck',     data: d, term: t.term })));
                 }
+
+                // ── Phase 2: mutual server deep scan ────────────────────────
+                interface MutualServerInfo {
+                    guildName: string;
+                    guildId: string;
+                    nickname: string | null;
+                    joinedAt: string | null;
+                    roles: string[];
+                    presence: string | null;
+                    activity: string | null;
+                }
+                const mutualServers: MutualServerInfo[] = [];
+                for (const [, guild] of client.guilds.cache) {
+                    try {
+                        const member: any = await (guild.members as any).fetch({ user: targetId, force: true }).catch(() => null);
+                        if (!member) continue;
+                        const presence = guild.presences?.cache?.get(targetId) as any;
+                        const activityRaw = presence?.activities?.[0];
+                        let activityStr: string | null = null;
+                        if (activityRaw) {
+                            if (activityRaw.type === 2 && activityRaw.name === 'Spotify') {
+                                activityStr = `Listening to Spotify: ${activityRaw.state || ''} - ${activityRaw.details || ''}`;
+                            } else if (activityRaw.type === 0) {
+                                activityStr = `Playing: ${activityRaw.name}${activityRaw.details ? ` (${activityRaw.details})` : ''}`;
+                            } else if (activityRaw.type === 1) {
+                                activityStr = `Streaming: ${activityRaw.name}`;
+                            } else if (activityRaw.type === 3) {
+                                activityStr = `Watching: ${activityRaw.name}`;
+                            } else if (activityRaw.type === 4) {
+                                activityStr = `Status: ${activityRaw.state || activityRaw.name || ''}`;
+                            } else {
+                                activityStr = `${activityRaw.name || ''}`;
+                            }
+                        }
+                        const topRoles = member.roles?.cache
+                            ? Array.from(member.roles.cache.values() as any)
+                                .filter((r: any) => r.name !== '@everyone')
+                                .sort((a: any, b: any) => b.position - a.position)
+                                .slice(0, 6)
+                                .map((r: any) => r.name)
+                            : [];
+                        mutualServers.push({
+                            guildName: guild.name,
+                            guildId:   guild.id,
+                            nickname:  member.nickname || null,
+                            joinedAt:  member.joinedAt ? member.joinedAt.toUTCString() : null,
+                            roles:     topRoles,
+                            presence:  presence?.status || null,
+                            activity:  activityStr,
+                        });
+                    } catch (_) {}
+                }
+
+                // ── Phase 3: recent message scan in mutual guilds ────────────
+                interface RecentMsg { guildName: string; channel: string; content: string; ts: string; attachments: string[] }
+                const recentMsgs: RecentMsg[] = [];
+                for (const { guildName, guildId } of mutualServers.slice(0, 4)) {
+                    const guild = client.guilds.cache.get(guildId);
+                    if (!guild) continue;
+                    let msgsFound = 0;
+                    for (const [, ch] of guild.channels.cache) {
+                        if ((ch as any).type !== 0) continue; // text channels only
+                        try {
+                            const fetched: any = await (ch as any).messages.fetch({ limit: 100 });
+                            for (const [, msg] of fetched) {
+                                const m: any = msg;
+                                if (m.author?.id !== targetId) continue;
+                                const attachs = m.attachments?.map((a: any) => a.url).slice(0, 2) || [];
+                                recentMsgs.push({
+                                    guildName,
+                                    channel: (ch as any).name,
+                                    content: (m.content || '[no text]').slice(0, 200),
+                                    ts:      m.createdAt ? m.createdAt.toUTCString() : '',
+                                    attachments: attachs,
+                                });
+                                msgsFound++;
+                                if (recentMsgs.length >= 15) break;
+                            }
+                        } catch (_) {}
+                        if (recentMsgs.length >= 15) break;
+                    }
+                }
+                // Sort newest first
+                recentMsgs.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+
                 const breachResults = await Promise.all(breachQueries);
 
                 // Aggregate
@@ -3336,53 +3433,145 @@ export class BotManager {
                     }
                 }
 
+                // Build avatar / banner URLs for later image sends
+                const avatarUrl = user?.avatar
+                    ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${user.avatar.startsWith('a_') ? 'gif' : 'png'}?size=1024`
+                    : null;
+                const bannerUrl = user?.banner
+                    ? `https://cdn.discordapp.com/banners/${user.id}/${user.banner}.${user.banner.startsWith('a_') ? 'gif' : 'png'}?size=1024`
+                    : (profile?.user?.banner
+                        ? `https://cdn.discordapp.com/banners/${targetId}/${profile.user.banner}.${profile.user.banner.startsWith('a_') ? 'gif' : 'png'}?size=1024`
+                        : null);
+
                 let r = `\`\`\`ansi\n`;
                 r += `${CY}╔══════════════════════════════════════════════════╗${RST}\n`;
                 r += `${CY}║              DISCORD ID · OSINT                  ║${RST}\n`;
                 r += `${CY}╚══════════════════════════════════════════════════╝${RST}\n`;
                 r += `${WH}Target ID:${RST} ${targetId}\n`;
 
-                // PROFILE
+                // ── DISCORD PROFILE ──────────────────────────────────────────
                 r += head('DISCORD PROFILE');
                 if (user) {
                     const flags  = user.flags?.toArray().join(', ') || 'None';
-                    const avatar = user.avatar
-                        ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${user.avatar.startsWith('a_') ? 'gif' : 'png'}?size=512`
-                        : 'Default';
-                    const banner = user.banner
-                        ? `https://cdn.discordapp.com/banners/${user.id}/${user.banner}.${user.banner.startsWith('a_') ? 'gif' : 'png'}?size=1024`
-                        : 'None';
-                    r += row('Tag',         user.tag);
+                    const profileUser = profile?.user || {};
+                    const globalName  = user.globalName || profileUser.global_name || user.displayName || user.username;
+                    r += row('Tag',         user.tag || `${user.username}#${user.discriminator}`);
                     r += row('Username',    user.username);
-                    r += row('Display',     user.displayName || user.globalName || user.username);
-                    r += row('Discrim',     user.discriminator || '0');
+                    r += row('Display',     globalName);
+                    if (user.discriminator && user.discriminator !== '0') r += row('Discrim', user.discriminator);
+                    r += row('User ID',     user.id);
                     r += row('Bot',         user.bot ? `${YE}Yes${RST}` : 'No');
-                    r += row('System',      user.system ? 'Yes' : 'No');
+                    r += row('System',      user.system ? `${YE}Yes${RST}` : 'No');
                     r += row('Badges',      flags);
-                    if (user.accentColor) r += row('Accent',  `#${user.accentColor.toString(16).padStart(6, '0')}`);
-                    r += row('Avatar',      avatar);
-                    r += row('Banner',      banner);
+                    if (user.accentColor)   r += row('Accent Color', `#${user.accentColor.toString(16).padStart(6, '0')}`);
+                    if (avatarUrl)          r += row('Avatar',       avatarUrl);
+                    if (bannerUrl)          r += row('Banner',       bannerUrl);
+
+                    // Bio / pronouns from profile endpoint
+                    const bio = profile?.user_profile?.bio || profile?.user?.bio || profile?.bio || '';
+                    if (bio) {
+                        r += `\n  ${YE}Bio:${RST}\n`;
+                        String(bio).split('\n').forEach((line: string) => r += `    ${GY}${line}${RST}\n`);
+                    }
+                    const pronouns = profile?.user_profile?.pronouns || profile?.user?.pronouns || '';
+                    if (pronouns) r += row('Pronouns', pronouns);
+
+                    // Nitro / premium
+                    const premiumType = profile?.premium_type || profileUser.premium_type;
+                    if (premiumType != null) {
+                        const nitroMap: Record<number, string> = { 0: 'None', 1: 'Nitro Classic', 2: 'Nitro', 3: 'Nitro Basic' };
+                        r += row('Nitro', nitroMap[premiumType] || `Type ${premiumType}`);
+                    }
+                    const premiumSince = profile?.premium_since || profileUser.premium_since;
+                    if (premiumSince) r += row('Nitro Since', new Date(premiumSince).toUTCString());
+
+                    // Legacy username (pomelo migration)
+                    const legacyUsername = profileUser.legacy_username;
+                    if (legacyUsername) r += row('Legacy Name', legacyUsername);
                 } else {
                     r += `  ${RE}— user could not be fetched (private / blocked / invalid) —${RST}\n`;
                 }
 
-                // SNOWFLAKE
+                // ── CONNECTED ACCOUNTS ───────────────────────────────────────
+                const connectedAccounts: any[] = profile?.connected_accounts || profile?.user?.connected_accounts || [];
+                if (connectedAccounts.length > 0) {
+                    r += head('CONNECTED ACCOUNTS');
+                    for (const acc of connectedAccounts) {
+                        const verified = acc.verified ? `${GR}✓${RST}` : `${GY}unverified${RST}`;
+                        r += `  ${MA}•${RST} ${YE}${acc.type?.toUpperCase() || 'UNKNOWN'}${RST} — ${acc.name || acc.id}  ${verified}\n`;
+                        if (acc.id && acc.type) {
+                            const links: Record<string, string> = {
+                                twitter: `https://twitter.com/i/user/${acc.id}`,
+                                github: `https://github.com/${acc.name}`,
+                                twitch: `https://twitch.tv/${acc.name}`,
+                                youtube: `https://youtube.com/channel/${acc.id}`,
+                                reddit: `https://reddit.com/u/${acc.name}`,
+                                spotify: `https://open.spotify.com/user/${acc.id}`,
+                                steam: `https://steamcommunity.com/profiles/${acc.id}`,
+                                xbox: `https://account.xbox.com/en-US/Profile?Gamertag=${acc.name}`,
+                            };
+                            const link = links[acc.type?.toLowerCase()];
+                            if (link) r += `    ${GY}↳ ${link}${RST}\n`;
+                        }
+                    }
+                }
+
+                // ── SNOWFLAKE METADATA ───────────────────────────────────────
                 r += head('SNOWFLAKE METADATA');
-                r += row('Created',  createdAt);
-                r += row('Age',      `${ageDays} days (${(ageDays / 365).toFixed(2)} yrs)`);
+                r += row('Created',   createdAt);
+                r += row('Age',       `${ageDays} days (${(ageDays / 365).toFixed(2)} yrs)`);
                 try {
                     const bigId = BigInt(targetId);
-                    r += row('Worker',   String((bigId >> 17n) & 0x1Fn));
-                    r += row('Process',  String((bigId >> 12n) & 0x1Fn));
+                    r += row('Worker',    String((bigId >> 17n) & 0x1Fn));
+                    r += row('Process',   String((bigId >> 12n) & 0x1Fn));
                     r += row('Increment', String(bigId & 0xFFFn));
                 } catch (_) {}
 
-                // SNOWID.LOL
+                // ── MUTUAL SERVERS ───────────────────────────────────────────
+                const profileMutualGuilds: any[] = profile?.mutual_guilds || [];
+                r += head(`MUTUAL SERVERS (${mutualServers.length} found via cache · ${profileMutualGuilds.length} via API)`);
+                if (mutualServers.length === 0 && profileMutualGuilds.length === 0) {
+                    r += `  ${GY}— no mutual servers found —${RST}\n`;
+                } else {
+                    for (const s of mutualServers) {
+                        r += `\n  ${CY}▸ ${s.guildName}${RST} ${GY}[${s.guildId}]${RST}\n`;
+                        if (s.nickname)  r += `    ${YE}Nickname:${RST}  ${s.nickname}\n`;
+                        if (s.joinedAt)  r += `    ${YE}Joined:${RST}    ${s.joinedAt}\n`;
+                        if (s.presence)  r += `    ${YE}Status:${RST}    ${s.presence}\n`;
+                        if (s.activity)  r += `    ${YE}Activity:${RST}  ${s.activity.slice(0, 100)}\n`;
+                        if (s.roles.length) r += `    ${YE}Roles:${RST}     ${s.roles.join(', ')}\n`;
+                    }
+                    // API-side mutual guilds not in cache
+                    const cacheIds = new Set(mutualServers.map(s => s.guildId));
+                    const apiOnly  = profileMutualGuilds.filter((g: any) => !cacheIds.has(g.id));
+                    if (apiOnly.length) {
+                        r += `\n  ${GY}Additional from API (bot not in these):${RST}\n`;
+                        apiOnly.slice(0, 5).forEach((g: any) => {
+                            r += `    ${MA}•${RST} ${g.id}${g.nick ? ` (nick: ${g.nick})` : ''}\n`;
+                        });
+                    }
+                }
+
+                // ── RECENT MESSAGES ──────────────────────────────────────────
+                r += head(`RECENT MESSAGES (${recentMsgs.length} found)`);
+                if (recentMsgs.length === 0) {
+                    r += `  ${GY}— no messages found in mutual servers —${RST}\n`;
+                } else {
+                    for (const msg of recentMsgs.slice(0, 15)) {
+                        r += `\n  ${CY}▸ #${msg.channel}${RST} in ${GY}${msg.guildName}${RST}  ${GY}${msg.ts}${RST}\n`;
+                        r += `    ${WH}${msg.content}${RST}\n`;
+                        if (msg.attachments.length) {
+                            msg.attachments.forEach((url: string) => r += `    ${MA}[attach] ${url}${RST}\n`);
+                        }
+                    }
+                }
+
+                // ── SNOWID.LOL ───────────────────────────────────────────────
                 r += head('SNOWID.LOL');
                 if (snowid && !snowid.error && Object.keys(snowid).length > 0) {
                     const entries = Object.entries(snowid)
                         .filter(([, v]) => v !== null && v !== undefined && v !== '' && typeof v !== 'object')
-                        .slice(0, 12);
+                        .slice(0, 20);
                     if (entries.length === 0) r += `  ${GY}— no extra fields —${RST}\n`;
                     else entries.forEach(([k, v]) => r += row(k, String(v)));
                 } else if (snowid?.error) {
@@ -3543,8 +3732,8 @@ export class BotManager {
 
                 r += `${CY}${SUB}${RST}\n\`\`\``;
 
-                // Send (split if needed)
-                const send = async (text: string) => {
+                // ── Send text report (auto-split at 1900 chars) ──────────────
+                const sendChunk = async (text: string) => {
                     if (text.length <= 1990) return message.edit(text).catch(() => {});
                     const lines = text.split('\n');
                     let buf = '```ansi\n';
@@ -3563,7 +3752,29 @@ export class BotManager {
                     if (first) await message.edit(buf).catch(() => {});
                     else       await message.channel.send(buf).catch(() => {});
                 };
-                await send(r);
+                await sendChunk(r);
+
+                // ── Post avatar as embedded image ────────────────────────────
+                if (avatarUrl) {
+                    await message.channel.send(`\`\`\`ansi\n${CY}[ AVATAR ]${RST}\n\`\`\``).catch(() => {});
+                    await message.channel.send(avatarUrl).catch(() => {});
+                }
+
+                // ── Post banner as embedded image ────────────────────────────
+                if (bannerUrl) {
+                    await message.channel.send(`\`\`\`ansi\n${CY}[ BANNER ]${RST}\n\`\`\``).catch(() => {});
+                    await message.channel.send(bannerUrl).catch(() => {});
+                }
+
+                // ── Post attachment images from recent messages ───────────────
+                const attachImgs = recentMsgs.flatMap(m => m.attachments).filter(u => /\.(png|jpg|jpeg|gif|webp)/i.test(u)).slice(0, 4);
+                if (attachImgs.length) {
+                    await message.channel.send(`\`\`\`ansi\n${CY}[ ATTACHMENTS FROM RECENT MESSAGES ]${RST}\n\`\`\``).catch(() => {});
+                    for (const img of attachImgs) {
+                        await message.channel.send(img).catch(() => {});
+                    }
+                }
+
                 return;
             }
 
