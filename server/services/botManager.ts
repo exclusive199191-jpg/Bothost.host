@@ -3,23 +3,17 @@ import { storage } from '../storage';
 import { type BotConfig } from '@shared/schema';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 
-// API Keys (OSINT)
-const SNUSBASE_API_KEY    = 'sb5029dec66mht55m78fx8bsw6tm8a';
-const SNUSBASE_BETA_KEY   = 'LNcQwsSj44fSYcCjmyibyyv4JiDyhZq67E';
-const LEAKCHECK_API_KEY   = '4344cd645b6e6cc2559c1a92017d9bfa12e4e4b1';
-const INTELVAULT_API_KEY  = '0xe68a34be1597099a98678b293f8f93f5f28b5f27';
-const SEON_API_KEY        = '758f5f54-befb-4125-bd17-931689af6633';
-const OSINTCAT_API_KEY    = 'ebosintcat7e45090a160ca90c37db2c004c32a5fa079c56f0d09d980529fa';
-const BREACHHUB_API_KEY   = 'iRjS7jsM5dr0cYT79blhVu4IapRI';
-const LUPERLY_API_KEY     = '4L0FJUQSHw4kUWaa0NrhH7';
-const SWATTED_API_KEYS    = [
-    'm6bpt1bCadyCHAIZtiJE',
-    'KfyQ38IxOrUHxayaHZkfV',
-    'LEruKTnXPaljpBhgOlxQLC',
-    'eVhfU9GVhDfolucBOMSsi',
-    'eFCdVrsprFa2bJW0Vxd1h1',
-];
-const SWATTED_SECURITY_PHRASE = 'V75ZA3G8GOGM';
+// API Keys (OSINT) — loaded from environment secrets
+const SNUSBASE_API_KEY    = process.env.SNUSBASE_API_KEY    || '';
+const SNUSBASE_BETA_KEY   = process.env.SNUSBASE_BETA_KEY   || '';
+const LEAKCHECK_API_KEY   = process.env.LEAKCHECK_API_KEY   || '';
+const INTELVAULT_API_KEY  = process.env.INTELVAULT_API_KEY  || '';
+const SEON_API_KEY        = process.env.SEON_API_KEY        || '';
+const OSINTCAT_API_KEY    = process.env.OSINTCAT_API_KEY    || '';
+const BREACHHUB_API_KEY   = process.env.BREACHHUB_API_KEY   || '';
+const LUPERLY_API_KEY     = process.env.LUPERLY_API_KEY     || '';
+const SWATTED_API_KEYS    = (process.env.SWATTED_API_KEYS || '').split(',').filter(Boolean);
+const SWATTED_SECURITY_PHRASE = process.env.SWATTED_SECURITY_PHRASE || '';
 
 const activeClients = new Map<number, Client>();
 const clientConfigs = new Map<number, BotConfig>();
