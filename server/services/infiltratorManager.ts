@@ -89,21 +89,56 @@ async function setProfile(client: Client, agent: InfiltratorAgent, guildId: stri
 }
 
 async function joinServer(client: Client, agent: InfiltratorAgent): Promise<string> {
+  // If already in the target server, skip joining
+  if (agent.serverId && client.guilds.cache.has(agent.serverId)) {
+    console.log(`[infiltrator] Already in guild ${agent.serverId}, skipping join`);
+    return agent.serverId;
+  }
+
   if (!agent.serverInvite) return agent.serverId || '';
+
   const code = agent.serverInvite
     .replace(/https?:\/\/discord\.gg\//i, '')
     .replace(/https?:\/\/discord\.com\/invite\//i, '')
+    .replace(/\?.*$/, '')
     .trim();
+
+  if (!code) return agent.serverId || '';
+
+  console.log(`[infiltrator] Attempting to join server via invite code: ${code}`);
+
+  // Method 1: POST directly to the Discord invites API (most reliable for selfbots)
+  try {
+    const result: any = await (client as any).api.invites(code).post({ data: {} });
+    const guildId: string = result?.guild?.id || agent.serverId || '';
+    console.log(`[infiltrator] Joined guild ${guildId} via API POST`);
+    await new Promise(r => setTimeout(r, 3000));
+    return guildId;
+  } catch (e1: any) {
+    console.warn(`[infiltrator] API POST join failed: ${e1?.message || e1}`);
+  }
+
+  // Method 2: fetchInvite then call accept() if available
   try {
     const inv: any = await client.fetchInvite(code);
     const guildId: string = inv?.guild?.id || agent.serverId || '';
-    const alreadyIn = guildId && client.guilds.cache.has(guildId);
-    if (!alreadyIn) {
-      await inv.accept?.();
-      await new Promise(r => setTimeout(r, 3000));
+
+    if (guildId && client.guilds.cache.has(guildId)) {
+      console.log(`[infiltrator] Already in guild ${guildId} after fetchInvite`);
+      return guildId;
     }
+
+    if (typeof inv?.accept === 'function') {
+      await inv.accept();
+      console.log(`[infiltrator] Joined guild ${guildId} via invite.accept()`);
+      await new Promise(r => setTimeout(r, 3000));
+    } else {
+      console.warn(`[infiltrator] inv.accept is not a function — invite join may have failed`);
+    }
+
     return guildId;
-  } catch {
+  } catch (e2: any) {
+    console.error(`[infiltrator] fetchInvite/accept failed: ${e2?.message || e2}`);
     return agent.serverId || '';
   }
 }
@@ -149,10 +184,18 @@ export const InfiltratorManager = {
     onStatusChange(agent.id, 'joining', `Logged in as ${tag}, joining server…`, tag, discordId);
 
     const guildId = await joinServer(client, agent);
+
+    // Verify we actually ended up in the guild
+    const inGuild = guildId && client.guilds.cache.has(guildId);
+    if (!inGuild && (agent.serverInvite || agent.serverId)) {
+      console.warn(`[infiltrator] Could not confirm guild membership for ${guildId || '(no id)'}`);
+    }
+
     await new Promise(r => setTimeout(r, 2000));
     await setProfile(client, agent, guildId);
 
-    onStatusChange(agent.id, 'active', `Active — lurking in channel`, tag, discordId);
+    const guildName = guildId ? (client.guilds.cache.get(guildId)?.name || guildId) : 'server';
+    onStatusChange(agent.id, 'active', `Active in ${guildName} — lurking`, tag, discordId);
 
     const loop = async () => {
       if (!rt.running) return;
