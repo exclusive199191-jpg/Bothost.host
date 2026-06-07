@@ -6,7 +6,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Plus, Play, Square, Trash2, Edit3, Zap, UserX,
-  Activity, User, ChevronRight, X, RefreshCw, Eye, EyeOff,
+  Activity, User, X, RefreshCw, Eye, EyeOff, Wifi, WifiOff, Loader2, CheckCircle2, AlertCircle, Users,
 } from "lucide-react";
 import type { InfiltratorAgent } from "@shared/schema";
 
@@ -55,6 +55,28 @@ function AgentDialog({ onClose, onSaved, editing }: AddAgentDialogProps) {
     serverId: editing?.serverId || "",
     channelId: editing?.channelId || "",
   });
+
+  type InviteResult = { valid: boolean; guildName?: string; guildId?: string; memberCount?: number | null; onlineCount?: number | null; channelName?: string; error?: string };
+  const [inviteResult, setInviteResult] = React.useState<InviteResult | null>(null);
+  const [testingInvite, setTestingInvite] = React.useState(false);
+
+  const testInvite = async () => {
+    if (!form.serverInvite.trim()) return;
+    setTestingInvite(true);
+    setInviteResult(null);
+    try {
+      const res = await apiRequest("POST", "/api/infiltrators/test-invite", { invite: form.serverInvite.trim() });
+      const data = await res.json();
+      setInviteResult(data);
+      if (data.valid && data.guildId && !form.serverId) {
+        setForm(f => ({ ...f, serverId: data.guildId }));
+      }
+    } catch {
+      setInviteResult({ valid: false, error: "Request failed" });
+    } finally {
+      setTestingInvite(false);
+    }
+  };
 
   const save = useMutation({
     mutationFn: async () => {
@@ -132,7 +154,79 @@ function AgentDialog({ onClose, onSaved, editing }: AddAgentDialogProps) {
 
         <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
           {field("Discord Token", "token", "MTxxxxx.Gxxxxx.xxxxx", { note: "The account this agent will operate as" })}
-          {field("Server Invite", "serverInvite", "discord.gg/xxxx  or  https://discord.gg/xxxx", { note: "Agent will auto-join if not already in the server" })}
+
+          {/* Server Invite with Test button */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-mono text-white/50 uppercase tracking-widest">Server Invite</label>
+            <p className="text-[10px] text-white/30 font-mono">Agent will auto-join if not already in the server</p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={form.serverInvite}
+                onChange={e => { setForm(f => ({ ...f, serverInvite: e.target.value })); setInviteResult(null); }}
+                placeholder="discord.gg/xxxx  or  https://discord.gg/xxxx"
+                className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-white placeholder:text-white/20 focus:outline-none focus:border-red-500/50"
+              />
+              <button
+                type="button"
+                onClick={testInvite}
+                disabled={!form.serverInvite.trim() || testingInvite}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/10 text-white/40 text-xs font-mono hover:border-red-500/40 hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all whitespace-nowrap"
+                title="Test this invite"
+              >
+                {testingInvite ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wifi className="w-3.5 h-3.5" />}
+                {testingInvite ? "Testing…" : "Test"}
+              </button>
+            </div>
+
+            {/* Invite result banner */}
+            {inviteResult && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`rounded-lg px-3 py-2.5 border text-xs font-mono space-y-1 ${
+                  inviteResult.valid
+                    ? "bg-green-500/8 border-green-500/25 text-green-300"
+                    : "bg-red-500/8 border-red-500/25 text-red-400"
+                }`}
+              >
+                {inviteResult.valid ? (
+                  <>
+                    <div className="flex items-center gap-2 font-bold">
+                      <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span>{inviteResult.guildName}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-[10px] text-white/40 pl-5">
+                      {inviteResult.memberCount != null && (
+                        <span className="flex items-center gap-1">
+                          <Users className="w-3 h-3" />
+                          {inviteResult.memberCount.toLocaleString()} members
+                        </span>
+                      )}
+                      {inviteResult.onlineCount != null && (
+                        <span className="flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
+                          {inviteResult.onlineCount.toLocaleString()} online
+                        </span>
+                      )}
+                      {inviteResult.channelName && (
+                        <span>#{inviteResult.channelName}</span>
+                      )}
+                    </div>
+                    {inviteResult.guildId && (
+                      <p className="text-[10px] text-white/25 pl-5">ID auto-filled ↓</p>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>{inviteResult.error || "Invalid or expired invite"}</span>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </div>
+
           {field("Channel ID", "channelId", "123456789012345678", { note: "The channel the agent will be active in" })}
           {field("Server ID", "serverId", "123456789012345678 (optional if invite provided)", {})}
 

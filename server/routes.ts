@@ -440,6 +440,42 @@ export async function registerRoutes(
   }));
 
   // ── INFILTRATOR ROUTES ────────────────────────────────────────────────────
+
+  app.post("/api/infiltrators/test-invite", requireAuth, wrap(async (req, res) => {
+    const { invite } = req.body;
+    if (!invite || typeof invite !== "string") {
+      return res.status(400).json({ valid: false, error: "Invite is required" });
+    }
+    const code = invite
+      .replace(/https?:\/\/discord\.gg\//i, "")
+      .replace(/https?:\/\/discord\.com\/invite\//i, "")
+      .replace(/\?.*$/, "")
+      .trim();
+    if (!code) return res.status(400).json({ valid: false, error: "Could not parse invite code" });
+
+    try {
+      const resp = await fetch(`https://discord.com/api/v10/invites/${encodeURIComponent(code)}?with_counts=true`, {
+        headers: { "User-Agent": "DiscordBot (https://github.com, 1)" },
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({})) as any;
+        return res.json({ valid: false, error: body?.message || `HTTP ${resp.status} — invite may be expired or invalid` });
+      }
+      const data = await resp.json() as any;
+      return res.json({
+        valid: true,
+        code,
+        guildName: data?.guild?.name || "Unknown Server",
+        guildId: data?.guild?.id || "",
+        memberCount: data?.approximate_member_count ?? null,
+        onlineCount: data?.approximate_presence_count ?? null,
+        channelName: data?.channel?.name || "",
+      });
+    } catch (e: any) {
+      return res.json({ valid: false, error: e?.message || "Network error" });
+    }
+  }));
+
   app.get("/api/infiltrators", requireAuth, wrap(async (_req, res) => {
     const agents = await storage.getInfiltrators();
     return res.json(agents);
