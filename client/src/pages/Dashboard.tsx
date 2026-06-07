@@ -4,7 +4,7 @@ import { BotStatusBadge } from "@/components/BotStatusBadge";
 import { RpcDialog } from "@/components/RpcDialog";
 import { ThemeCustomizer } from "@/components/ThemeCustomizer";
 import { useTheme } from "@/hooks/use-theme";
-import { Loader2, Settings, Power, Trash2, Search, Zap, Bot, Shield } from "lucide-react";
+import { Loader2, Settings, Power, Trash2, Search, Zap, Bot, Shield, UserX } from "lucide-react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -64,6 +64,12 @@ export default function Dashboard() {
 
           <div className="flex items-center gap-2">
             <ThemeCustomizer />
+            <Link href="/infiltrator">
+              <button className="flex items-center gap-1.5 sm:gap-2 px-3 py-2 rounded-lg border border-red-500/30 text-red-400/70 hover:text-red-300 hover:border-red-500/60 hover:bg-red-500/5 transition-colors text-xs font-mono">
+                <UserX className="w-3.5 h-3.5" />
+                <span>Infiltrator</span>
+              </button>
+            </Link>
             <Link href="/admin">
               <button className="flex items-center gap-1.5 sm:gap-2 px-3 py-2 rounded-lg border border-white/10 text-muted-foreground hover:text-white hover:border-primary/30 hover:bg-primary/5 transition-colors text-xs font-mono">
                 <Shield className="w-3.5 h-3.5" />

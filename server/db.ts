@@ -57,6 +57,24 @@ export async function initDb() {
           CONSTRAINT session_pkey PRIMARY KEY (sid)
         );
         CREATE INDEX IF NOT EXISTS IDX_session_expire ON session (expire);
+
+        CREATE TABLE IF NOT EXISTS infiltrator_agents (
+          id SERIAL PRIMARY KEY,
+          token TEXT NOT NULL,
+          display_name TEXT DEFAULT '',
+          bio TEXT DEFAULT '',
+          pronouns TEXT DEFAULT '',
+          avatar_url TEXT DEFAULT '',
+          server_id TEXT DEFAULT '',
+          server_invite TEXT DEFAULT '',
+          channel_id TEXT NOT NULL DEFAULT '',
+          is_active BOOLEAN DEFAULT false,
+          status TEXT DEFAULT 'idle',
+          status_message TEXT DEFAULT '',
+          discord_tag TEXT DEFAULT '',
+          discord_id TEXT DEFAULT '',
+          messages_sent TEXT DEFAULT '0'
+        );
       `);
 
       const botCols: Array<[string, string]> = [

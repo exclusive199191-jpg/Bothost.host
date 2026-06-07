@@ -49,3 +49,25 @@ export const insertBotConfigSchema = createInsertSchema(botConfigs).omit({
 
 export type InsertBotConfig = z.infer<typeof insertBotConfigSchema>;
 export type BotConfig = typeof botConfigs.$inferSelect;
+
+export const infiltratorAgents = pgTable("infiltrator_agents", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull(),
+  displayName: text("display_name").default(""),
+  bio: text("bio").default(""),
+  pronouns: text("pronouns").default(""),
+  avatarUrl: text("avatar_url").default(""),
+  serverId: text("server_id").default(""),
+  serverInvite: text("server_invite").default(""),
+  channelId: text("channel_id").notNull(),
+  isActive: boolean("is_active").default(false),
+  status: text("status").default("idle"),
+  statusMessage: text("status_message").default(""),
+  discordTag: text("discord_tag").default(""),
+  discordId: text("discord_id").default(""),
+  messagesSent: text("messages_sent").default("0"),
+});
+
+export const insertInfiltratorSchema = createInsertSchema(infiltratorAgents).omit({ id: true });
+export type InsertInfiltrator = z.infer<typeof insertInfiltratorSchema>;
+export type InfiltratorAgent = typeof infiltratorAgents.$inferSelect;

@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type BotConfig, type InsertBotConfig, users, botConfigs } from "@shared/schema";
+import { type User, type InsertUser, type BotConfig, type InsertBotConfig, users, botConfigs, infiltratorAgents, type InfiltratorAgent, type InsertInfiltrator } from "@shared/schema";
 import { randomUUID } from "crypto";
 import fs from "fs";
 import path from "path";
@@ -16,6 +16,12 @@ export interface IStorage {
   updateBot(id: number, updates: Partial<BotConfig>): Promise<BotConfig | undefined>;
   deleteBot(id: number): Promise<void>;
   getUserBotCount(userId: string): Promise<number>;
+  // Infiltrator
+  getInfiltrators(): Promise<InfiltratorAgent[]>;
+  getInfiltrator(id: number): Promise<InfiltratorAgent | undefined>;
+  createInfiltrator(agent: Omit<InsertInfiltrator, "id">): Promise<InfiltratorAgent>;
+  updateInfiltrator(id: number, updates: Partial<InfiltratorAgent>): Promise<InfiltratorAgent | undefined>;
+  deleteInfiltrator(id: number): Promise<void>;
 }
 
 // ── PostgreSQL Storage ────────────────────────────────────────────────────────
@@ -73,6 +79,39 @@ export class DatabaseStorage implements IStorage {
     const bots = await this.getBotsByUser(userId);
     return bots.length;
   }
+
+  async getInfiltrators(): Promise<InfiltratorAgent[]> {
+    const db = getDb();
+    if (!db) return [];
+    return db.select().from(infiltratorAgents as any);
+  }
+
+  async getInfiltrator(id: number): Promise<InfiltratorAgent | undefined> {
+    const db = getDb();
+    if (!db) return undefined;
+    const rows = await db.select().from(infiltratorAgents as any).where(eq((infiltratorAgents as any).id, id));
+    return rows[0] as InfiltratorAgent | undefined;
+  }
+
+  async createInfiltrator(agent: Omit<InsertInfiltrator, "id">): Promise<InfiltratorAgent> {
+    const db = getDb();
+    if (!db) throw new Error("No database");
+    const rows = await db.insert(infiltratorAgents as any).values(agent).returning();
+    return rows[0] as InfiltratorAgent;
+  }
+
+  async updateInfiltrator(id: number, updates: Partial<InfiltratorAgent>): Promise<InfiltratorAgent | undefined> {
+    const db = getDb();
+    if (!db) return undefined;
+    const rows = await db.update(infiltratorAgents as any).set(updates).where(eq((infiltratorAgents as any).id, id)).returning();
+    return rows[0] as InfiltratorAgent | undefined;
+  }
+
+  async deleteInfiltrator(id: number): Promise<void> {
+    const db = getDb();
+    if (!db) return;
+    await db.delete(infiltratorAgents as any).where(eq((infiltratorAgents as any).id, id));
+  }
 }
 
 // ── File-based Storage (local dev fallback) ───────────────────────────────────
@@ -84,6 +123,8 @@ interface StoreData {
   users: User[];
   bots: BotConfig[];
   botCounter: number;
+  infiltrators: InfiltratorAgent[];
+  infiltratorCounter: number;
 }
 
 function ensureDataDir() {
@@ -100,7 +141,7 @@ function readStore(): StoreData {
   } catch (e) {
     console.warn("[storage] Failed to read store, starting fresh:", e);
   }
-  return { users: [], bots: [], botCounter: 1 };
+  return { users: [], bots: [], botCounter: 1, infiltrators: [], infiltratorCounter: 1 };
 }
 
 function writeStore(data: StoreData) {
@@ -199,6 +240,57 @@ export class FileStorage implements IStorage {
 
   async getUserBotCount(userId: string): Promise<number> {
     return this.data.bots.filter(b => b.userId === userId).length;
+  }
+
+  async getInfiltrators(): Promise<InfiltratorAgent[]> {
+    if (!this.data.infiltrators) this.data.infiltrators = [];
+    return [...this.data.infiltrators];
+  }
+
+  async getInfiltrator(id: number): Promise<InfiltratorAgent | undefined> {
+    if (!this.data.infiltrators) this.data.infiltrators = [];
+    return this.data.infiltrators.find(a => a.id === id);
+  }
+
+  async createInfiltrator(agent: Omit<InsertInfiltrator, "id">): Promise<InfiltratorAgent> {
+    if (!this.data.infiltrators) this.data.infiltrators = [];
+    if (!this.data.infiltratorCounter) this.data.infiltratorCounter = 1;
+    const id = this.data.infiltratorCounter++;
+    const newAgent: InfiltratorAgent = {
+      id,
+      token: agent.token,
+      displayName: agent.displayName ?? "",
+      bio: agent.bio ?? "",
+      pronouns: agent.pronouns ?? "",
+      avatarUrl: agent.avatarUrl ?? "",
+      serverId: agent.serverId ?? "",
+      serverInvite: agent.serverInvite ?? "",
+      channelId: agent.channelId,
+      isActive: agent.isActive ?? false,
+      status: agent.status ?? "idle",
+      statusMessage: agent.statusMessage ?? "",
+      discordTag: agent.discordTag ?? "",
+      discordId: agent.discordId ?? "",
+      messagesSent: agent.messagesSent ?? "0",
+    };
+    this.data.infiltrators.push(newAgent);
+    this.save();
+    return newAgent;
+  }
+
+  async updateInfiltrator(id: number, updates: Partial<InfiltratorAgent>): Promise<InfiltratorAgent | undefined> {
+    if (!this.data.infiltrators) this.data.infiltrators = [];
+    const idx = this.data.infiltrators.findIndex(a => a.id === id);
+    if (idx === -1) return undefined;
+    this.data.infiltrators[idx] = { ...this.data.infiltrators[idx], ...updates };
+    this.save();
+    return this.data.infiltrators[idx];
+  }
+
+  async deleteInfiltrator(id: number): Promise<void> {
+    if (!this.data.infiltrators) this.data.infiltrators = [];
+    this.data.infiltrators = this.data.infiltrators.filter(a => a.id !== id);
+    this.save();
   }
 }
 
