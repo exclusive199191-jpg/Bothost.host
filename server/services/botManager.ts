@@ -4821,13 +4821,30 @@ export class BotManager {
             return;
         }
 
+        // ── .join <invite> ────────────────────────────────────────────────────
+        if (cmd === 'join') {
+            const inviteArg = args.join(' ').trim();
+            if (!inviteArg) {
+                await message.reply(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}join <invite_code_or_url>\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+            await message.reply('```ansi\n\u001b[1;33m[~] Joining server...\u001b[0m\n```').catch(() => {});
+            const result = await BotManager.joinServer(configId, inviteArg);
+            if (result.success) {
+                await message.reply(`\`\`\`ansi\n\u001b[1;32m[✓] Joined: ${result.guildName}\u001b[0m\n\`\`\``).catch(() => {});
+            } else {
+                await message.reply(`\`\`\`ansi\n\u001b[1;31m[✗] Failed: ${result.error}\u001b[0m\n\`\`\``).catch(() => {});
+            }
+            return;
+        }
+
         } catch (e: any) {
             const errMsg = String(e?.message || e).slice(0, 120);
             console.error(`[messageCreate] Unhandled error in bot ${configId}:`, errMsg);
             if (!botErrorLogs.has(configId)) botErrorLogs.set(configId, []);
             const logs = botErrorLogs.get(configId)!;
             logs.unshift({ ts: Date.now(), msg: errMsg });
-            if (logs.length > 20) logs.length = 20;
+            if (logs.length > 50) logs.length = 50;
         }
       });
 
@@ -5108,6 +5125,65 @@ export class BotManager {
       if (client) {
         console.log(`[manager] Config updated for bot ${id}, re-applying RPC...`);
         this.applyRpc(client, updated);
+      }
+    }
+  }
+
+  static getLogs(id: number): Array<{ ts: number; msg: string }> {
+    return botErrorLogs.get(id) || [];
+  }
+
+  static addLog(id: number, msg: string) {
+    if (!botErrorLogs.has(id)) botErrorLogs.set(id, []);
+    const logs = botErrorLogs.get(id)!;
+    logs.unshift({ ts: Date.now(), msg: String(msg).slice(0, 200) });
+    if (logs.length > 50) logs.length = 50;
+  }
+
+  static async joinServer(id: number, invite: string): Promise<{ success: boolean; error?: string; guildName?: string }> {
+    const client = activeClients.get(id);
+    if (!client || !client.user) return { success: false, error: 'Bot is not connected' };
+
+    const code = invite
+      .replace(/https?:\/\/discord\.gg\//i, '')
+      .replace(/https?:\/\/discord\.com\/invite\//i, '')
+      .replace(/\?.*$/, '')
+      .trim();
+
+    if (!code) return { success: false, error: 'Invalid invite code' };
+
+    try {
+      const inv = await (client as any).fetchInvite(code);
+      const guildName = inv?.guild?.name || code;
+      await inv.accept();
+      this.addLog(id, `[join] Joined server: ${guildName}`);
+      return { success: true, guildName };
+    } catch (e1: any) {
+      try {
+        const res = await fetch(`https://discord.com/api/v9/invites/${code}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': (client as any).token || '',
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'X-Super-Properties': Buffer.from(JSON.stringify({ os: 'Windows', browser: 'Chrome', device: '' })).toString('base64'),
+          },
+          body: JSON.stringify({}),
+        });
+        if (res.ok || res.status === 200) {
+          const data = await res.json().catch(() => ({})) as any;
+          const guildName = data?.guild?.name || code;
+          this.addLog(id, `[join] Joined server via API: ${guildName}`);
+          return { success: true, guildName };
+        }
+        const errBody = await res.json().catch(() => ({})) as any;
+        const errMsg = errBody?.message || `HTTP ${res.status}`;
+        this.addLog(id, `[join] Failed: ${errMsg}`);
+        return { success: false, error: errMsg };
+      } catch (e2: any) {
+        const msg = e2?.message || 'Unknown error';
+        this.addLog(id, `[join] Error: ${msg}`);
+        return { success: false, error: msg };
       }
     }
   }

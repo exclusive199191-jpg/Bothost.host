@@ -330,6 +330,29 @@ export async function registerRoutes(
     return res.json({ success: true, message: "Bot stopped" });
   }));
 
+  app.get("/api/bots/:id/logs", requireAuth, wrap(async (req, res) => {
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
+    const bot = await storage.getBot(id);
+    if (!bot) return res.status(404).json({ message: "Bot not found" });
+    if (bot.userId !== req.session.userId) return res.status(403).json({ message: "Access denied" });
+    const logs = BotManager.getLogs(id);
+    return res.json({ logs });
+  }));
+
+  app.post("/api/bots/:id/join", requireAuth, wrap(async (req, res) => {
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
+    const bot = await storage.getBot(id);
+    if (!bot) return res.status(404).json({ message: "Bot not found" });
+    if (bot.userId !== req.session.userId) return res.status(403).json({ message: "Access denied" });
+    const { invite } = req.body;
+    if (!invite || typeof invite !== "string") return res.status(400).json({ message: "invite is required" });
+    const result = await BotManager.joinServer(id, invite.trim());
+    if (!result.success) return res.status(400).json({ message: result.error || "Failed to join server" });
+    return res.json({ success: true, guildName: result.guildName });
+  }));
+
   // ─── Admin ───────────────────────────────────────────────────────────────
 
   app.post("/api/admin/auth", wrap(async (req, res) => {

@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 import { useRoute, Link } from "wouter";
 import { useBot, useUpdateBot, useBotAction, BOT_NOT_FOUND, BOT_ACCESS_DENIED } from "@/hooks/use-bots";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertBotConfigSchema } from "@shared/schema";
 import { CyberInput } from "@/components/CyberInput";
-import { Loader2, ArrowLeft, Save, RefreshCw, Activity, Settings2, Terminal, ChevronRight, ChevronDown, Search, Lock } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
+import {
+  Loader2, ArrowLeft, Save, RefreshCw, Activity, Settings2, Terminal,
+  ChevronDown, Search, Lock, Plus, X, Wifi, AlertTriangle, LogIn,
+} from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -25,63 +30,87 @@ function Section({ title, children, icon }: { title: string; children: React.Rea
 }
 
 const COMMANDS = [
-  { cat: "General",    usage: "uptime",                  desc: "How long the bot has been running." },
-  { cat: "General",    usage: "ping",                    desc: "Check Discord latency." },
-  { cat: "General",    usage: "time",                    desc: "Current local + UTC time." },
-  { cat: "General",    usage: "coin",                    desc: "Flip a coin." },
-  { cat: "General",    usage: "roll <sides>",            desc: "Roll a die (default d6)." },
-  { cat: "General",    usage: "8ball <question>",        desc: "Magic 8-ball answer." },
-  { cat: "General",    usage: "rps <r/p/s>",             desc: "Rock paper scissors." },
-  { cat: "General",    usage: "choose <a,b,...>",        desc: "Pick a random option." },
-  { cat: "General",    usage: "fact",                    desc: "Random useless fact." },
-  { cat: "General",    usage: "joke",                    desc: "Random one-liner joke." },
-  { cat: "General",    usage: "snowflake <id>",          desc: "Decode a Discord snowflake ID." },
-  { cat: "General",    usage: "creationdate <id>",       desc: "Creation date from snowflake." },
-  { cat: "General",    usage: "server info",             desc: "Server name, ID, owner, members." },
-  { cat: "General",    usage: "user info <@user>",       desc: "User tag, ID, badges, age." },
-  { cat: "General",    usage: "prefix set <new>",        desc: "Change the command prefix." },
-  { cat: "General",    usage: "stopall",                 desc: "Stop all active modules." },
-  { cat: "Fun/Tools",  usage: "echo <text>",             desc: "Repeat text back." },
-  { cat: "Fun/Tools",  usage: "mock <@user>",             desc: "Mock that user's last message in AlTeRnAtInG CaSe." },
-  { cat: "Fun/Tools",  usage: "mock <text>",             desc: "AlTeRnAtInG CaSe on custom text." },
-  { cat: "Fun/Tools",  usage: "owo <text>",              desc: "Convert to owo furry style." },
-  { cat: "Fun/Tools",  usage: "clap <text>",             desc: "Add 👏 between words." },
-  { cat: "Fun/Tools",  usage: "flip <text>",             desc: "Flip text upside down." },
-  { cat: "Fun/Tools",  usage: "zalgo <text>",            desc: "Z̶a̸l̷g̶o̸ corrupt text." },
-  { cat: "Fun/Tools",  usage: "ship <@u1> <@u2>",        desc: "Fake ship percentage." },
-  { cat: "Fun/Tools",  usage: "gayrate <@user>",         desc: "Random gay % (joke)." },
-  { cat: "Fun/Tools",  usage: "simprate <@user>",        desc: "Random simp % (joke)." },
-  { cat: "Fun/Tools",  usage: "roast <@user>",           desc: "Send a brutal roast." },
-  { cat: "Fun/Tools",  usage: "compliment <@user>",      desc: "Sarcastic compliment." },
-  { cat: "Fun/Tools",  usage: "pickup <@user>",          desc: "Cringe pickup line." },
-  { cat: "Fun/Tools",  usage: "truth",                   desc: "Random truth question." },
-  { cat: "Fun/Tools",  usage: "dare <@user>",            desc: "Random dare suggestion." },
-  { cat: "Fun/Tools",  usage: "wouldyourather <a> or <b>",desc:"Would you rather prompt." },
-  { cat: "Fun/Tools",  usage: "pfp <@user>",             desc: "Full-size profile picture URL." },
-  { cat: "Fun/Tools",  usage: "banner <@user>",          desc: "Full-size banner URL." },
-  { cat: "Fun/Tools",  usage: "react all",               desc: "React with 26+ emojis (reply first)." },
-  { cat: "Fun/Tools",  usage: "autoreact <@user> <emoji>",desc:"Auto-react to user's messages." },
-  { cat: "Fun/Tools",  usage: "bully <@user>",           desc: "Spam insults at user every 100ms." },
-  { cat: "Fun/Tools",  usage: "bully off",               desc: "Stop the bully loop." },
-  { cat: "Automation", usage: "spam <count> <msg>",      desc: "Send message N times." },
-  { cat: "Automation", usage: "flood <message>",         desc: "Continuously send until spamstop." },
-  { cat: "Automation", usage: "spamstop",                desc: "Stop all spam/flood loops." },
-  { cat: "Automation", usage: "nitro on",                desc: "Enable Nitro sniper." },
-  { cat: "Automation", usage: "nitro off",               desc: "Disable Nitro sniper." },
-  { cat: "Automation", usage: "afk [reason]",            desc: "Toggle AFK mode on/off." },
-  { cat: "Management", usage: "massdm <message>",        desc: "DM all friends and contacts." },
-  { cat: "Management", usage: "closealldms",             desc: "Close all DM channels." },
-  { cat: "Management", usage: "purge <count>",           desc: "Delete your last N messages." },
-  { cat: "Management", usage: "gc allow",                desc: "Allow all group chat invites." },
-  { cat: "Management", usage: "gc deny",                 desc: "Deny all group chat invites." },
-  { cat: "Management", usage: "gc trap <@user>",         desc: "Re-invite user if they leave." },
-  { cat: "Management", usage: "gc whitelist [ID]",       desc: "Whitelist a GC from auto-leave." },
-  { cat: "Management", usage: "host <token>",            desc: "Host a new Discord account." },
-  { cat: "Management", usage: "joinvc <channel_id>",     desc: "Join a voice channel and farm stats." },
-  { cat: "Management", usage: "leavevc",                 desc: "Leave the current voice channel." },
-  { cat: "OSINT",      usage: "snipe",                   desc: "Show last deleted message." },
-  { cat: "OSINT",      usage: "ip check <ip>",           desc: "IP location, ISP, coordinates." },
-  { cat: "OSINT",      usage: "link check <url>",        desc: "Check if URL is a phishing link." },
+  { cat: "General",    usage: "help",                       desc: "List all commands with descriptions." },
+  { cat: "General",    usage: "uptime",                     desc: "How long the bot has been running." },
+  { cat: "General",    usage: "ping",                       desc: "Check Discord latency." },
+  { cat: "General",    usage: "time",                       desc: "Current local + UTC time." },
+  { cat: "General",    usage: "coin",                       desc: "Flip a coin." },
+  { cat: "General",    usage: "roll <sides>",               desc: "Roll a die (default d6)." },
+  { cat: "General",    usage: "8ball <question>",           desc: "Magic 8-ball answer." },
+  { cat: "General",    usage: "rps <r/p/s>",                desc: "Rock paper scissors." },
+  { cat: "General",    usage: "choose <a,b,...>",           desc: "Pick a random option." },
+  { cat: "General",    usage: "fact",                       desc: "Random useless fact." },
+  { cat: "General",    usage: "joke",                       desc: "Random one-liner joke." },
+  { cat: "General",    usage: "snowflake <id>",             desc: "Decode a Discord snowflake ID." },
+  { cat: "General",    usage: "creationdate <id>",          desc: "Creation date from snowflake." },
+  { cat: "General",    usage: "server info",                desc: "Server name, ID, owner, members." },
+  { cat: "General",    usage: "user info <@user>",          desc: "User tag, ID, badges, age." },
+  { cat: "General",    usage: "prefix set <new>",           desc: "Change the command prefix." },
+  { cat: "General",    usage: "stopall",                    desc: "Stop all active modules." },
+  { cat: "General",    usage: "join <invite>",              desc: "Join a Discord server by invite link." },
+  { cat: "General",    usage: "copy full server",           desc: "Clone server (roles, channels), DM all members." },
+  { cat: "General",    usage: "server emoji steal <id>",    desc: "Steal emojis from a guild and upload here." },
+  { cat: "General",    usage: "server end <id>",            desc: "Flood all channels in a guild with images." },
+  { cat: "General",    usage: "server end stop",            desc: "Cancel in-progress server end flood." },
+  { cat: "General",    usage: "report server",              desc: "Mass-report the current server." },
+  { cat: "General",    usage: "report msg <id>",            desc: "Report a specific message by ID." },
+  { cat: "Fun/Tools",  usage: "echo <text>",                desc: "Repeat text back." },
+  { cat: "Fun/Tools",  usage: "mock <@user>",               desc: "Mock user's last message in AlTeRnAtInG CaSe." },
+  { cat: "Fun/Tools",  usage: "mock <text>",                desc: "AlTeRnAtInG CaSe on custom text." },
+  { cat: "Fun/Tools",  usage: "owo <text>",                 desc: "Convert to owo furry style." },
+  { cat: "Fun/Tools",  usage: "clap <text>",                desc: "Add 👏 between words." },
+  { cat: "Fun/Tools",  usage: "flip <text>",                desc: "Flip text upside down." },
+  { cat: "Fun/Tools",  usage: "zalgo <text>",               desc: "Z̶a̸l̷g̶o̸ corrupt text." },
+  { cat: "Fun/Tools",  usage: "ship <@u1> <@u2>",           desc: "Fake ship percentage." },
+  { cat: "Fun/Tools",  usage: "gayrate <@user>",            desc: "Random gay % (joke)." },
+  { cat: "Fun/Tools",  usage: "simprate <@user>",           desc: "Random simp % (joke)." },
+  { cat: "Fun/Tools",  usage: "roast <@user>",              desc: "Send a brutal roast." },
+  { cat: "Fun/Tools",  usage: "compliment <@user>",         desc: "Sarcastic compliment." },
+  { cat: "Fun/Tools",  usage: "pickup <@user>",             desc: "Cringe pickup line." },
+  { cat: "Fun/Tools",  usage: "truth",                      desc: "Random truth question." },
+  { cat: "Fun/Tools",  usage: "dare <@user>",               desc: "Random dare suggestion." },
+  { cat: "Fun/Tools",  usage: "wouldyourather <a> or <b>",  desc: "Would you rather prompt." },
+  { cat: "Fun/Tools",  usage: "pfp <@user>",                desc: "Full-size profile picture URL." },
+  { cat: "Fun/Tools",  usage: "banner <@user>",             desc: "Full-size banner URL." },
+  { cat: "Fun/Tools",  usage: "react all",                  desc: "React with 26+ emojis (reply first)." },
+  { cat: "Fun/Tools",  usage: "autoreact <@user> <emoji>",  desc: "Auto-react to user's messages." },
+  { cat: "Fun/Tools",  usage: "gpt <question>",             desc: "Ask ChatGPT a question via AI." },
+  { cat: "Fun/Tools",  usage: "tiktok views <user> <link>", desc: "Order TikTok views boost." },
+  { cat: "Automation", usage: "spam <count> <msg>",         desc: "Send message N times." },
+  { cat: "Automation", usage: "flood <message>",            desc: "Continuously send until spamstop." },
+  { cat: "Automation", usage: "spamstop",                   desc: "Stop all spam/flood loops." },
+  { cat: "Automation", usage: "nitro on",                   desc: "Enable Nitro sniper." },
+  { cat: "Automation", usage: "nitro off",                  desc: "Disable Nitro sniper." },
+  { cat: "Automation", usage: "afk [reason]",               desc: "Toggle AFK mode on/off." },
+  { cat: "Automation", usage: "bully <@user>",              desc: "Spam insults at user every 100ms." },
+  { cat: "Automation", usage: "bully off",                  desc: "Stop the bully loop." },
+  { cat: "Automation", usage: "sob <@user>",                desc: "Continuously sad-react to user." },
+  { cat: "Automation", usage: "statusmover <w1,w2,...>",    desc: "Cycle custom status through words." },
+  { cat: "Automation", usage: "statusmover off",            desc: "Stop status cycling." },
+  { cat: "Management", usage: "massdm <message>",           desc: "DM all friends and contacts." },
+  { cat: "Management", usage: "closealldms",                desc: "Close all DM channels." },
+  { cat: "Management", usage: "purge <count>",              desc: "Delete your last N messages." },
+  { cat: "Management", usage: "gc allow",                   desc: "Allow all group chat invites." },
+  { cat: "Management", usage: "gc deny",                    desc: "Deny all group chat invites." },
+  { cat: "Management", usage: "gc trap <@user>",            desc: "Re-invite user if they leave." },
+  { cat: "Management", usage: "gc whitelist [ID]",          desc: "Whitelist a GC from auto-leave." },
+  { cat: "Management", usage: "host <token>",               desc: "Host a new Discord account." },
+  { cat: "Management", usage: "members msgs",               desc: "Show message counts per member." },
+  { cat: "OSINT",      usage: "snipe",                      desc: "Show last deleted message." },
+  { cat: "OSINT",      usage: "ip check <ip>",              desc: "IP location, ISP, coordinates." },
+  { cat: "OSINT",      usage: "link check <url>",           desc: "Check if URL is a phishing link." },
+  { cat: "OSINT",      usage: "osint user <@user>",         desc: "Full OSINT report on a Discord user." },
+  { cat: "OSINT",      usage: "osint discord <id>",         desc: "OSINT on a Discord user ID." },
+  { cat: "OSINT",      usage: "osint server",               desc: "Server OSINT — roles, channels, members." },
+  { cat: "OSINT",      usage: "osint token <token>",        desc: "Lookup info from a Discord token." },
+  { cat: "OSINT",      usage: "username breach <user>",     desc: "Check username in breach databases." },
+  { cat: "OSINT",      usage: "username leak <user>",       desc: "Check username in leak databases." },
+  { cat: "OSINT",      usage: "edr email <email>",          desc: "Lookup email — breaches, social." },
+  { cat: "OSINT",      usage: "edr phone <number>",         desc: "Lookup phone — carrier, owner." },
+  { cat: "OSINT",      usage: "who is <domain>",            desc: "WHOIS domain lookup." },
+  { cat: "OSINT",      usage: "who lives <address>",        desc: "Geocode + resident lookup." },
+  { cat: "OSINT",      usage: "convert cords <lat> <lng>",  desc: "Convert GPS coords to address." },
+  { cat: "OSINT",      usage: "full report <target>",       desc: "Mega-dossier combining all OSINT sources." },
 ];
 
 const CATEGORIES = ["General", "Fun/Tools", "Automation", "Management", "OSINT"] as const;
@@ -110,14 +139,11 @@ function CommandsPanel({ prefix }: { prefix: string }) {
 
   return (
     <div className="bg-white/3 border border-white/8 rounded-xl overflow-hidden">
-      {/* Header */}
       <div className="px-4 py-3 border-b border-white/8 flex items-center gap-2">
         <Terminal className="w-3.5 h-3.5 text-primary flex-shrink-0" />
         <h3 className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Commands</h3>
         <span className="ml-auto font-mono text-[10px] text-muted-foreground/40">{COMMANDS.length} total</span>
       </div>
-
-      {/* Search */}
       <div className="px-3 py-2 border-b border-white/8">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50" />
@@ -130,8 +156,6 @@ function CommandsPanel({ prefix }: { prefix: string }) {
           {search && <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground/40">{totalShown}</span>}
         </div>
       </div>
-
-      {/* Accordion */}
       <div className="divide-y divide-white/5">
         {CATEGORIES.map(cat => {
           const cmds = filtered(cat);
@@ -182,10 +206,147 @@ function CommandsPanel({ prefix }: { prefix: string }) {
   );
 }
 
+function LogsPanel({ botId }: { botId: number }) {
+  const { data } = useQuery<{ logs: Array<{ ts: number; msg: string }> }>({
+    queryKey: [`/api/bots/${botId}/logs`],
+    refetchInterval: 5000,
+  });
+  const logs = data?.logs || [];
+
+  return (
+    <div className="bg-white/3 border border-white/8 rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-white/8 flex items-center gap-2">
+        <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0" />
+        <h3 className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Error Logs</h3>
+        <span className="ml-auto font-mono text-[10px] text-muted-foreground/40">live · {logs.length}</span>
+      </div>
+      <div className="max-h-48 overflow-y-auto">
+        {logs.length === 0 ? (
+          <p className="px-4 py-6 text-center text-[11px] font-mono text-muted-foreground/30">No errors — all clear</p>
+        ) : (
+          <div className="divide-y divide-white/5">
+            {logs.map((log, i) => (
+              <div key={i} className="px-4 py-2">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-[9px] font-mono text-muted-foreground/30">
+                    {new Date(log.ts).toLocaleTimeString()}
+                  </span>
+                </div>
+                <p className="text-[11px] font-mono text-red-400/80 break-all">{log.msg}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function JoinServerPanel({ botId }: { botId: number }) {
+  const [invite, setInvite] = useState("");
+  const { toast } = useToast();
+
+  const joinMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/bots/${botId}/join`, { invite: invite.trim() });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Joined!", description: `Successfully joined: ${data.guildName || "server"}` });
+      setInvite("");
+    },
+    onError: (e: any) => {
+      toast({ title: "Failed to join", description: e?.message || "Unknown error", variant: "destructive" });
+    },
+  });
+
+  return (
+    <Section title="Join Server" icon={<LogIn className="w-4 h-4" />}>
+      <div className="space-y-3">
+        <p className="text-xs text-muted-foreground font-mono">Enter a Discord invite link or code to join a server with this bot account.</p>
+        <div className="flex gap-2">
+          <input
+            value={invite}
+            onChange={e => setInvite(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && invite.trim() && joinMut.mutate()}
+            placeholder="discord.gg/abc123 or invite code"
+            className="flex-1 bg-white/5 border border-white/10 rounded-lg h-10 px-3 font-mono text-sm text-white placeholder:text-muted-foreground/40 outline-none focus:border-primary/50 transition-all"
+            data-testid="input-join-invite"
+          />
+          <button
+            onClick={() => joinMut.mutate()}
+            disabled={!invite.trim() || joinMut.isPending}
+            className="h-10 px-4 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-40 text-black text-xs font-bold font-mono flex items-center gap-1.5 transition-all"
+            data-testid="button-join-server"
+          >
+            {joinMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wifi className="w-3.5 h-3.5" />}
+            Join
+          </button>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function BullyTargetsPanel({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const [input, setInput] = useState("");
+
+  const add = () => {
+    const v = input.trim();
+    if (!v || value.includes(v)) return;
+    onChange([...value, v]);
+    setInput("");
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground font-mono">Discord user IDs that will receive auto-bully messages.</p>
+      <div className="flex gap-2">
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && add()}
+          placeholder="Discord user ID..."
+          className="flex-1 bg-white/5 border border-white/10 rounded-lg h-9 px-3 font-mono text-sm text-white placeholder:text-muted-foreground/40 outline-none focus:border-primary/50 transition-all"
+          data-testid="input-bully-target"
+        />
+        <button
+          onClick={add}
+          disabled={!input.trim()}
+          className="h-9 w-9 flex items-center justify-center rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-white disabled:opacity-40 transition-all"
+          data-testid="button-add-bully-target"
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+      </div>
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {value.map(id => (
+            <div key={id} className="flex items-center gap-1.5 h-7 px-2.5 rounded-md bg-red-500/10 border border-red-500/20 group">
+              <span className="text-[11px] font-mono text-red-300">{id}</span>
+              <button
+                onClick={() => onChange(value.filter(v => v !== id))}
+                className="text-red-400/40 hover:text-red-400 transition-colors"
+                data-testid={`button-remove-bully-${id}`}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {value.length === 0 && (
+        <p className="text-[11px] font-mono text-muted-foreground/30">No targets added</p>
+      )}
+    </div>
+  );
+}
+
 export default function BotDetail() {
   const [, params] = useRoute("/bot/:id");
   const id = Number(params?.id);
   const { toast } = useToast();
+  const qc = useQueryClient();
 
   const { data: bot, isLoading } = useBot(id);
   const updateBot = useUpdateBot();
@@ -202,13 +363,17 @@ export default function BotDetail() {
       rpcType: "PLAYING",
       rpcStartTimestamp: "",
       rpcEndTimestamp: "",
+      presenceStatus: "online",
+      statusMoverWords: "",
       commandPrefix: ".",
+      afkMessage: "",
       nitroSniper: false,
       isRunning: true,
-      bullyTargets: [],
+      isAfk: false,
+      bullyTargets: [] as string[],
       passcode: "",
       gcAllowAll: false,
-      whitelistedGcs: [],
+      whitelistedGcs: [] as string[],
     }
   });
 
@@ -223,24 +388,30 @@ export default function BotDetail() {
         rpcType: bot.rpcType || "PLAYING",
         rpcStartTimestamp: bot.rpcStartTimestamp || "",
         rpcEndTimestamp: bot.rpcEndTimestamp || "",
+        presenceStatus: (bot as any).presenceStatus || "online",
+        statusMoverWords: (bot as any).statusMoverWords || "",
         commandPrefix: bot.commandPrefix || ".",
+        afkMessage: (bot as any).afkMessage || "",
         nitroSniper: bot.nitroSniper || false,
         isRunning: bot.isRunning || false,
-        bullyTargets: ((bot.bullyTargets || []) as any),
+        isAfk: (bot as any).isAfk || false,
+        bullyTargets: ((bot.bullyTargets || []) as string[]),
         passcode: bot.passcode || "",
         gcAllowAll: bot.gcAllowAll || false,
-        whitelistedGcs: ((bot.whitelistedGcs || []) as any),
+        whitelistedGcs: ((bot.whitelistedGcs || []) as string[]),
       });
     }
   }, [bot, form]);
 
   const onSubmit = (data: any) => {
-    const { passcode: _p, ...rest } = data;
     updateBot.mutate({
       id,
-      ...rest,
+      ...data,
       rpcStartTimestamp: data.rpcStartTimestamp ? String(data.rpcStartTimestamp) : "",
       rpcEndTimestamp: data.rpcEndTimestamp ? String(data.rpcEndTimestamp) : "",
+    }, {
+      onSuccess: () => toast({ title: "Saved!", description: "Bot configuration updated." }),
+      onError: (e: any) => toast({ title: "Save failed", description: e?.message, variant: "destructive" }),
     });
   };
 
@@ -283,6 +454,7 @@ export default function BotDetail() {
   );
 
   const prefix = form.watch("commandPrefix") || ".";
+  const bullyTargets = (form.watch("bullyTargets") as string[]) || [];
 
   return (
     <div className="min-h-screen bg-black">
@@ -313,9 +485,13 @@ export default function BotDetail() {
 
           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             <button
-              onClick={() => botAction.mutate({ id, action: 'restart' })}
+              onClick={() => botAction.mutate({ id, action: 'restart' }, {
+                onSuccess: () => { toast({ title: "Restarting…" }); qc.invalidateQueries({ queryKey: ["/api/bots", id] }); },
+                onError: (e: any) => toast({ title: "Restart failed", description: e?.message, variant: "destructive" }),
+              })}
               disabled={botAction.isPending}
               className="h-9 px-2 sm:px-4 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-white text-xs font-mono flex items-center gap-1.5 sm:gap-2 transition-all disabled:opacity-50"
+              data-testid="button-restart-bot"
             >
               <RefreshCw className={cn("w-3.5 h-3.5", botAction.isPending && "animate-spin")} />
               <span className="hidden sm:inline">Restart</span>
@@ -324,6 +500,7 @@ export default function BotDetail() {
               onClick={form.handleSubmit(onSubmit)}
               disabled={updateBot.isPending}
               className="h-9 px-3 sm:px-4 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-50 text-black text-xs font-bold font-mono flex items-center gap-1.5 sm:gap-2 transition-all shadow-[0_0_15px_rgba(34,197,94,0.3)]"
+              data-testid="button-save-bot"
             >
               <Save className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Save Changes</span>
@@ -337,6 +514,8 @@ export default function BotDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Left column */}
           <div className="lg:col-span-2 space-y-6">
+
+            {/* Rich Presence */}
             <Section title="Rich Presence" icon={<Activity className="w-4 h-4" />}>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -345,6 +524,7 @@ export default function BotDetail() {
                     <select
                       className="w-full bg-white/5 border border-white/10 rounded-lg h-11 px-3 font-mono text-sm text-white focus:border-primary/50 outline-none transition-all"
                       {...form.register("rpcType")}
+                      data-testid="select-rpc-type"
                     >
                       <option value="PLAYING">PLAYING</option>
                       <option value="STREAMING">STREAMING</option>
@@ -352,11 +532,11 @@ export default function BotDetail() {
                       <option value="WATCHING">WATCHING</option>
                     </select>
                   </div>
-                  <CyberInput label="App Name" placeholder="Application Name" {...form.register("rpcAppName")} />
+                  <CyberInput label="App Name" placeholder="Application Name" {...form.register("rpcAppName")} data-testid="input-rpc-app-name" />
                 </div>
-                <CyberInput label="Title / Details" placeholder="Rich Presence Title" {...form.register("rpcTitle")} />
-                <CyberInput label="Subtitle / State" placeholder="Rich Presence Subtitle" {...form.register("rpcSubtitle")} />
-                <CyberInput label="Large Image URL" placeholder="https://..." {...form.register("rpcImage")} />
+                <CyberInput label="Title / Details" placeholder="Rich Presence Title" {...form.register("rpcTitle")} data-testid="input-rpc-title" />
+                <CyberInput label="Subtitle / State" placeholder="Rich Presence Subtitle" {...form.register("rpcSubtitle")} data-testid="input-rpc-subtitle" />
+                <CyberInput label="Large Image URL" placeholder="https://..." {...form.register("rpcImage")} data-testid="input-rpc-image" />
                 <div className="grid grid-cols-2 gap-4">
                   <CyberInput label="Start Timestamp (ms)" placeholder="1700000000000" {...form.register("rpcStartTimestamp")} />
                   <CyberInput label="End Timestamp (ms)" placeholder="1700000000000" {...form.register("rpcEndTimestamp")} />
@@ -364,38 +544,86 @@ export default function BotDetail() {
               </div>
             </Section>
 
+            {/* Bot Settings */}
             <Section title="Bot Settings" icon={<Settings2 className="w-4 h-4" />}>
               <div className="space-y-4">
-                <CyberInput label="Command Prefix" placeholder="." {...form.register("commandPrefix")} />
-                <div className="flex items-center justify-between p-4 bg-white/3 rounded-lg border border-white/8">
-                  <div>
-                    <Label className="text-sm font-medium text-white">Nitro Sniper</Label>
-                    <p className="text-xs text-muted-foreground mt-0.5">Auto-claim Nitro gifts</p>
+                <CyberInput label="Command Prefix" placeholder="." {...form.register("commandPrefix")} data-testid="input-command-prefix" />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="font-mono text-xs uppercase text-muted-foreground tracking-wider">Presence Status</label>
+                    <select
+                      className="w-full bg-white/5 border border-white/10 rounded-lg h-11 px-3 font-mono text-sm text-white focus:border-primary/50 outline-none transition-all"
+                      {...form.register("presenceStatus")}
+                      data-testid="select-presence-status"
+                    >
+                      <option value="online">Online</option>
+                      <option value="idle">Idle</option>
+                      <option value="dnd">Do Not Disturb</option>
+                      <option value="invisible">Invisible</option>
+                    </select>
                   </div>
-                  <Switch
-                    checked={form.watch("nitroSniper")}
-                    onCheckedChange={(v) => form.setValue("nitroSniper", v)}
+                  <CyberInput
+                    label="AFK Auto-Reply"
+                    placeholder="Be right back..."
+                    {...form.register("afkMessage")}
+                    data-testid="input-afk-message"
                   />
                 </div>
-                <div className="flex items-center justify-between p-4 bg-white/3 rounded-lg border border-white/8">
-                  <div>
-                    <Label className="text-sm font-medium text-white">Allow All GCs</Label>
-                    <p className="text-xs text-muted-foreground mt-0.5">Accept all group chat invites</p>
+
+                <CyberInput
+                  label="Status Mover Words (comma-separated)"
+                  placeholder="coding, gaming, vibing"
+                  {...form.register("statusMoverWords")}
+                  data-testid="input-status-mover"
+                />
+                <p className="text-[11px] font-mono text-muted-foreground/40 -mt-2">Cycles through these words as your custom status every 5 seconds. Leave blank to disable.</p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="flex items-center justify-between p-4 bg-white/3 rounded-lg border border-white/8">
+                    <div>
+                      <Label className="text-sm font-medium text-white">Nitro Sniper</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">Auto-claim Nitro gifts</p>
+                    </div>
+                    <Switch
+                      checked={form.watch("nitroSniper")}
+                      onCheckedChange={(v) => form.setValue("nitroSniper", v)}
+                      data-testid="switch-nitro-sniper"
+                    />
                   </div>
-                  <Switch
-                    checked={form.watch("gcAllowAll")}
-                    onCheckedChange={(v) => form.setValue("gcAllowAll", v)}
-                  />
+                  <div className="flex items-center justify-between p-4 bg-white/3 rounded-lg border border-white/8">
+                    <div>
+                      <Label className="text-sm font-medium text-white">Allow All GCs</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">Accept all group chat invites</p>
+                    </div>
+                    <Switch
+                      checked={form.watch("gcAllowAll")}
+                      onCheckedChange={(v) => form.setValue("gcAllowAll", v)}
+                      data-testid="switch-gc-allow-all"
+                    />
+                  </div>
                 </div>
               </div>
             </Section>
 
-            {/* Full command reference */}
+            {/* Bully Targets */}
+            <Section title="Bully Targets" icon={<AlertTriangle className="w-4 h-4 text-red-400" />}>
+              <BullyTargetsPanel
+                value={bullyTargets}
+                onChange={(v) => form.setValue("bullyTargets", v)}
+              />
+            </Section>
+
+            {/* Join Server */}
+            {bot.isRunning && <JoinServerPanel botId={id} />}
+
+            {/* Commands */}
             <CommandsPanel prefix={prefix} />
           </div>
 
           {/* Right column */}
           <div className="space-y-6">
+            {/* Status */}
             <Section title="Status">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -416,7 +644,7 @@ export default function BotDetail() {
                 {bot.discordId && (
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground font-mono">Discord ID</span>
-                    <span className="text-xs font-mono text-white/60">{bot.discordId}</span>
+                    <span className="text-xs font-mono text-white/60 break-all text-right">{bot.discordId}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between">
@@ -429,6 +657,7 @@ export default function BotDetail() {
                     <Switch
                       checked={form.watch("isRunning")}
                       onCheckedChange={(v) => form.setValue("isRunning", v)}
+                      data-testid="switch-instance-active"
                     />
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">Toggle to start or stop this bot</p>
@@ -436,21 +665,25 @@ export default function BotDetail() {
               </div>
             </Section>
 
-            {/* Quick reference card */}
+            {/* Quick reference */}
             <div className="bg-white/3 border border-white/8 rounded-xl overflow-hidden">
               <div className="px-5 py-4 border-b border-white/8">
                 <h3 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">Quick Reference</h3>
               </div>
               <div className="p-5 space-y-1">
                 {[
-                  { cmd: "help", label: "All commands" },
-                  { cmd: "ping", label: "Check latency" },
-                  { cmd: "stopall", label: "Stop everything" },
-                  { cmd: "nitro on", label: "Sniper on" },
-                  { cmd: "spam 5 hi", label: "Spam 5x" },
-                  { cmd: "massdm msg", label: "DM all friends" },
-                  { cmd: "snipe", label: "Last deleted msg" },
-                  { cmd: "purge 10", label: "Delete 10 msgs" },
+                  { cmd: "help",         label: "All commands" },
+                  { cmd: "ping",         label: "Check latency" },
+                  { cmd: "stopall",      label: "Stop everything" },
+                  { cmd: "nitro on",     label: "Sniper on" },
+                  { cmd: "afk",          label: "Toggle AFK" },
+                  { cmd: "spam 5 hi",    label: "Spam 5×" },
+                  { cmd: "massdm msg",   label: "DM all friends" },
+                  { cmd: "snipe",        label: "Last deleted msg" },
+                  { cmd: "purge 10",     label: "Delete 10 msgs" },
+                  { cmd: "join <inv>",   label: "Join server" },
+                  { cmd: "osint user @", label: "OSINT a user" },
+                  { cmd: "full report",  label: "Full dossier" },
                 ].map(({ cmd, label }) => (
                   <div key={cmd} className="flex justify-between items-center py-1.5 border-b border-white/5 last:border-0 group">
                     <code className="text-xs font-mono text-primary group-hover:text-primary/80 transition-colors">
@@ -461,6 +694,9 @@ export default function BotDetail() {
                 ))}
               </div>
             </div>
+
+            {/* Live error logs */}
+            <LogsPanel botId={id} />
           </div>
         </div>
       </main>
