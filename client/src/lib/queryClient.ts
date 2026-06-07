@@ -1,5 +1,15 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+const STORAGE_KEY = "bothost_user_id";
+function getUserIdHeader(): Record<string, string> {
+  try {
+    const id = localStorage.getItem(STORAGE_KEY);
+    return id ? { "X-User-Id": id } : {};
+  } catch {
+    return {};
+  }
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
@@ -14,7 +24,10 @@ export async function apiRequest(
 ): Promise<Response> {
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(data ? { "Content-Type": "application/json" } : {}),
+      ...getUserIdHeader(),
+    },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });

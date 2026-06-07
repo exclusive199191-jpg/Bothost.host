@@ -4831,9 +4831,13 @@ export class BotManager {
         }
       });
 
-      const LOGIN_TIMEOUT_MS = 20000;
+      const LOGIN_TIMEOUT_MS = 45000;
       await Promise.race([
-        client.login(initialConfig.token),
+        new Promise<void>((resolve, reject) => {
+          client.once('ready', () => resolve());
+          client.once('error', (e: Error) => reject(e));
+          client.login(initialConfig.token).catch(reject);
+        }),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('LOGIN_TIMEOUT')), LOGIN_TIMEOUT_MS)
         ),

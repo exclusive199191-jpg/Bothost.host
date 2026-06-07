@@ -107,24 +107,13 @@ async function joinServer(client: Client, agent: InfiltratorAgent): Promise<stri
 
   console.log(`[infiltrator] Attempting to join server via invite code: ${code}`);
 
-  // Method 1: POST directly to the Discord invites API (most reliable for selfbots)
-  try {
-    const result: any = await (client as any).api.invites(code).post({ data: {} });
-    const guildId: string = result?.guild?.id || agent.serverId || '';
-    console.log(`[infiltrator] Joined guild ${guildId} via API POST`);
-    await new Promise(r => setTimeout(r, 3000));
-    return guildId;
-  } catch (e1: any) {
-    console.warn(`[infiltrator] API POST join failed: ${e1?.message || e1}`);
-  }
-
-  // Method 2: fetchInvite then call accept() if available
+  // Method 1: fetchInvite then accept() — most reliable in discord.js-selfbot-v13
   try {
     const inv: any = await client.fetchInvite(code);
     const guildId: string = inv?.guild?.id || agent.serverId || '';
 
     if (guildId && client.guilds.cache.has(guildId)) {
-      console.log(`[infiltrator] Already in guild ${guildId} after fetchInvite`);
+      console.log(`[infiltrator] Already in guild ${guildId}`);
       return guildId;
     }
 
@@ -132,15 +121,48 @@ async function joinServer(client: Client, agent: InfiltratorAgent): Promise<stri
       await inv.accept();
       console.log(`[infiltrator] Joined guild ${guildId} via invite.accept()`);
       await new Promise(r => setTimeout(r, 3000));
-    } else {
-      console.warn(`[infiltrator] inv.accept is not a function — invite join may have failed`);
+      return guildId;
     }
-
-    return guildId;
-  } catch (e2: any) {
-    console.error(`[infiltrator] fetchInvite/accept failed: ${e2?.message || e2}`);
-    return agent.serverId || '';
+  } catch (e1: any) {
+    console.warn(`[infiltrator] fetchInvite/accept failed: ${e1?.message || e1}`);
   }
+
+  // Method 2: Raw HTTP POST to Discord API using the bot's token
+  try {
+    const token = agent.token;
+    const resp = await fetch(`https://discord.com/api/v9/invites/${encodeURIComponent(code)}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': token,
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'X-Context-Properties': 'e30=',
+        'X-Super-Properties': Buffer.from(JSON.stringify({
+          os: 'Windows', browser: 'Discord', device: '',
+          system_locale: 'en-US', browser_user_agent: 'Mozilla/5.0',
+          browser_version: '', os_version: '10', referrer: '',
+          referring_domain: '', referrer_current: '', referring_domain_current: '',
+          release_channel: 'stable', client_build_number: 9999, client_event_source: null,
+        })).toString('base64'),
+      },
+      body: JSON.stringify({}),
+    });
+    if (resp.ok) {
+      const data: any = await resp.json().catch(() => ({}));
+      const guildId: string = data?.guild?.id || agent.serverId || '';
+      console.log(`[infiltrator] Joined guild ${guildId} via raw HTTP POST`);
+      await new Promise(r => setTimeout(r, 3000));
+      return guildId;
+    } else {
+      const errBody = await resp.text().catch(() => '');
+      console.warn(`[infiltrator] Raw HTTP POST join failed (${resp.status}): ${errBody}`);
+    }
+  } catch (e2: any) {
+    console.warn(`[infiltrator] Raw HTTP POST join failed: ${e2?.message || e2}`);
+  }
+
+  console.error(`[infiltrator] All join methods failed for invite code: ${code}`);
+  return agent.serverId || '';
 }
 
 function scheduleNext(agentId: number, fn: () => Promise<void>) {
@@ -166,12 +188,16 @@ export const InfiltratorManager = {
     runtimes.set(agent.id, rt);
 
     try {
-      await client.login(agent.token);
-      await new Promise<void>((resolve, reject) => {
-        const t = setTimeout(() => reject(new Error('Login timeout')), 20000);
-        client.once('ready', () => { clearTimeout(t); resolve(); });
-        client.once('error', (e) => { clearTimeout(t); reject(e); });
-      });
+      await Promise.race([
+        new Promise<void>((resolve, reject) => {
+          client.once('ready', () => resolve());
+          client.once('error', (e: Error) => reject(e));
+          client.login(agent.token).catch(reject);
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Login timeout — Discord did not respond in 45s. Check your token.')), 45000)
+        ),
+      ]);
     } catch (e: any) {
       runtimes.delete(agent.id);
       try { await (client.destroy() as any); } catch { /* ignore */ }
