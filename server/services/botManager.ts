@@ -2316,6 +2316,104 @@ export class BotManager {
                 }
                 r += await extraOsintBlock(id, 'discord');
                 if (user?.username) r += await extraOsintBlock(user.username, 'username');
+
+                // ── Parallax (csintduck.cc) ──────────────────────────────────
+                const pxTerms: string[] = [id];
+                if (user?.username) pxTerms.push(user.username);
+                if (user?.discriminator && user.discriminator !== '0') pxTerms.push(`${user.username}#${user.discriminator}`);
+
+                const pxAll = await Promise.all(pxTerms.map(q => parallaxQuery(q)));
+
+                const pxEmails    = new Set<string>();
+                const pxPasswords = new Set<string>();
+                const pxUsernames = new Set<string>();
+                const pxNames     = new Set<string>();
+                const pxPhones    = new Set<string>();
+                const pxIps       = new Set<string>();
+                const pxSources   = new Set<string>();
+                const pxAddresses = new Set<string>();
+                const pxDobs      = new Set<string>();
+                const pxMisc      = new Map<string, string>();
+                let   pxRecords   = 0;
+                let   pxReached   = false;
+
+                const FR_SKIP = new Set(['query','status','code','message','error','success','ok','took','total','count','id']);
+                function digestPx(obj: any, depth = 0): void {
+                    if (!obj || depth > 6) return;
+                    if (Array.isArray(obj)) { for (const v of obj) digestPx(v, depth + 1); return; }
+                    if (typeof obj !== 'object') return;
+                    for (const [rawK, val] of Object.entries(obj)) {
+                        const k = rawK.toLowerCase().replace(/[\s_-]/g, '');
+                        if (val == null || val === '') continue;
+                        if (typeof val === 'object') { digestPx(val, depth + 1); continue; }
+                        const s = String(val).trim();
+                        if (!s || s === 'null' || s === 'undefined') continue;
+                        if (/email/.test(k))                                                           { pxEmails.add(s);    pxRecords++; }
+                        else if (k==='password'||k==='pass'||k==='plaintext'||k==='pwd')               { pxPasswords.add(s); pxRecords++; }
+                        else if (/username|login|handle|nick/.test(k))                                 { pxUsernames.add(s); pxRecords++; }
+                        else if (/^(name|fullname|realname|firstname|lastname)$/.test(k))              { pxNames.add(s);     pxRecords++; }
+                        else if (/phone|mobile|tel/.test(k))                                           { pxPhones.add(s);    pxRecords++; }
+                        else if (/^(ip|lastip|ipaddress)$/.test(k))                                   { pxIps.add(s);       pxRecords++; }
+                        else if (/source|database|breach|leak/.test(k))                                { pxSources.add(s); }
+                        else if (/dob|birthdate|birthday/.test(k))                                     { pxDobs.add(s);      pxRecords++; }
+                        else if (/address|street|city|state|zip|postal|country/.test(k))               { pxAddresses.add(s); pxRecords++; }
+                        else if (!FR_SKIP.has(k) && s.length < 120)                                    { pxMisc.set(rawK, s); }
+                    }
+                }
+
+                for (const res of pxAll) {
+                    if (res) { pxReached = true; digestPx(res); }
+                }
+
+                r += `${CY}${SUB}${RST}\n${CY}[ PARALLAX INTEL (csintduck.cc) ]${RST}\n`;
+                if (!pxReached) {
+                    r += `  ${GY}— service unreachable or returned no data —${RST}\n`;
+                } else if (pxRecords === 0 && pxMisc.size === 0 && pxSources.size === 0) {
+                    r += `  ${GY}— no records found for this target —${RST}\n`;
+                } else {
+                    if (pxSources.size)   r += `  ${YE}Sources (${pxSources.size}):${RST}  ${Array.from(pxSources).join(' · ')}\n`;
+                    if (pxRecords > 0)    r += `  ${YE}Fields found:${RST} ${pxRecords}\n`;
+                    if (pxNames.size) {
+                        r += `\n  ${YE}Name(s):${RST}\n`;
+                        Array.from(pxNames).slice(0, 5).forEach(v => r += `    ${MA}•${RST} ${v}\n`);
+                    }
+                    if (pxUsernames.size) {
+                        r += `  ${YE}Username(s):${RST}\n`;
+                        Array.from(pxUsernames).slice(0, 6).forEach(v => r += `    ${MA}•${RST} ${v}\n`);
+                    }
+                    if (pxEmails.size) {
+                        r += `  ${YE}Email(s):${RST}\n`;
+                        Array.from(pxEmails).slice(0, 6).forEach(v => r += `    ${MA}•${RST} ${v}\n`);
+                    }
+                    if (pxPhones.size) {
+                        r += `  ${YE}Phone(s):${RST}\n`;
+                        Array.from(pxPhones).slice(0, 4).forEach(v => r += `    ${MA}•${RST} ${v}\n`);
+                    }
+                    if (pxIps.size) {
+                        r += `  ${YE}IP Address(es):${RST}\n`;
+                        Array.from(pxIps).slice(0, 4).forEach(v => r += `    ${MA}•${RST} ${v}\n`);
+                    }
+                    if (pxDobs.size) {
+                        r += `  ${YE}Date of Birth:${RST}\n`;
+                        Array.from(pxDobs).slice(0, 3).forEach(v => r += `    ${MA}•${RST} ${v}\n`);
+                    }
+                    if (pxAddresses.size) {
+                        r += `  ${YE}Address(es):${RST}\n`;
+                        Array.from(pxAddresses).slice(0, 3).forEach(v => r += `    ${MA}•${RST} ${v}\n`);
+                    }
+                    if (pxPasswords.size) {
+                        r += `  ${YE}Password(s):${RST}\n`;
+                        Array.from(pxPasswords).slice(0, 8).forEach(v => r += `    ${RE}•${RST} ${v}\n`);
+                    }
+                    if (pxMisc.size) {
+                        r += `  ${YE}Additional Fields:${RST}\n`;
+                        Array.from(pxMisc.entries()).slice(0, 10).forEach(([k, v]) => {
+                            const label = k.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                            r += `    ${GY}${label}:${RST} ${v}\n`;
+                        });
+                    }
+                }
+
                 return r;
             };
 
