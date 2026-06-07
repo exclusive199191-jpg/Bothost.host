@@ -83,7 +83,7 @@ export class DatabaseStorage implements IStorage {
   async getInfiltrators(): Promise<InfiltratorAgent[]> {
     const db = getDb();
     if (!db) return [];
-    return db.select().from(infiltratorAgents as any);
+    return (db.select().from(infiltratorAgents as any)) as unknown as Promise<InfiltratorAgent[]>;
   }
 
   async getInfiltrator(id: number): Promise<InfiltratorAgent | undefined> {
@@ -96,7 +96,7 @@ export class DatabaseStorage implements IStorage {
   async createInfiltrator(agent: Omit<InsertInfiltrator, "id">): Promise<InfiltratorAgent> {
     const db = getDb();
     if (!db) throw new Error("No database");
-    const rows = await db.insert(infiltratorAgents as any).values(agent).returning();
+    const rows = await db.insert(infiltratorAgents as any).values(agent).returning() as any[];
     return rows[0] as InfiltratorAgent;
   }
 

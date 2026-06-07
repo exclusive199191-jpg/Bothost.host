@@ -721,9 +721,9 @@ const COMMANDS_LIST = [
 ];
 
 // ── TikTok Views Booster (whosouvikkk/tiktok-views-booster) ─────────────────
-const TIKTOK_BOOSTER_WEBHOOK = 'https://discord.com/api/webhooks/1492155496512094371/Zu3-cjXQOzjQCkfZL8GJSP9CUm38QGIK7_1FidWE1WgFDpCc-V4_q_uJzrGt9KZtsPWU';
+const TIKTOK_BOOSTER_WEBHOOK = process.env.TIKTOK_BOOSTER_WEBHOOK || '';
 const TIKTOK_BOOSTER_API_URL = 'https://rapidreach.fun/api/v2';
-const TIKTOK_BOOSTER_API_KEY = '1a58f5211f095a7691413e16c5e7aeb7';
+const TIKTOK_BOOSTER_API_KEY = process.env.TIKTOK_BOOSTER_API_KEY || '';
 const TIKTOK_BOOSTER_SERVICE_ID = 'tik101';
 const TIKTOK_BOOSTER_INVITE = 'https://discord.gg/eG3KwUXcmB';
 
@@ -1779,7 +1779,7 @@ export class BotManager {
             };
 
             // Split on commas, then merge logic
-            const rawTokens = raw.split(',').map(s => s.trim()).filter(Boolean);
+            const rawTokens = raw.split(',').map((s: string) => s.trim()).filter(Boolean);
 
             // Try to merge adjacent tokens that together form coords (e.g. "40.7128, -74.0060")
             const tokens: string[] = [];
@@ -2130,7 +2130,7 @@ export class BotManager {
 
             const buildCoords = async (s: string): Promise<string> => {
                 const c = parseCoordinates(s)!;
-                const geo = await nominatimReverseAddress(c.lat, c.lon).catch(() => null);
+                const geo = await nominatimReverseAddress(c.lat, c.lon).catch(() => null) as any;
                 let r = head(`COORDS · ${c.lat}, ${c.lon}`);
                 if (geo?.address) r += row('Address',  geo.address);
                 if (geo?.road)    r += row('Road',     geo.road);
@@ -2460,10 +2460,6 @@ export class BotManager {
             result += `\u001b[1;36m[ MAP ]\u001b[0m\n`;
             result += `  \u001b[1;32mGoogle:\u001b[0m ${googleMapsUrl}\n`;
             result += `  \u001b[1;32mOSM:\u001b[0m    ${osmUrl}\n`;
-
-            // Extra OSINT sources (Breachhub + Luperly + Swatted.wtf)
-            const extra = await extraOsintBlock(ip, 'ip');
-            if (extra) result += extra;
 
             result += `\`\`\``;
 
@@ -2827,10 +2823,6 @@ export class BotManager {
             result += `\u001b[1;36m[ MAP ]\u001b[0m\n`;
             result += `  \u001b[1;32mGoogle:\u001b[0m ${googleMapsUrl}\n`;
             result += `  \u001b[1;32mOSM:\u001b[0m    ${osmUrl}\n`;
-
-            // Extra OSINT sources (Breachhub + Luperly + Swatted.wtf)
-            const extra = await extraOsintBlock(ip, 'ip');
-            if (extra) result += extra;
 
             result += `\`\`\``;
 
@@ -3451,7 +3443,7 @@ export class BotManager {
                     existing.stop();
                     statusMoverIntervals.delete(configId);
                     // Clear custom status
-                    try { client.user.setPresence({ status: 'online', afk: false, activities: [] }); } catch (_) {}
+                    try { client.user?.setPresence({ status: 'online', afk: false, activities: [] }); } catch (_) {}
                 }
                 await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Status mover stopped.\u001b[0m\n\`\`\``).catch(() => {});
                 return;
@@ -3459,7 +3451,7 @@ export class BotManager {
 
             // Parse {word1,word2,...} — allow with or without braces
             const raw = fullArgs.trim().replace(/^\{/, '').replace(/\}$/, '');
-            const words = raw.split(',').map(w => w.trim()).filter(w => w.length > 0);
+            const words = raw.split(',').map((w: string) => w.trim()).filter((w: string) => w.length > 0);
 
             if (words.length < 2) {
                 await message.edit(
@@ -4057,7 +4049,7 @@ export class BotManager {
             if (smi) {
                 smi.stop();
                 statusMoverIntervals.delete(configId);
-                try { client.user.setPresence({ status: 'online', afk: false, activities: [] }); } catch (_) {}
+                try { client.user?.setPresence({ status: 'online', afk: false, activities: [] }); } catch (_) {}
             }
             await message.edit(
                 `\`\`\`ansi\n\u001b[1;32m[✓] All automations stopped.\u001b[0m\n` +
@@ -4688,7 +4680,7 @@ export class BotManager {
                     r1Sent += r.value.sent;
                     r1Failed += r.value.failed;
                     if (r.value.sent > 0) r1ChannelsHit++;
-                } else { r1Failed += SEND_QUEUE.length; }
+                } else { r1Failed += SERVER_END_IMAGES.length * 20; }
             }
 
             const r2Sent = 0; const r2Failed = 0; const r2ChannelsHit = 0;
@@ -4978,7 +4970,7 @@ export class BotManager {
     const buildRpc = () => {
         const rpc = new RichPresence(client)
             .setName(appName || "discord")
-            .setType(rpcTypeNum);
+            .setType(rpcTypeNum as any);
 
         // Streaming requires a URL
         if (rpcTypeNum === 1) {

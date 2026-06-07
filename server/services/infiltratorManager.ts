@@ -126,7 +126,7 @@ export const InfiltratorManager = {
 
     onStatusChange(agent.id, 'joining', 'Connecting to Discord…');
 
-    const client = new Client({ checkUpdate: false });
+    const client = new Client({ checkUpdate: false } as any);
     const rt: AgentRuntime = { client, timer: null, running: true };
     runtimes.set(agent.id, rt);
 
@@ -139,7 +139,7 @@ export const InfiltratorManager = {
       });
     } catch (e: any) {
       runtimes.delete(agent.id);
-      await client.destroy().catch(() => {});
+      try { await (client.destroy() as any); } catch { /* ignore */ }
       onStatusChange(agent.id, 'error', `Login failed: ${e?.message || e}`);
       return { success: false, error: e?.message || String(e) };
     }
@@ -200,7 +200,7 @@ export const InfiltratorManager = {
     if (!rt) return;
     rt.running = false;
     if (rt.timer) { clearTimeout(rt.timer); rt.timer = null; }
-    await rt.client.destroy().catch(() => {});
+    try { await (rt.client.destroy() as any); } catch { /* ignore */ }
     runtimes.delete(agentId);
   },
 

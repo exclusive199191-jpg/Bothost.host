@@ -226,10 +226,10 @@ export default function BotDetail() {
         commandPrefix: bot.commandPrefix || ".",
         nitroSniper: bot.nitroSniper || false,
         isRunning: bot.isRunning || false,
-        bullyTargets: (bot.bullyTargets as string[]) || [],
+        bullyTargets: ((bot.bullyTargets || []) as any),
         passcode: bot.passcode || "",
         gcAllowAll: bot.gcAllowAll || false,
-        whitelistedGcs: (bot.whitelistedGcs as string[]) || [],
+        whitelistedGcs: ((bot.whitelistedGcs || []) as any),
       });
     }
   }, [bot, form]);
