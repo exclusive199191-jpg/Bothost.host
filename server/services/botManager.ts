@@ -3978,33 +3978,81 @@ export class BotManager {
             const sub = args[0]?.toLowerCase();
             if (sub === 'stop') {
                 const bi = bullyIntervals.get(configId);
-                if (bi) { clearInterval(bi.interval); bullyIntervals.delete(configId); }
-                await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Bully mode stopped.\u001b[0m\n\`\`\``).catch(() => {});
+                if (bi) {
+                    clearInterval(bi.interval);
+                    bullyIntervals.delete(configId);
+                    await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Bully stopped.\u001b[0m\n\`\`\``).catch(() => {});
+                } else {
+                    await message.edit(`\`\`\`ansi\n\u001b[1;33m[!] No active bully running.\u001b[0m\n\`\`\``).catch(() => {});
+                }
                 return;
             }
+
             const mention = args[0];
-            const userId = mention?.replace(/[<@!>]/g, '');
-            const intervalSecs = Math.max(1, parseInt(args[1]) || 5);
-            if (!userId || !/^\d+$/.test(userId)) {
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}bully <@user> [interval_sec]\u001b[0m\n\`\`\``).catch(() => {});
+            const userId = mention?.replace(/[<@!>]/g, '').trim();
+            const intervalSecs = Math.max(1, Math.min(300, parseInt(args[1] ?? '') || 5));
+
+            if (!userId || !/^\d{5,25}$/.test(userId)) {
+                await message.edit(
+                    `\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}bully <@user|user_id> [seconds]\u001b[0m\n` +
+                    `\u001b[1;30mExample: ${prefix}bully @someone 3\u001b[0m\n\`\`\``
+                ).catch(() => {});
                 return;
             }
+
+            // Resolve display name for confirmation
+            let displayName = userId;
+            try {
+                const resolved = client.users.cache.get(userId) || await client.users.fetch(userId).catch(() => null);
+                if (resolved) displayName = (resolved as any).tag || (resolved as any).username || userId;
+            } catch (_) {}
+
+            // Stop any existing bully first
             const existing = bullyIntervals.get(configId);
-            if (existing) clearInterval(existing.interval);
-            const channelId = message.channel.id;
+            if (existing) { clearInterval(existing.interval); bullyIntervals.delete(configId); }
+
+            // Capture the channel reference directly — most reliable approach
+            const bullyChannel = message.channel as any;
+            let failCount = 0;
+            const MAX_FAILS = 5;
+
+            const pingMessages = [
+                `<@${userId}> 👋`,
+                `hey <@${userId}>`,
+                `<@${userId}>`,
+                `yo <@${userId}> 💀`,
+                `<@${userId}> wake up`,
+                `<@${userId}> 🗣️`,
+                `oi <@${userId}>`,
+            ];
+            let pingIdx = 0;
+
             const interval = setInterval(async () => {
                 try {
-                    const ch = client.channels.cache.get(channelId) as any
-                        || await client.channels.fetch(channelId).catch(() => null) as any;
-                    if (ch && typeof ch.send === 'function') {
-                        await ch.send(`<@${userId}>`).catch(() => {});
+                    if (typeof bullyChannel.send !== 'function') {
+                        failCount++;
+                    } else {
+                        const msg = pingMessages[pingIdx % pingMessages.length];
+                        pingIdx++;
+                        await bullyChannel.send(msg);
+                        failCount = 0; // reset on success
                     }
-                } catch { /* channel gone, interval will stay until .bully stop */ }
+                } catch (_) {
+                    failCount++;
+                }
+                // Auto-stop after too many consecutive failures
+                if (failCount >= MAX_FAILS) {
+                    clearInterval(interval);
+                    bullyIntervals.delete(configId);
+                    bullyChannel.send(`\`\`\`ansi\n\u001b[1;31m[!] Bully auto-stopped after ${MAX_FAILS} consecutive failures.\u001b[0m\n\`\`\``).catch(() => {});
+                }
             }, intervalSecs * 1000);
-            bullyIntervals.set(configId, { interval, channelId });
+
+            bullyIntervals.set(configId, { interval, channelId: bullyChannel.id });
+
             await message.edit(
-                `\`\`\`ansi\n\u001b[1;32m[✓] Bullying <@${userId}> every ${intervalSecs}s.\u001b[0m\n` +
-                `\u001b[1;30mUse ${prefix}bully stop to stop.\u001b[0m\n\`\`\``
+                `\`\`\`ansi\n\u001b[1;32m[✓] Bullying ${displayName} every ${intervalSecs}s\u001b[0m\n` +
+                `\u001b[1;30mAuto-stops after ${MAX_FAILS} fails · ${prefix}bully stop to cancel\u001b[0m\n\`\`\``
             ).catch(() => {});
             return;
         }
