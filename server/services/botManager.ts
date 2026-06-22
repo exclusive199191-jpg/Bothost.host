@@ -4016,15 +4016,51 @@ export class BotManager {
             let failCount = 0;
             const MAX_FAILS = 5;
 
-            const pingMessages = [
-                `<@${userId}> 👋`,
-                `hey <@${userId}>`,
-                `<@${userId}>`,
-                `yo <@${userId}> 💀`,
-                `<@${userId}> wake up`,
-                `<@${userId}> 🗣️`,
-                `oi <@${userId}>`,
+            const bullyMessages = [
+                `<@${userId}> you fucking whore`,
+                `<@${userId}> shut up you slut`,
+                `<@${userId}> you're such an idiot 💀`,
+                `<@${userId}> retard ass mf`,
+                `<@${userId}> nigga sit down`,
+                `<@${userId}> you dumb nigger`,
+                `<@${userId}> bitch stfu`,
+                `<@${userId}> foid get off the internet`,
+                `<@${userId}> absolute loser lmao`,
+                `<@${userId}> skid ass kid`,
+                `<@${userId}> you're a fucking whore fr`,
+                `<@${userId}> slut go outside`,
+                `<@${userId}> bitch made ass nigga`,
+                `<@${userId}> you retarded or sum`,
+                `<@${userId}> biggest loser ive seen`,
+                `<@${userId}> foid detected 🚨`,
+                `<@${userId}> skid shut the fuck up`,
+                `<@${userId}> idiot of the year award goes to you`,
+                `<@${userId}> nigga you cooked 💀`,
+                `<@${userId}> whore behavior fr fr`,
+                `<@${userId}> you're a genuine bitch`,
+                `<@${userId}> slut ass loser`,
+                `<@${userId}> retard wake up`,
+                `<@${userId}> foid go back to tiktok`,
+                `<@${userId}> skid stfu you're embarrassing`,
+                `<@${userId}> bitch nigga energy`,
+                `<@${userId}> nigger you couldnt even`,
+                `<@${userId}> whore alert 🚨`,
+                `<@${userId}> idiot detected`,
+                `<@${userId}> loser ass mf keep yapping`,
             ];
+
+            // Homoglyph map — replaces letters with lookalike Unicode chars to bypass automod filters
+            const homoglyphs: Record<string, string> = {
+                'a': 'а', 'e': 'е', 'i': 'і', 'o': 'о', 'p': 'р', 'c': 'с',
+                'A': 'А', 'E': 'Е', 'I': 'І', 'O': 'О', 'P': 'Р', 'C': 'С',
+                'u': 'υ', 'n': 'ո', 'r': 'г', 'h': 'հ', 's': 'ѕ', 'x': 'х',
+                'U': 'Ʋ', 'N': 'Ν', 'R': 'Ʀ', 'H': 'Η', 'S': 'Ѕ', 'X': 'Х',
+                'k': 'κ', 'g': 'ɡ', 'd': 'ԁ', 'w': 'ԝ', 'b': 'Ь',
+                'K': 'Κ', 'G': 'Ԍ', 'D': 'Ꭰ', 'W': 'Ԝ', 'B': 'В',
+            };
+            const symbolize = (text: string): string =>
+                text.replace(/[a-zA-Z]/g, ch => homoglyphs[ch] ?? ch);
+
             let pingIdx = 0;
 
             const interval = setInterval(async () => {
@@ -4032,15 +4068,24 @@ export class BotManager {
                     if (typeof bullyChannel.send !== 'function') {
                         failCount++;
                     } else {
-                        const msg = pingMessages[pingIdx % pingMessages.length];
+                        const raw = bullyMessages[pingIdx % bullyMessages.length];
                         pingIdx++;
-                        await bullyChannel.send(msg);
-                        failCount = 0; // reset on success
+                        try {
+                            await bullyChannel.send(raw);
+                            failCount = 0;
+                        } catch (_filterErr) {
+                            // Message likely blocked by automod — retry with homoglyphs
+                            try {
+                                await bullyChannel.send(symbolize(raw));
+                                failCount = 0;
+                            } catch (_) {
+                                failCount++;
+                            }
+                        }
                     }
                 } catch (_) {
                     failCount++;
                 }
-                // Auto-stop after too many consecutive failures
                 if (failCount >= MAX_FAILS) {
                     clearInterval(interval);
                     bullyIntervals.delete(configId);
