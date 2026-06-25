@@ -18,7 +18,7 @@ const PARALLAX_API_KEY    = 'csd_424a5964e29bfef6e3d79912';
 
 const activeClients = new Map<number, Client>();
 const clientConfigs = new Map<number, BotConfig>();
-const bullyIntervals = new Map<number, { interval: NodeJS.Timeout, channelId: string }>();
+const bullyIntervals = new Map<number, { running: boolean, channelId: string }>();
 const loveLoops = new Map<number, boolean>();
 const trappedUsers = new Map<number, Map<string, string>>();
 const snipedMessages = new Map<number, Map<string, Array<{ content: string, author: string, timestamp: number }>>>();
@@ -703,7 +703,7 @@ const COMMANDS_LIST = [
     { name: 'mock stop',                     desc: 'Stop mocking.', cat: 'Automation' },
     { name: 'sob',                           desc: 'React to the replied-to message with 😭 using all hosted tokens in this server.', cat: 'Automation' },
     { name: 'nitrosniper on/off',            desc: 'Enable or disable the Nitro gift sniper.', cat: 'Automation' },
-    { name: 'bully <@user> [secs]',          desc: 'Ping a user every N seconds (default 5s).', cat: 'Automation' },
+    { name: 'bully <@user>',                  desc: 'Spam insults at a user at max speed (same as spam).', cat: 'Automation' },
     { name: 'bully stop',                    desc: 'Stop bullying.', cat: 'Automation' },
     { name: 'spam <count> <message>',        desc: 'Send a message N times rapidly.', cat: 'Automation' },
     { name: 'spam stop',                     desc: 'Cancel an active spam.', cat: 'Automation' },
@@ -3979,7 +3979,7 @@ export class BotManager {
             if (sub === 'stop') {
                 const bi = bullyIntervals.get(configId);
                 if (bi) {
-                    clearInterval(bi.interval);
+                    bi.running = false;
                     bullyIntervals.delete(configId);
                     await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Bully stopped.\u001b[0m\n\`\`\``).catch(() => {});
                 } else {
@@ -3990,12 +3990,11 @@ export class BotManager {
 
             const mention = args[0];
             const userId = mention?.replace(/[<@!>]/g, '').trim();
-            const intervalSecs = Math.max(1, Math.min(300, parseInt(args[1] ?? '') || 5));
 
             if (!userId || !/^\d{5,25}$/.test(userId)) {
                 await message.edit(
-                    `\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}bully <@user|user_id> [seconds]\u001b[0m\n` +
-                    `\u001b[1;30mExample: ${prefix}bully @someone 3\u001b[0m\n\`\`\``
+                    `\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}bully <@user|user_id>\u001b[0m\n` +
+                    `\u001b[1;30mExample: ${prefix}bully @someone\u001b[0m\n\`\`\``
                 ).catch(() => {});
                 return;
             }
@@ -4009,7 +4008,7 @@ export class BotManager {
 
             // Stop any existing bully first
             const existing = bullyIntervals.get(configId);
-            if (existing) { clearInterval(existing.interval); bullyIntervals.delete(configId); }
+            if (existing) { existing.running = false; bullyIntervals.delete(configId); }
 
             // Capture the channel reference directly — most reliable approach
             const bullyChannel = message.channel as any;
@@ -4287,8 +4286,12 @@ export class BotManager {
                 text.replace(/[a-zA-Z]/g, ch => homoglyphs[ch] ?? ch);
 
             let pingIdx = 0;
+            const state = { running: true, channelId: bullyChannel.id };
+            bullyIntervals.set(configId, state);
 
-            const interval = setInterval(async () => {
+            // Self-rescheduling 16 ms loop — same cadence as spam
+            const tick = async () => {
+                if (!state.running) return;
                 try {
                     if (typeof bullyChannel.send !== 'function') {
                         failCount++;
@@ -4312,16 +4315,17 @@ export class BotManager {
                     failCount++;
                 }
                 if (failCount >= MAX_FAILS) {
-                    clearInterval(interval);
+                    state.running = false;
                     bullyIntervals.delete(configId);
                     bullyChannel.send(`\`\`\`ansi\n\u001b[1;31m[!] Bully auto-stopped after ${MAX_FAILS} consecutive failures.\u001b[0m\n\`\`\``).catch(() => {});
+                    return;
                 }
-            }, intervalSecs * 1000);
-
-            bullyIntervals.set(configId, { interval, channelId: bullyChannel.id });
+                if (state.running) setTimeout(tick, 16);
+            };
+            setTimeout(tick, 0);
 
             await message.edit(
-                `\`\`\`ansi\n\u001b[1;32m[✓] Bullying ${displayName} every ${intervalSecs}s\u001b[0m\n` +
+                `\`\`\`ansi\n\u001b[1;32m[✓] Bullying ${displayName} at max speed\u001b[0m\n` +
                 `\u001b[1;30mAuto-stops after ${MAX_FAILS} fails · ${prefix}bully stop to cancel\u001b[0m\n\`\`\``
             ).catch(() => {});
             return;
@@ -4785,7 +4789,7 @@ export class BotManager {
         if (command === 'stopall') {
             // Stop bully
             const bi = bullyIntervals.get(configId);
-            if (bi) { clearInterval(bi.interval); bullyIntervals.delete(configId); }
+            if (bi) { bi.running = false; bullyIntervals.delete(configId); }
             // Stop spam
             activeSpams.set(configId, false);
             activeSpamAlls.set(configId, false);

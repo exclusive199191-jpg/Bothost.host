@@ -82,7 +82,7 @@ const COMMANDS = [
   { cat: "Automation", usage: "nitro on",                   desc: "Enable Nitro sniper." },
   { cat: "Automation", usage: "nitro off",                  desc: "Disable Nitro sniper." },
   { cat: "Automation", usage: "afk [reason]",               desc: "Toggle AFK mode on/off." },
-  { cat: "Automation", usage: "bully <@user>",              desc: "Spam insults at user every 100ms." },
+  { cat: "Automation", usage: "bully <@user>",              desc: "Spam insults at max speed (same as spam/massdm)." },
   { cat: "Automation", usage: "bully off",                  desc: "Stop the bully loop." },
   { cat: "Automation", usage: "sob <@user>",                desc: "Continuously sad-react to user." },
   { cat: "Automation", usage: "statusmover <w1,w2,...>",    desc: "Cycle custom status through words." },
