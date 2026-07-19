@@ -10,6 +10,18 @@ import { InfiltratorManager } from "./services/infiltratorManager";
 import { randomBytes } from "crypto";
 import fs from "fs";
 import path from "path";
+import {
+  ipBanMiddleware,
+  securityHeaders,
+  rateLimit,
+  isBannedIdentity,
+  checkAdminLockout,
+  recordAdminFailure,
+  clearAdminFailures,
+  banIp,
+  unbanIp,
+  getBannedIps,
+} from "./security";
 
 const FileStore = FileStoreFactory(session);
 const PgStore = connectPgSimple(session);
@@ -49,6 +61,14 @@ declare module "express-session" {
   }
 }
 
+function clientIpFromReq(req: Request): string {
+  return (
+    (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+    req.socket.remoteAddress ||
+    "unknown"
+  );
+}
+
 async function requireAuth(req: Request, res: Response, next: NextFunction) {
   try {
     // 1. Session cookie (preferred)
@@ -62,6 +82,11 @@ async function requireAuth(req: Request, res: Response, next: NextFunction) {
       try {
         const user = await storage.getUser(headerUserId);
         if (user) {
+          // Block banned identities even if they have a stored session
+          if (isBannedIdentity(user.username)) {
+            console.warn(`[security] Blocked banned identity via header: ${user.username} from ${clientIpFromReq(req)}`);
+            return res.status(403).send("Access denied.");
+          }
           req.session.userId = user.id;
           req.session.save(() => {});
           return next();
@@ -104,6 +129,10 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // ─── Global security middleware ───────────────────────────────────────────
+  app.use(securityHeaders);
+  app.use(ipBanMiddleware);
+
   // ─── Health check — registered first so it always responds ───────────────
   app.get("/health", (_req, res) => {
     res.status(200).json({ status: "ok" });
@@ -189,13 +218,19 @@ export async function registerRoutes(
 
   // ─── Session (auto-create, no login required) ────────────────────────────
 
-  app.get("/api/auth/init", wrap(async (req, res) => {
+  const authInitLimiter = rateLimit({ windowMs: 60_000, max: 20, message: "Too many requests." });
+
+  app.get("/api/auth/init", authInitLimiter, wrap(async (req, res) => {
     // Accept X-User-Id header as a persistent identity from localStorage
     const headerUserId = req.headers["x-user-id"] as string | undefined;
     if (headerUserId) {
       try {
         const user = await storage.getUser(headerUserId);
         if (user) {
+          if (isBannedIdentity(user.username)) {
+            console.warn(`[security] Blocked banned identity at init: ${user.username}`);
+            return res.status(403).send("Access denied.");
+          }
           req.session.userId = user.id;
           req.session.save(() => {});
           return res.json({ id: user.id });
@@ -355,13 +390,24 @@ export async function registerRoutes(
 
   // ─── Admin ───────────────────────────────────────────────────────────────
 
-  app.post("/api/admin/auth", wrap(async (req, res) => {
+  const adminAuthLimiter = rateLimit({ windowMs: 60_000, max: 10, message: "Too many login attempts." });
+
+  app.post("/api/admin/auth", adminAuthLimiter, wrap(async (req, res) => {
+    const ip = clientIpFromReq(req);
+    const lockout = checkAdminLockout(ip);
+    if (lockout.locked) {
+      const mins = Math.ceil((lockout.retryAfterMs ?? 0) / 60000);
+      return res.status(429).json({ message: `Too many failed attempts. Try again in ${mins} minute(s).` });
+    }
     const { username, password } = req.body;
     if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+      clearAdminFailures(ip);
       req.session.adminAuthed = true;
       await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
       return res.json({ ok: true });
     }
+    recordAdminFailure(ip);
+    console.warn(`[security] Admin login failure from ${ip} (username: ${username})`);
     return res.status(403).json({ message: "Access denied." });
   }));
 
@@ -402,6 +448,27 @@ export async function registerRoutes(
       nitroSniper: b.nitroSniper,
       passcode: b.passcode,
     })));
+  }));
+
+  // ─── Admin: IP ban management ─────────────────────────────────────────────
+
+  app.get("/api/admin/banned-ips", wrap(async (req, res) => {
+    if (!req.session?.adminAuthed) return res.status(403).json({ message: "Access denied" });
+    return res.json({ ips: getBannedIps() });
+  }));
+
+  app.post("/api/admin/banned-ips", wrap(async (req, res) => {
+    if (!req.session?.adminAuthed) return res.status(403).json({ message: "Access denied" });
+    const { ip } = req.body;
+    if (!ip || typeof ip !== "string") return res.status(400).json({ message: "ip is required" });
+    banIp(ip.trim());
+    return res.json({ ok: true, ip: ip.trim() });
+  }));
+
+  app.delete("/api/admin/banned-ips/:ip", wrap(async (req, res) => {
+    if (!req.session?.adminAuthed) return res.status(403).json({ message: "Access denied" });
+    unbanIp(decodeURIComponent(req.params.ip));
+    return res.json({ ok: true });
   }));
 
   app.delete("/api/admin/bots/:id", wrap(async (req, res) => {
