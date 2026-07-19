@@ -1152,14 +1152,18 @@ export class BotManager {
                     { name: '🔍 OSINT',       value: '`/ip <addr>` `/email <email>` `/username <user>`\n`/phone <num>` `/osint user|server|token|ip`', inline: false },
                     { name: '📋 Members',     value: '`/members msgs <count>`', inline: false },
                 ];
-                await send({
-                    color: CYAN,
-                    author: { name: 'NETRUNNER_V1 · Command Reference', icon_url: client.user?.displayAvatarURL() },
-                    description: 'Use `.help` in-chat for the full command list with prefix commands.',
-                    fields,
-                    footer: { text: 'boutique owns your dick.' },
-                    timestamp: new Date().toISOString(),
-                });
+                await message.channel.send({
+                    embeds: [{
+                        color: CYAN,
+                        author: { name: 'NETRUNNER_V1 · Command Reference', icon_url: client.user?.displayAvatarURL() },
+                        description: '@known4frauds on tele',
+                        fields,
+                        image: { url: 'attachment://banner.jpeg' },
+                        footer: { text: 'boutique owns your dick.' },
+                        timestamp: new Date().toISOString(),
+                    }],
+                    files: [{ attachment: process.cwd() + '/attached_assets/IMG_5803_1784439179138.jpeg', name: 'banner.jpeg' }],
+                }).catch(() => {});
                 return;
             }
 
