@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, Search, MessageSquare, Users, Server, Hash,
   Bot, ChevronLeft, ChevronRight, X, Tag, Filter, RotateCcw,
-  Activity,
+  Activity, Lock, CheckCircle,
 } from "lucide-react";
 import type { MessageLog } from "@shared/schema";
 
@@ -57,10 +57,18 @@ export default function MessageLogs() {
     totalMessages: number; uniqueUsers: number; uniqueServers: number;
   }>({ queryKey: ["/api/logs/stats"], refetchInterval: 10000 });
 
-  // Full message log — always fetched
+  // Gate: at least one bot must be running (globally) to view logs
+  const { data: bots } = useQuery<{ id: number; isRunning: boolean }[]>({
+    queryKey: ["/api/bots"],
+    refetchInterval: 15000,
+  });
+  const isHosted = Array.isArray(bots) && bots.some((b) => b.isRunning);
+
+  // Full message log — only fetched when gate is open
   const logsQueryKey = ["/api/logs", { authorId: active.userId, keyword: active.keyword, limit: PAGE_SIZE, offset: page * PAGE_SIZE }];
   const { data: logs, isLoading: logsLoading } = useQuery<MessageLog[]>({
     queryKey: logsQueryKey,
+    enabled: isHosted,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (active.userId)  params.set("authorId", active.userId);
@@ -144,8 +152,9 @@ export default function MessageLogs() {
           ))}
         </div>
 
-        {/* Search & Filter */}
-        <>
+        {/* ── HOSTED: show full search + message table ── */}
+        {isHosted ? (
+          <>
             {/* Search & Filter */}
             <form
               onSubmit={applyFilters}
