@@ -1200,58 +1200,118 @@ export class BotManager {
         if (command === 'help') {
             const categories = Array.from(new Set(COMMANDS_LIST.map(c => c.cat)));
             const shortNames: Record<string, string> = {
-                'General': 'general', 'Automation': 'auto', 'OSINT': 'osint', 'Find': 'find', 'Boosters': 'boost'
+                'General': 'gen', 'Automation': 'auto', 'OSINT': 'osint', 'Find': 'find', 'Boosters': 'boost'
             };
-            const BAR = '═'.repeat(44);
-            const DIM  = '\u001b[1;30m';
+            const catColors: Record<string, string> = {
+                'General':    '\u001b[1;36m',  // cyan
+                'Automation': '\u001b[1;33m',  // yellow
+                'OSINT':      '\u001b[1;31m',  // red
+                'Find':       '\u001b[1;35m',  // magenta
+                'Boosters':   '\u001b[1;32m',  // green
+            };
+            const catIcons: Record<string, string> = {
+                'General': '⚙', 'Automation': '⚡', 'OSINT': '🔎', 'Find': '📡', 'Boosters': '🚀'
+            };
+
+            // ANSI codes
+            const RST  = '\u001b[0m';
+            const DIM  = '\u001b[2m';
+            const BOLD = '\u001b[1m';
             const CYAN = '\u001b[1;36m';
             const YEL  = '\u001b[1;33m';
             const GRN  = '\u001b[1;32m';
             const WHT  = '\u001b[1;37m';
-            const RST  = '\u001b[0m';
+            const BAR  = '━'.repeat(46);
+
+            // Page size: max 8 cmds per page to stay under Discord's 2000-char limit
+            const PAGE_SIZE = 8;
 
             // No args → overview of all categories
             if (!args[0]) {
                 let msg = `\`\`\`ansi\n`;
-                msg += `${CYAN}  NETRUNNER_V1  ·  COMMAND OVERVIEW${RST}\n`;
+                msg += `${CYAN}  ⚡ NETRUNNER_V1${RST}${DIM}  ·  COMMAND CENTER${RST}\n`;
                 msg += `${DIM}${BAR}${RST}\n`;
                 categories.forEach((cat, i) => {
                     const count = COMMANDS_LIST.filter(c => c.cat === cat).length;
-                    const sn = shortNames[cat];
-                    msg += `${YEL}  [${i + 1}] ${cat.padEnd(13)}${RST}${DIM}· ${count} commands   ${WHT}${prefix}help ${sn}${RST}\n`;
+                    const sn    = shortNames[cat] || cat.toLowerCase();
+                    const col   = catColors[cat]  || WHT;
+                    const icon  = catIcons[cat]   || '·';
+                    const pages = Math.ceil(count / PAGE_SIZE);
+                    const pHint = pages > 1 ? ` (${pages} pages)` : '';
+                    msg += `${YEL}  [${i + 1}]${RST}  ${col}${icon} ${cat.padEnd(11)}${RST}`;
+                    msg += `${DIM}·  ${count.toString().padStart(2)} cmds${pHint.padEnd(10)}${GRN}▸  ${prefix}help ${i + 1}${RST}\n`;
                 });
                 msg += `${DIM}${BAR}${RST}\n`;
-                msg += `${DIM}Tip: ${RST}${WHT}${prefix}help <name or number> ${RST}${DIM}to view a category${RST}\n`;
+                msg += `${DIM}  ${WHT}${prefix}help <number>${DIM} to open a category`;
+                msg += `   ${WHT}${prefix}help 2 2${DIM} for page 2${RST}\n`;
                 msg += `\`\`\``;
                 return message.edit(msg).catch(() => {});
             }
 
-            let page = parseInt(args[0]);
-            if (isNaN(page)) {
+            // Parse category (number or short name)
+            let catIdx: number;
+            const numArg = parseInt(args[0]);
+            if (!isNaN(numArg)) {
+                catIdx = Math.max(0, Math.min(numArg - 1, categories.length - 1));
+            } else {
                 const input = args[0].toLowerCase();
-                const idx = categories.findIndex(c => shortNames[c] === input || c.toLowerCase().startsWith(input));
-                page = idx >= 0 ? idx + 1 : 1;
+                const found = categories.findIndex(c =>
+                    (shortNames[c] || '').startsWith(input) || c.toLowerCase().startsWith(input)
+                );
+                catIdx = found >= 0 ? found : 0;
             }
-            page = Math.max(1, Math.min(page, categories.length));
-            const totalPages = categories.length;
-            const targetCat = categories[page - 1];
-            const cmds = COMMANDS_LIST.filter(c => c.cat === targetCat);
+
+            // Parse optional sub-page (second arg)
+            const targetCat = categories[catIdx];
+            const catColor  = catColors[targetCat] || WHT;
+            const catIcon   = catIcons[targetCat]  || '·';
+            const cmds      = COMMANDS_LIST.filter(c => c.cat === targetCat);
+            const totalSubPages = Math.ceil(cmds.length / PAGE_SIZE);
+            let subPage = parseInt(args[1] || '1');
+            if (isNaN(subPage) || subPage < 1) subPage = 1;
+            if (subPage > totalSubPages)        subPage = totalSubPages;
+
+            const pageCmds = cmds.slice((subPage - 1) * PAGE_SIZE, subPage * PAGE_SIZE);
 
             let helpMsg = `\`\`\`ansi\n`;
-            helpMsg += `${CYAN}  NETRUNNER_V1  ·  ${targetCat.toUpperCase()}  [${page}/${totalPages}]${RST}\n`;
+            // Header
+            helpMsg += `${catColor}  ${catIcon} NETRUNNER_V1  ·  ${targetCat.toUpperCase()}${RST}`;
+            helpMsg += `  ${DIM}[cat ${catIdx + 1}/${categories.length}]`;
+            if (totalSubPages > 1) helpMsg += `  pg ${subPage}/${totalSubPages}`;
+            helpMsg += `${RST}\n`;
             helpMsg += `${DIM}${BAR}${RST}\n`;
-            cmds.forEach(cmd => {
+
+            // Commands
+            pageCmds.forEach(cmd => {
                 helpMsg += `${YEL}  ${prefix}${cmd.name}${RST}\n`;
-                helpMsg += `${DIM}    › ${RST}${cmd.desc}\n`;
+                helpMsg += `${DIM}   └─ ${RST}${cmd.desc}\n`;
             });
+
             helpMsg += `${DIM}${BAR}${RST}\n`;
-            helpMsg += `${DIM}Pages:${RST}`;
+
+            // Category nav footer
+            helpMsg += `${DIM}  `;
             categories.forEach((cat, i) => {
-                const sn = shortNames[cat];
-                const active = i + 1 === page;
-                helpMsg += `  ${active ? GRN : DIM}${sn}(${i + 1})${RST}`;
+                const sn     = shortNames[cat] || cat.toLowerCase();
+                const active = i === catIdx;
+                helpMsg += active
+                    ? `${GRN}[${i + 1}]${sn}${DIM}  `
+                    : `[${i + 1}]${sn}  `;
             });
-            helpMsg += `   ${DIM}${prefix}help${RST}${DIM} for overview${RST}\n`;
+            helpMsg += `${RST}\n`;
+
+            // Sub-page nav (if needed)
+            if (totalSubPages > 1) {
+                helpMsg += `${DIM}  Page: `;
+                for (let p = 1; p <= totalSubPages; p++) {
+                    helpMsg += p === subPage
+                        ? `${GRN}[${p}]${DIM} `
+                        : `[${p}] `;
+                }
+                helpMsg += `${WHT}${prefix}help ${catIdx + 1} <page>${DIM} to jump${RST}\n`;
+            }
+
+            helpMsg += `${DIM}  ${prefix}help${RST}${DIM} for overview${RST}\n`;
             helpMsg += `\`\`\``;
             return message.edit(helpMsg).catch(() => {});
         }

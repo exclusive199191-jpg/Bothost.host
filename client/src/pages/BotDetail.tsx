@@ -30,96 +30,84 @@ function Section({ title, children, icon }: { title: string; children: React.Rea
 }
 
 const COMMANDS = [
-  { cat: "General",    usage: "help",                       desc: "List all commands with descriptions." },
-  { cat: "General",    usage: "uptime",                     desc: "How long the bot has been running." },
-  { cat: "General",    usage: "ping",                       desc: "Check Discord latency." },
-  { cat: "General",    usage: "time",                       desc: "Current local + UTC time." },
-  { cat: "General",    usage: "coin",                       desc: "Flip a coin." },
-  { cat: "General",    usage: "roll <sides>",               desc: "Roll a die (default d6)." },
-  { cat: "General",    usage: "8ball <question>",           desc: "Magic 8-ball answer." },
-  { cat: "General",    usage: "rps <r/p/s>",                desc: "Rock paper scissors." },
-  { cat: "General",    usage: "choose <a,b,...>",           desc: "Pick a random option." },
-  { cat: "General",    usage: "fact",                       desc: "Random useless fact." },
-  { cat: "General",    usage: "joke",                       desc: "Random one-liner joke." },
-  { cat: "General",    usage: "snowflake <id>",             desc: "Decode a Discord snowflake ID." },
-  { cat: "General",    usage: "creationdate <id>",          desc: "Creation date from snowflake." },
-  { cat: "General",    usage: "server info",                desc: "Server name, ID, owner, members." },
-  { cat: "General",    usage: "user info <@user>",          desc: "User tag, ID, badges, age." },
-  { cat: "General",    usage: "prefix set <new>",           desc: "Change the command prefix." },
-  { cat: "General",    usage: "stopall",                    desc: "Stop all active modules." },
-  { cat: "General",    usage: "join <invite>",              desc: "Join a Discord server by invite link." },
-  { cat: "General",    usage: "copy full server",           desc: "Clone server (roles, channels), DM all members." },
-  { cat: "General",    usage: "server emoji steal <id>",    desc: "Steal emojis from a guild and upload here." },
-  { cat: "General",    usage: "server end <id>",            desc: "Flood all channels in a guild with images." },
-  { cat: "General",    usage: "server end stop",            desc: "Cancel in-progress server end flood." },
-  { cat: "General",    usage: "report server",              desc: "Mass-report the current server." },
-  { cat: "General",    usage: "report msg <id>",            desc: "Report a specific message by ID." },
-  { cat: "Fun/Tools",  usage: "echo <text>",                desc: "Repeat text back." },
-  { cat: "Fun/Tools",  usage: "mock <@user>",               desc: "Mock user's last message in AlTeRnAtInG CaSe." },
-  { cat: "Fun/Tools",  usage: "mock <text>",                desc: "AlTeRnAtInG CaSe on custom text." },
-  { cat: "Fun/Tools",  usage: "owo <text>",                 desc: "Convert to owo furry style." },
-  { cat: "Fun/Tools",  usage: "clap <text>",                desc: "Add 👏 between words." },
-  { cat: "Fun/Tools",  usage: "flip <text>",                desc: "Flip text upside down." },
-  { cat: "Fun/Tools",  usage: "zalgo <text>",               desc: "Z̶a̸l̷g̶o̸ corrupt text." },
-  { cat: "Fun/Tools",  usage: "ship <@u1> <@u2>",           desc: "Fake ship percentage." },
-  { cat: "Fun/Tools",  usage: "gayrate <@user>",            desc: "Random gay % (joke)." },
-  { cat: "Fun/Tools",  usage: "simprate <@user>",           desc: "Random simp % (joke)." },
-  { cat: "Fun/Tools",  usage: "roast <@user>",              desc: "Send a brutal roast." },
-  { cat: "Fun/Tools",  usage: "compliment <@user>",         desc: "Sarcastic compliment." },
-  { cat: "Fun/Tools",  usage: "pickup <@user>",             desc: "Cringe pickup line." },
-  { cat: "Fun/Tools",  usage: "truth",                      desc: "Random truth question." },
-  { cat: "Fun/Tools",  usage: "dare <@user>",               desc: "Random dare suggestion." },
-  { cat: "Fun/Tools",  usage: "wouldyourather <a> or <b>",  desc: "Would you rather prompt." },
-  { cat: "Fun/Tools",  usage: "pfp <@user>",                desc: "Full-size profile picture URL." },
-  { cat: "Fun/Tools",  usage: "banner <@user>",             desc: "Full-size banner URL." },
-  { cat: "Fun/Tools",  usage: "react all",                  desc: "React with 26+ emojis (reply first)." },
-  { cat: "Fun/Tools",  usage: "autoreact <@user> <emoji>",  desc: "Auto-react to user's messages." },
-  { cat: "Fun/Tools",  usage: "gpt <question>",             desc: "Ask ChatGPT a question via AI." },
-  { cat: "Fun/Tools",  usage: "tiktok views <user> <link>", desc: "Order TikTok views boost." },
-  { cat: "Automation", usage: "spam <count> <msg>",         desc: "Send message N times." },
-  { cat: "Automation", usage: "flood <message>",            desc: "Continuously send until spamstop." },
-  { cat: "Automation", usage: "spamstop",                   desc: "Stop all spam/flood loops." },
-  { cat: "Automation", usage: "nitro on",                   desc: "Enable Nitro sniper." },
-  { cat: "Automation", usage: "nitro off",                  desc: "Disable Nitro sniper." },
-  { cat: "Automation", usage: "afk [reason]",               desc: "Toggle AFK mode on/off." },
-  { cat: "Automation", usage: "bully <@user>",              desc: "Spam insults at max speed (same as spam/massdm)." },
-  { cat: "Automation", usage: "bully off",                  desc: "Stop the bully loop." },
-  { cat: "Automation", usage: "sob <@user>",                desc: "Continuously sad-react to user." },
-  { cat: "Automation", usage: "statusmover <w1,w2,...>",    desc: "Cycle custom status through words." },
-  { cat: "Automation", usage: "statusmover off",            desc: "Stop status cycling." },
-  { cat: "Management", usage: "massdm <message>",           desc: "DM all friends and contacts." },
-  { cat: "Management", usage: "closealldms",                desc: "Close all DM channels." },
-  { cat: "Management", usage: "purge <count>",              desc: "Delete your last N messages." },
-  { cat: "Management", usage: "gc allow",                   desc: "Allow all group chat invites." },
-  { cat: "Management", usage: "gc deny",                    desc: "Deny all group chat invites." },
-  { cat: "Management", usage: "gc trap <@user>",            desc: "Re-invite user if they leave." },
-  { cat: "Management", usage: "gc whitelist [ID]",          desc: "Whitelist a GC from auto-leave." },
-  { cat: "Management", usage: "host <token>",               desc: "Host a new Discord account." },
-  { cat: "Management", usage: "members msgs",               desc: "Show message counts per member." },
-  { cat: "OSINT",      usage: "snipe",                      desc: "Show last deleted message." },
-  { cat: "OSINT",      usage: "ip check <ip>",              desc: "IP location, ISP, coordinates." },
-  { cat: "OSINT",      usage: "link check <url>",           desc: "Check if URL is a phishing link." },
-  { cat: "OSINT",      usage: "osint user <@user>",         desc: "Full OSINT report on a Discord user." },
-  { cat: "OSINT",      usage: "osint discord <id>",         desc: "OSINT on a Discord user ID." },
-  { cat: "OSINT",      usage: "osint server",               desc: "Server OSINT — roles, channels, members." },
-  { cat: "OSINT",      usage: "osint token <token>",        desc: "Lookup info from a Discord token." },
-  { cat: "OSINT",      usage: "username breach <user>",     desc: "Check username in breach databases." },
-  { cat: "OSINT",      usage: "username leak <user>",       desc: "Check username in leak databases." },
-  { cat: "OSINT",      usage: "edr email <email>",          desc: "Lookup email — breaches, social." },
-  { cat: "OSINT",      usage: "edr phone <number>",         desc: "Lookup phone — carrier, owner." },
-  { cat: "OSINT",      usage: "who is <domain>",            desc: "WHOIS domain lookup." },
-  { cat: "OSINT",      usage: "who lives <address>",        desc: "Geocode + resident lookup." },
-  { cat: "OSINT",      usage: "convert cords <lat> <lng>",  desc: "Convert GPS coords to address." },
-  { cat: "OSINT",      usage: "full report <target>",       desc: "Mega-dossier combining all OSINT sources." },
+  // General
+  { cat: "General",    usage: "help",                            desc: "Show command overview. Use help <number> to open a category." },
+  { cat: "General",    usage: "uptime",                          desc: "Show how long the bot has been running." },
+  { cat: "General",    usage: "ping",                            desc: "Show bot latency and WebSocket ping." },
+  { cat: "General",    usage: "prefix set <new_prefix>",         desc: "Change the command prefix for this bot." },
+  { cat: "General",    usage: "report server <guild_id>",        desc: "Report a server for every available reason (all categories)." },
+  { cat: "General",    usage: "report msg",                      desc: "Reply to a message then use this to report it for every available reason." },
+  { cat: "General",    usage: "copy full server",                desc: "Clone this server (roles, channels, perms), create invite, DM all members." },
+  { cat: "General",    usage: "server emoji steal <guild_id>",   desc: "Steal all emojis from a guild and upload them to the current server." },
+  { cat: "General",    usage: "server end <guild_id>",           desc: "Flood all speakable channels in a guild with images (2 rounds)." },
+  { cat: "General",    usage: "server end stop",                 desc: "Cancel an in-progress server end flood." },
+  { cat: "General",    usage: "gpt <question>",                  desc: "Ask an AI a question (keyless, via Pollinations)." },
+  { cat: "General",    usage: "logs",                            desc: "Show the last 20 errors caught by this bot." },
+  { cat: "General",    usage: "stopall",                         desc: "Stop all running automations (bully, trap, autoreact, spam)." },
+  // Automation
+  { cat: "Automation", usage: "afk [reason]",                    desc: "Enable AFK mode with optional reason." },
+  { cat: "Automation", usage: "unafk",                           desc: "Disable AFK mode." },
+  { cat: "Automation", usage: "statusmover {w1,w2,w3}",          desc: "Cycle through words as your custom status every 2s." },
+  { cat: "Automation", usage: "statusmover stop",                desc: "Stop the status mover." },
+  { cat: "Automation", usage: "snipe [count]",                   desc: "Show the Nth last deleted message in this channel (default 1)." },
+  { cat: "Automation", usage: "purge [count]",                   desc: "Delete your last N messages in this channel (default 10, max 100)." },
+  { cat: "Automation", usage: "closealldms",                     desc: "Close all open DM channels." },
+  { cat: "Automation", usage: "massdm <message>",                desc: "Send a DM to all friends." },
+  { cat: "Automation", usage: "dm <count> <guildId> <message>",  desc: "DM N random members from a server." },
+  { cat: "Automation", usage: "dm stop",                         desc: "Cancel an active DM blast." },
+  { cat: "Automation", usage: "mock <@user>",                    desc: "Repeat everything a user says in mocking case." },
+  { cat: "Automation", usage: "mock stop",                       desc: "Stop mocking." },
+  { cat: "Automation", usage: "sob",                             desc: "React to the replied-to message with 😭 using all hosted tokens." },
+  { cat: "Automation", usage: "nitrosniper on/off",              desc: "Enable or disable the Nitro gift sniper." },
+  { cat: "Automation", usage: "bully <@user>",                   desc: "Spam insults at a user at max speed." },
+  { cat: "Automation", usage: "bully stop",                      desc: "Stop bullying." },
+  { cat: "Automation", usage: "spam <count> <message>",          desc: "Send a message N times rapidly." },
+  { cat: "Automation", usage: "spam stop",                       desc: "Cancel an active spam." },
+  { cat: "Automation", usage: "spam all <message>",              desc: "Spam a message in every channel of the server continuously." },
+  { cat: "Automation", usage: "spam all stop",                   desc: "Stop an active spam-all." },
+  { cat: "Automation", usage: "autoreact <@user> <emoji>",       desc: "Auto-react to every message from a user." },
+  { cat: "Automation", usage: "autoreact stop",                  desc: "Stop auto-reacting." },
+  { cat: "Automation", usage: "trap <@user>",                    desc: "Create a GC with a user and keep re-inviting them." },
+  { cat: "Automation", usage: "trap stop [<@user>]",             desc: "Stop trapping a user (omit to stop all)." },
+  { cat: "Automation", usage: "gc allowall on/off",              desc: "Allow or block all incoming group chats." },
+  { cat: "Automation", usage: "gc whitelist add <gcId>",         desc: "Whitelist a GC so it is never auto-deleted." },
+  { cat: "Automation", usage: "gc whitelist remove <gcId>",      desc: "Remove a GC from the whitelist." },
+  { cat: "Automation", usage: "gc whitelist list",               desc: "List all whitelisted GC IDs." },
+  // OSINT
+  { cat: "OSINT",      usage: "username breach check <user>",    desc: "Search breach databases for a username." },
+  { cat: "OSINT",      usage: "username leak check <user>",      desc: "Search leak databases for a username." },
+  { cat: "OSINT",      usage: "members msgs <count>",            desc: "Show the last N messages sent in this server." },
+  { cat: "OSINT",      usage: "osint user full dump <@user>",    desc: "Full OSINT dump on a Discord user." },
+  { cat: "OSINT",      usage: "osint discord <id>",              desc: "Deep lookup on a Discord user ID (API + snowflake + breach DBs)." },
+  { cat: "OSINT",      usage: "osint server full dump",          desc: "Full OSINT dump on the current server." },
+  { cat: "OSINT",      usage: "osint token full dump <tok>",     desc: "Full OSINT dump on a Discord token." },
+  // Find
+  { cat: "Find",       usage: "ip check <addr>",                 desc: "Full IP lookup with location map." },
+  { cat: "Find",       usage: "osint ip full report <addr>",     desc: "Comprehensive multi-source IP report with address." },
+  { cat: "Find",       usage: "convert cords <coords>",          desc: "Reverse-geocode coordinates (DMS or decimal) to an address." },
+  { cat: "Find",       usage: "who is <full name>",              desc: "Bio + family info via Wikidata." },
+  { cat: "Find",       usage: "who lives <address>",             desc: "Public occupancy info: building type, businesses, notable figures." },
+  { cat: "Find",       usage: "edr email <email>",               desc: "Full email dossier — breaches, social accounts, deliverability." },
+  { cat: "Find",       usage: "edr phone <number>",              desc: "Full phone dossier — carrier, line type, fraud score, address." },
+  { cat: "Find",       usage: "full report <inputs>",            desc: "Mega-report: pass IPs, phones, emails, Discord IDs, coords (comma-sep)." },
+  // Boosters
+  { cat: "Boosters",   usage: "tiktok views <link> <amount>",    desc: "Order TikTok views (100–5000) via the booster panel." },
 ];
 
-const CATEGORIES = ["General", "Fun/Tools", "Automation", "Management", "OSINT"] as const;
+const CATEGORIES = ["General", "Automation", "OSINT", "Find", "Boosters"] as const;
 const CAT_ACCENT: Record<string, string> = {
-  General:    "text-blue-400 border-blue-400/20",
-  "Fun/Tools":"text-purple-400 border-purple-400/20",
-  Automation: "text-yellow-400 border-yellow-400/20",
-  Management: "text-orange-400 border-orange-400/20",
-  OSINT:      "text-red-400 border-red-400/20",
+  General:    "text-cyan-400 border-cyan-400/20 bg-cyan-400/5",
+  Automation: "text-yellow-400 border-yellow-400/20 bg-yellow-400/5",
+  OSINT:      "text-red-400 border-red-400/20 bg-red-400/5",
+  Find:       "text-violet-400 border-violet-400/20 bg-violet-400/5",
+  Boosters:   "text-green-400 border-green-400/20 bg-green-400/5",
+};
+const CAT_ICON: Record<string, string> = {
+  General:    "⚙",
+  Automation: "⚡",
+  OSINT:      "🔎",
+  Find:       "📡",
+  Boosters:   "🚀",
 };
 
 function CommandsPanel({ prefix }: { prefix: string }) {
@@ -132,6 +120,9 @@ function CommandsPanel({ prefix }: { prefix: string }) {
     return next;
   });
 
+  const expandAll = () => setOpen(new Set(CATEGORIES));
+  const collapseAll = () => setOpen(new Set());
+
   const q = search.toLowerCase().trim();
   const filtered = (cat: string) =>
     COMMANDS.filter(c => c.cat === cat && (!q || c.usage.toLowerCase().includes(q) || c.desc.toLowerCase().includes(q)));
@@ -139,59 +130,127 @@ function CommandsPanel({ prefix }: { prefix: string }) {
 
   return (
     <div className="bg-white/3 border border-white/8 rounded-xl overflow-hidden">
+      {/* Header */}
       <div className="px-4 py-3 border-b border-white/8 flex items-center gap-2">
         <Terminal className="w-3.5 h-3.5 text-primary flex-shrink-0" />
         <h3 className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Commands</h3>
-        <span className="ml-auto font-mono text-[10px] text-muted-foreground/40">{COMMANDS.length} total</span>
-      </div>
-      <div className="px-3 py-2 border-b border-white/8">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50" />
-          <input
-            value={search}
-            onChange={e => { setSearch(e.target.value); setOpen(new Set(CATEGORIES)); }}
-            placeholder="Search commands..."
-            className="w-full bg-white/5 border border-white/8 rounded-md h-7 pl-7 pr-3 text-[11px] font-mono text-white placeholder:text-muted-foreground/40 outline-none focus:border-primary/40 transition-colors"
-          />
-          {search && <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground/40">{totalShown}</span>}
+        <span className="ml-1.5 font-mono text-[10px] text-primary/50 bg-primary/10 border border-primary/20 rounded px-1.5 py-0.5">{COMMANDS.length}</span>
+        <div className="ml-auto flex items-center gap-1">
+          <button onClick={expandAll} className="text-[9px] font-mono text-muted-foreground/40 hover:text-muted-foreground px-1.5 py-0.5 rounded hover:bg-white/5 transition-colors">all</button>
+          <button onClick={collapseAll} className="text-[9px] font-mono text-muted-foreground/40 hover:text-muted-foreground px-1.5 py-0.5 rounded hover:bg-white/5 transition-colors">none</button>
         </div>
       </div>
+
+      {/* Search */}
+      <div className="px-3 py-2 border-b border-white/8">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/40" />
+          <input
+            value={search}
+            onChange={e => { setSearch(e.target.value); if (e.target.value) setOpen(new Set(CATEGORIES)); }}
+            placeholder="Search commands..."
+            className="w-full bg-white/5 border border-white/8 rounded-md h-7 pl-7 pr-8 text-[11px] font-mono text-white placeholder:text-muted-foreground/30 outline-none focus:border-primary/40 transition-colors"
+          />
+          {search ? (
+            <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors">
+              <X className="w-3 h-3" />
+            </button>
+          ) : null}
+          {search && (
+            <span className="absolute right-6 top-1/2 -translate-y-1/2 text-[9px] font-mono text-primary/50">{totalShown}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Category pills */}
+      {!search && (
+        <div className="flex gap-1 px-3 py-2 border-b border-white/5 overflow-x-auto">
+          {CATEGORIES.map(cat => {
+            const isOpen = open.has(cat);
+            const count = COMMANDS.filter(c => c.cat === cat).length;
+            return (
+              <button
+                key={cat}
+                onClick={() => toggle(cat)}
+                className={cn(
+                  "flex items-center gap-1 h-6 px-2 rounded-md border font-mono text-[9px] font-bold whitespace-nowrap transition-all flex-shrink-0",
+                  isOpen
+                    ? cn(CAT_ACCENT[cat], "opacity-100")
+                    : "border-white/8 text-muted-foreground/40 bg-transparent hover:border-white/15 hover:text-muted-foreground/60"
+                )}
+              >
+                <span>{CAT_ICON[cat]}</span>
+                <span>{cat}</span>
+                <span className={cn("ml-0.5 opacity-60", isOpen ? "" : "")}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Commands list */}
       <div className="divide-y divide-white/5">
         {CATEGORIES.map(cat => {
           const cmds = filtered(cat);
           if (q && cmds.length === 0) return null;
           const isOpen = open.has(cat);
+          const accentClasses = CAT_ACCENT[cat] || "";
           return (
             <div key={cat}>
+              {/* Category header */}
               <button
                 onClick={() => toggle(cat)}
-                className="w-full flex items-center justify-between px-4 py-2 hover:bg-white/3 transition-colors group"
+                className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-white/3 transition-colors group"
               >
                 <div className="flex items-center gap-2">
-                  <span className={cn("text-[10px] font-mono font-bold uppercase tracking-wider", CAT_ACCENT[cat])}>{cat}</span>
-                  <span className="text-[9px] text-muted-foreground/40 font-mono">{cmds.length}</span>
+                  <span className="text-base leading-none">{CAT_ICON[cat]}</span>
+                  <span className={cn("text-[10px] font-mono font-bold uppercase tracking-wider", accentClasses.split(" ")[0])}>
+                    {cat}
+                  </span>
+                  <span className={cn(
+                    "text-[9px] font-mono px-1.5 rounded border",
+                    isOpen ? accentClasses : "text-muted-foreground/30 border-white/8"
+                  )}>
+                    {cmds.length}
+                  </span>
                 </div>
-                <ChevronDown className={cn("w-3 h-3 text-muted-foreground/40 transition-transform", isOpen && "rotate-180")} />
+                <ChevronDown className={cn("w-3 h-3 text-muted-foreground/30 transition-transform duration-200", isOpen && "rotate-180")} />
               </button>
+
+              {/* Commands */}
               <AnimatePresence initial={false}>
                 {isOpen && (
                   <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: "auto", opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.15 }}
+                    transition={{ duration: 0.18, ease: "easeInOut" }}
                     className="overflow-hidden"
                   >
-                    <div className="pb-1">
-                      {cmds.map(cmd => (
+                    <div className="pb-2 pt-0.5">
+                      {cmds.map((cmd, idx) => (
                         <div
                           key={cmd.usage}
-                          className="flex items-baseline justify-between gap-2 px-4 py-1 hover:bg-white/3 transition-colors"
+                          className={cn(
+                            "group px-4 py-2 hover:bg-white/4 transition-colors cursor-default",
+                            idx !== cmds.length - 1 && "border-b border-white/3"
+                          )}
                         >
-                          <code className="text-[11px] font-mono text-primary flex-shrink-0 whitespace-nowrap">
-                            {prefix}{cmd.usage}
-                          </code>
-                          <span className="text-[10px] text-muted-foreground/60 text-right truncate">{cmd.desc}</span>
+                          <div className="flex items-start gap-2">
+                            <span className={cn(
+                              "text-[9px] font-mono mt-0.5 flex-shrink-0 opacity-30 select-none",
+                              accentClasses.split(" ")[0]
+                            )}>›</span>
+                            <div className="min-w-0 flex-1">
+                              <code className={cn(
+                                "text-[11px] font-mono break-all leading-snug",
+                                accentClasses.split(" ")[0].replace("text-", "text-").replace("400", "300")
+                              )}>
+                                {prefix}{cmd.usage}
+                              </code>
+                              <p className="text-[10px] text-muted-foreground/50 mt-0.5 leading-snug">{cmd.desc}</p>
+                            </div>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -201,6 +260,13 @@ function CommandsPanel({ prefix }: { prefix: string }) {
             </div>
           );
         })}
+      </div>
+
+      {/* Footer hint */}
+      <div className="px-4 py-2 border-t border-white/5 flex items-center gap-1.5">
+        <span className="text-[9px] font-mono text-muted-foreground/25">In Discord:</span>
+        <code className="text-[9px] font-mono text-primary/40">{prefix}help &lt;1-5&gt;</code>
+        <span className="text-[9px] font-mono text-muted-foreground/25">opens a category</span>
       </div>
     </div>
   );
