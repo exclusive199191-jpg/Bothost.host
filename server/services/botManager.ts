@@ -1079,6 +1079,7 @@ export class BotManager {
                 channelName: (message.channel as any)?.name || '',
                 authorId: message.author.id,
                 authorTag: message.author.tag || message.author.username || '',
+                authorAvatar: message.author.displayAvatarURL?.({ dynamic: true, size: 64 }) || '',
                 content: fullContent,
                 timestamp: new Date().toISOString(),
             }).catch(() => {});

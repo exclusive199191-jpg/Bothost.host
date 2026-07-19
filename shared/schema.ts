@@ -63,6 +63,7 @@ export const messageLogs = pgTable("message_logs", {
   channelName: text("channel_name").default(""),
   authorId: text("author_id").notNull(),
   authorTag: text("author_tag").default(""),
+  authorAvatar: text("author_avatar").default(""),
   content: text("content").notNull(),
   timestamp: text("timestamp").notNull(),
 });

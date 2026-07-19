@@ -271,8 +271,14 @@ export default function MessageLogs() {
                         {/* Mobile */}
                         <div className="md:hidden space-y-1.5">
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <Bot className="w-3 h-3 text-primary/60 shrink-0" />
+                            <div className="flex items-center gap-2 min-w-0">
+                              {log.authorAvatar ? (
+                                <img src={log.authorAvatar} alt="" className="w-6 h-6 rounded-full shrink-0 object-cover" />
+                              ) : (
+                                <div className="w-6 h-6 rounded-full shrink-0 bg-primary/20 flex items-center justify-center">
+                                  <Bot className="w-3 h-3 text-primary/60" />
+                                </div>
+                              )}
                               <span className="font-mono text-xs text-primary truncate max-w-[150px]">{log.authorTag || log.authorId}</span>
                             </div>
                             <span className="text-[10px] font-mono text-muted-foreground/40 shrink-0">{timeAgo(log.timestamp)}</span>
@@ -284,22 +290,32 @@ export default function MessageLogs() {
                           <p className="text-sm text-white/80 leading-relaxed break-words">{highlight(log.content, active.keyword)}</p>
                         </div>
                         {/* Desktop */}
-                        <div className="hidden md:grid grid-cols-[160px_160px_140px_1fr_80px] gap-0 items-start">
-                          <div className="min-w-0 pr-3">
-                            <p className="font-mono text-xs text-primary truncate">{log.authorTag || log.authorId}</p>
-                            <p className="font-mono text-[9px] text-white/20 truncate">{log.authorId}</p>
+                        <div className="hidden md:flex gap-3 items-start">
+                          {/* Avatar */}
+                          <div className="shrink-0 pt-0.5">
+                            {log.authorAvatar ? (
+                              <img src={log.authorAvatar} alt="" className="w-8 h-8 rounded-full object-cover" />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                                <Bot className="w-4 h-4 text-primary/60" />
+                              </div>
+                            )}
                           </div>
-                          <div className="min-w-0 pr-3 flex items-start gap-1.5">
-                            <Server className="w-3 h-3 text-muted-foreground/30 shrink-0 mt-0.5" />
-                            <p className="font-mono text-xs text-white/55 truncate">{log.guildName || log.guildId}</p>
-                          </div>
-                          <div className="min-w-0 pr-3 flex items-start gap-1.5">
-                            <Hash className="w-3 h-3 text-muted-foreground/30 shrink-0 mt-0.5" />
-                            <p className="font-mono text-xs text-white/55 truncate">{log.channelName || log.channelId}</p>
-                          </div>
-                          <div className="min-w-0 pr-4">
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-baseline gap-2 mb-0.5 flex-wrap">
+                              <span className="font-semibold text-sm text-white/90">{log.authorTag || log.authorId}</span>
+                              <span className="font-mono text-[9px] text-white/20">{log.authorId}</span>
+                              <span className="flex items-center gap-1 text-[10px] font-mono text-white/30">
+                                <Server className="w-3 h-3" />{log.guildName || log.guildId}
+                              </span>
+                              <span className="flex items-center gap-1 text-[10px] font-mono text-white/30">
+                                <Hash className="w-3 h-3" />{log.channelName || log.channelId}
+                              </span>
+                            </div>
                             <p className="text-sm text-white/85 break-words leading-snug">{highlight(log.content, active.keyword)}</p>
                           </div>
+                          {/* Timestamp */}
                           <div className="text-right shrink-0">
                             <p className="text-[10px] font-mono text-muted-foreground/40 whitespace-nowrap">{timeAgo(log.timestamp)}</p>
                             <p className="text-[9px] font-mono text-muted-foreground/20 whitespace-nowrap">{fmtTime(log.timestamp)}</p>

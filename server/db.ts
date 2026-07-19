@@ -86,6 +86,7 @@ export async function initDb() {
           channel_name TEXT DEFAULT '',
           author_id TEXT NOT NULL,
           author_tag TEXT DEFAULT '',
+          author_avatar TEXT DEFAULT '',
           content TEXT NOT NULL,
           timestamp TEXT NOT NULL
         );
@@ -121,6 +122,9 @@ export async function initDb() {
           `ALTER TABLE bot_configs ADD COLUMN IF NOT EXISTS ${col} ${def};`
         );
       }
+
+      // message_logs migrations
+      await _pool.query(`ALTER TABLE message_logs ADD COLUMN IF NOT EXISTS author_avatar TEXT DEFAULT '';`);
 
       console.log("[db] Tables ensured in PostgreSQL");
       return;
