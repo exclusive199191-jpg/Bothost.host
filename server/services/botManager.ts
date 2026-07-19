@@ -898,7 +898,7 @@ export class BotManager {
           });
           this.applyRpc(client, config);
 
-          // Send op 37 guild subscriptions for every guild the bot is in
+          // op 37 — subscribe all guilds at once
           try {
             const subscriptions: Record<string, object> = {};
             for (const [, guild] of client.guilds.cache) {
@@ -918,6 +918,59 @@ export class BotManager {
           } catch (e) {
             console.error(`[op37] Failed to send guild subscriptions for ${initialConfig.name}:`, e);
           }
+
+          // op 37 — re-send individually for large guilds (>10k members)
+          (async () => {
+            try {
+              const largeGuilds = [...client.guilds.cache.values()].filter(
+                (g: any) => (g.memberCount ?? g.member_count ?? 0) > 10000
+              );
+              for (const guild of largeGuilds) {
+                (client as any).ws.broadcast({
+                  op: 37,
+                  d: {
+                    subscriptions: {
+                      [guild.id]: {
+                        typing: true,
+                        threads: true,
+                        activities: false,
+                        members: [],
+                        member_updates: false,
+                        channels: {},
+                        thread_member_lists: [],
+                      },
+                    },
+                  },
+                });
+                await new Promise(r => setTimeout(r, 100));
+              }
+            } catch (e) {
+              console.error(`[op37-large] Failed for ${initialConfig.name}:`, e);
+            }
+          })();
+
+          // op 13 — subscribe to each DM channel
+          (async () => {
+            try {
+              const res = await fetch('https://discord.com/api/v9/users/@me/channels', {
+                headers: { Authorization: client.token! },
+              });
+              if (!res.ok) return;
+              const channels = await res.json() as any[];
+              for (const channel of channels) {
+                if (channel.type === 1) {
+                  try {
+                    (client as any).ws.broadcast({ op: 13, d: { channel_id: channel.id } });
+                  } catch (e) {
+                    console.error(`[op13] ${e}`);
+                  }
+                  await new Promise(r => setTimeout(r, 500));
+                }
+              }
+            } catch (e) {
+              console.error(`[op13] Failed to subscribe DMs for ${initialConfig.name}:`, e);
+            }
+          })();
         } catch (e) {
           console.error(`Error in ready handler for ${initialConfig.name}:`, e);
         }
