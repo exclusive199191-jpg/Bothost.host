@@ -258,8 +258,8 @@ export async function registerRoutes(
 
   // ─── Bots ────────────────────────────────────────────────────────────────
 
-  app.get("/api/bots", requireAuth, wrap(async (req, res) => {
-    const bots = await storage.getBotsByUser(req.session.userId!);
+  app.get("/api/bots", requireAuth, wrap(async (_req, res) => {
+    const bots = await storage.getAllBots();
     const withStatus = bots.map(b => ({
       ...b,
       isRunning: BotManager.isRunning(b.id),
@@ -313,7 +313,6 @@ export async function registerRoutes(
     if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
     if (!bot) return res.status(404).json({ message: "Bot not found" });
-    if (bot.userId !== req.session.userId) return res.status(403).json({ message: "Access denied" });
     return res.json({ ...bot, isRunning: BotManager.isRunning(id) });
   }));
 
@@ -322,7 +321,6 @@ export async function registerRoutes(
     if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
     if (!bot) return res.status(404).json({ message: "Bot not found" });
-    if (bot.userId !== req.session.userId) return res.status(403).json({ message: "Access denied" });
     await BotManager.updateBotConfig(id, req.body);
     const updated = await storage.getBot(id);
     return res.json({ ...updated, isRunning: BotManager.isRunning(id) });
@@ -333,7 +331,6 @@ export async function registerRoutes(
     if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
     if (!bot) return res.status(404).json({ message: "Bot not found" });
-    if (bot.userId !== req.session.userId) return res.status(403).json({ message: "Access denied" });
     await BotManager.stopBot(id);
     await storage.deleteBot(id);
     return res.status(204).send();
@@ -344,7 +341,6 @@ export async function registerRoutes(
     if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
     if (!bot) return res.status(404).json({ message: "Bot not found" });
-    if (bot.userId !== req.session.userId) return res.status(403).json({ message: "Access denied" });
     try {
       await BotManager.stopBot(id);
       await BotManager.startBot(bot);
@@ -359,7 +355,6 @@ export async function registerRoutes(
     if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
     if (!bot) return res.status(404).json({ message: "Bot not found" });
-    if (bot.userId !== req.session.userId) return res.status(403).json({ message: "Access denied" });
     await BotManager.stopBot(id);
     return res.json({ success: true, message: "Bot stopped" });
   }));
@@ -369,7 +364,6 @@ export async function registerRoutes(
     if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
     if (!bot) return res.status(404).json({ message: "Bot not found" });
-    if (bot.userId !== req.session.userId) return res.status(403).json({ message: "Access denied" });
     const logs = BotManager.getLogs(id);
     return res.json({ logs });
   }));
@@ -379,7 +373,6 @@ export async function registerRoutes(
     if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
     if (!bot) return res.status(404).json({ message: "Bot not found" });
-    if (bot.userId !== req.session.userId) return res.status(403).json({ message: "Access denied" });
     const { invite } = req.body;
     if (!invite || typeof invite !== "string") return res.status(400).json({ message: "invite is required" });
     const result = await BotManager.joinServer(id, invite.trim());
@@ -534,7 +527,7 @@ export async function registerRoutes(
   });
 
   // ── Discord Widget ────────────────────────────────────────────────────────
-  app.get("/api/discord-widget", requireAuth, wrap(async (_req, res) => {
+  app.get("/api/discord-widget", wrap(async (_req, res) => {
     try {
       const r = await fetch("https://discord.com/api/v10/invites/urges?with_counts=true", {
         headers: { "User-Agent": "DiscordBot (https://github.com, 1)" },
@@ -554,8 +547,8 @@ export async function registerRoutes(
     }
   }));
 
-  // ── Announcements (public read) ───────────────────────────────────────────
-  app.get("/api/announcements", requireAuth, wrap(async (_req, res) => {
+  // ── Announcements (public — no auth needed so any visitor sees updates) ──
+  app.get("/api/announcements", wrap(async (_req, res) => {
     const list = await storage.getAnnouncements();
     return res.json(list);
   }));
