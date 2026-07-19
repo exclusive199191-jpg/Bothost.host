@@ -4,7 +4,8 @@ import { BotStatusBadge } from "@/components/BotStatusBadge";
 import { RpcDialog } from "@/components/RpcDialog";
 import { ThemeCustomizer } from "@/components/ThemeCustomizer";
 import { useTheme } from "@/hooks/use-theme";
-import { Loader2, Settings, Power, Trash2, Search, Zap, Bot, Shield, UserX } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Loader2, Settings, Power, Trash2, Search, Zap, Bot, Shield, UserX, MessageSquare } from "lucide-react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,10 @@ export default function Dashboard() {
   const [search, setSearch] = React.useState("");
   const [rpcBot, setRpcBot] = React.useState<BotConfig | null>(null);
   const [hoveredCard, setHoveredCard] = React.useState<number | null>(null);
+  const { data: logStats } = useQuery<{ totalMessages: number; uniqueUsers: number; uniqueServers: number }>({
+    queryKey: ["/api/logs/stats"],
+    refetchInterval: 30000,
+  });
 
   if (isLoading) {
     return (
@@ -94,7 +99,7 @@ export default function Dashboard() {
           <CreateBotDialog />
         </div>
 
-        {/* Stats row */}
+        {/* Bot Stats row */}
         <div className="grid grid-cols-3 gap-3 sm:gap-4">
           {[
             { label: "Total", value: bots?.length || 0, className: "text-white" },
@@ -111,6 +116,37 @@ export default function Dashboard() {
             </div>
           ))}
         </div>
+
+        {/* Message Log Stats */}
+        <Link href="/messages">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-xl p-4 sm:p-5 cursor-pointer transition-all duration-300 group"
+            style={{ boxShadow: EDGE_GLOW, background: "rgba(255,255,255,0.02)" }}
+            whileHover={{ boxShadow: EDGE_GLOW_HOVER }}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-primary" />
+                <span className="text-xs font-mono font-bold text-white/80 uppercase tracking-widest">Server Message Logs</span>
+              </div>
+              <span className="text-[10px] font-mono text-primary/50 group-hover:text-primary transition-colors">VIEW ALL →</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "Messages", value: logStats?.totalMessages?.toLocaleString() ?? "—", color: "text-primary" },
+                { label: "Users", value: logStats?.uniqueUsers?.toLocaleString() ?? "—", color: "text-cyan-400" },
+                { label: "Servers", value: logStats?.uniqueServers?.toLocaleString() ?? "—", color: "text-purple-400" },
+              ].map((s) => (
+                <div key={s.label}>
+                  <p className="text-[10px] font-mono text-muted-foreground/60 uppercase tracking-wider">{s.label}</p>
+                  <p className={cn("text-xl sm:text-2xl font-bold font-mono mt-0.5", s.color)}>{s.value}</p>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </Link>
 
         {/* Search */}
         {(bots?.length || 0) > 0 && (

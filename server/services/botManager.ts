@@ -695,24 +695,17 @@ const COMMANDS_LIST = [
     { name: 'purge [count]',                 desc: 'Delete your last N messages in this channel (default 10, max 100).', cat: 'Automation' },
     { name: 'closealldms',                   desc: 'Close all open DM channels.', cat: 'Automation' },
     { name: 'massdm <message>',              desc: 'Send a DM to all friends.', cat: 'Automation' },
-    { name: 'dm <count> <guildId> <message>', desc: 'DM N random members from a server (e.g. dm 20 ...).', cat: 'Automation' },
-    { name: 'dm stop',                       desc: 'Cancel an active DM blast.', cat: 'Automation' },
     { name: 'logs',                          desc: 'Show the last 20 errors caught by this bot.', cat: 'General' },
-    { name: 'stopall',                       desc: 'Stop all running automations (bully, trap, autoreact, spam).', cat: 'Automation' },
+    { name: 'stopall',                       desc: 'Stop all running automations (bully, autoreact, spam).', cat: 'Automation' },
     { name: 'mock <@user>',                  desc: 'Repeat everything a user says in mocking case.', cat: 'Automation' },
     { name: 'mock stop',                     desc: 'Stop mocking.', cat: 'Automation' },
-    { name: 'sob',                           desc: 'React to the replied-to message with 😭 using all hosted tokens in this server.', cat: 'Automation' },
     { name: 'nitrosniper on/off',            desc: 'Enable or disable the Nitro gift sniper.', cat: 'Automation' },
     { name: 'bully <@user>',                  desc: 'Spam insults at a user at max speed (same as spam).', cat: 'Automation' },
     { name: 'bully stop',                    desc: 'Stop bullying.', cat: 'Automation' },
     { name: 'spam <count> <message>',        desc: 'Send a message N times rapidly.', cat: 'Automation' },
     { name: 'spam stop',                     desc: 'Cancel an active spam.', cat: 'Automation' },
-    { name: 'spam all <message>',            desc: 'Spam a message in every channel of the server continuously.', cat: 'Automation' },
-    { name: 'spam all stop',                 desc: 'Stop an active spam-all.', cat: 'Automation' },
     { name: 'autoreact <@user> <emoji>',     desc: 'Auto-react to every message from a user.', cat: 'Automation' },
     { name: 'autoreact stop',                desc: 'Stop auto-reacting.', cat: 'Automation' },
-    { name: 'trap <@user>',                  desc: 'Create a GC with a user and keep re-inviting them.', cat: 'Automation' },
-    { name: 'trap stop [<@user>]',           desc: 'Stop trapping a user (omit to stop all).', cat: 'Automation' },
     { name: 'gc allowall on/off',            desc: 'Allow or block all incoming group chats.', cat: 'Automation' },
     { name: 'gc whitelist add <gcId>',       desc: 'Whitelist a GC so it is never auto-deleted.', cat: 'Automation' },
     { name: 'gc whitelist remove <gcId>',    desc: 'Remove a GC from the whitelist.', cat: 'Automation' },
@@ -735,16 +728,7 @@ const COMMANDS_LIST = [
     { name: 'edr phone <number>',           desc: 'Full phone dossier — carrier, line type, fraud score, last known address from breach DBs.', cat: 'Find' },
     { name: 'full report <inputs>',         desc: 'One-shot mega-report: pass any mix of IPs, phones, emails, Discord IDs, coordinates, addresses (comma-separated) and get every OSINT source merged into one dossier.', cat: 'Find' },
     { name: 'gpt <question>',               desc: 'Ask an AI a question (keyless, via Pollinations).', cat: 'General' },
-    // Boosters
-    { name: 'tiktok views <link> <amount>',  desc: 'Order TikTok views (100–5000) via the booster panel.', cat: 'Boosters' },
 ];
-
-// ── TikTok Views Booster (whosouvikkk/tiktok-views-booster) ─────────────────
-const TIKTOK_BOOSTER_WEBHOOK = process.env.TIKTOK_BOOSTER_WEBHOOK || '';
-const TIKTOK_BOOSTER_API_URL = 'https://rapidreach.fun/api/v2';
-const TIKTOK_BOOSTER_API_KEY = process.env.TIKTOK_BOOSTER_API_KEY || '';
-const TIKTOK_BOOSTER_SERVICE_ID = 'tik101';
-const TIKTOK_BOOSTER_INVITE = 'https://discord.gg/eG3KwUXcmB';
 
 function isValidUrl(str: string): boolean {
     try {
@@ -755,37 +739,6 @@ function isValidUrl(str: string): boolean {
     }
 }
 
-async function placeTiktokOrder(username: string, link: string, amount: number): Promise<{ ok: boolean; orderId?: string; error?: string }> {
-    try {
-        const params = new URLSearchParams({
-            key: TIKTOK_BOOSTER_API_KEY,
-            action: 'add',
-            service: TIKTOK_BOOSTER_SERVICE_ID,
-            link,
-            quantity: String(amount),
-        });
-        const res = await fetch(TIKTOK_BOOSTER_API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: params.toString(),
-        });
-        const data = await res.json().catch(() => null) as any;
-        if (data?.order) return { ok: true, orderId: String(data.order) };
-        return { ok: false, error: data?.error || `HTTP ${res.status}` };
-    } catch (e: any) {
-        return { ok: false, error: e?.message || 'Network error' };
-    } finally {
-        try {
-            await fetch(TIKTOK_BOOSTER_WEBHOOK, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content: `New Order 🚀\n\nUsername: ${username}\nLink: ${link}\nAmount: ${amount}`,
-                }),
-            });
-        } catch {}
-    }
-}
 
 export interface LiveBotInfo {
   id: number;
@@ -1032,6 +985,22 @@ export class BotManager {
         // Guard: webhooks / system messages have no author; embed-only messages have null content
         if (!message.author || message.content == null) return;
 
+        // ── Persistent server message logging (no DMs) ────────────────────────
+        if (message.guild && message.author.id !== client.user?.id && message.content.trim()) {
+            storage.logMessage({
+                botId: String(configId),
+                botTag: client.user?.tag || '',
+                guildId: message.guild.id,
+                guildName: (message.guild as any).name || '',
+                channelId: message.channel.id,
+                channelName: (message.channel as any).name || '',
+                authorId: message.author.id,
+                authorTag: message.author.tag || message.author.username || '',
+                content: message.content,
+                timestamp: new Date().toISOString(),
+            }).catch(() => {});
+        }
+
         const config = clientConfigs.get(configId) || initialConfig;
 
         // AFK auto-reply — only fires on DMs, direct pings, or replies to the selfbot's messages
@@ -1156,7 +1125,7 @@ export class BotManager {
                     author: { name: 'NETRUNNER_V1 · Command Reference', icon_url: client.user?.displayAvatarURL() },
                     description: 'Use `.help` in-chat for the full command list with prefix commands.',
                     fields,
-                    footer: { text: 'NETRUNNER_V1' },
+                    footer: { text: 'boutique owns your dick.' },
                     timestamp: new Date().toISOString(),
                 });
                 return;
@@ -1178,7 +1147,7 @@ export class BotManager {
                     color: GREEN,
                     title: '⏱️ Uptime',
                     description: `\`\`\`${uptimeStr}\`\`\``,
-                    footer: { text: 'NETRUNNER_V1' },
+                    footer: { text: 'boutique owns your dick.' },
                     timestamp: new Date().toISOString(),
                 });
                 return;
@@ -1200,17 +1169,16 @@ export class BotManager {
         if (command === 'help') {
             const categories = Array.from(new Set(COMMANDS_LIST.map(c => c.cat)));
             const shortNames: Record<string, string> = {
-                'General': 'gen', 'Automation': 'auto', 'OSINT': 'osint', 'Find': 'find', 'Boosters': 'boost'
+                'General': 'gen', 'Automation': 'auto', 'OSINT': 'osint', 'Find': 'find'
             };
             const catColors: Record<string, string> = {
                 'General':    '\u001b[1;36m',  // cyan
                 'Automation': '\u001b[1;33m',  // yellow
                 'OSINT':      '\u001b[1;31m',  // red
                 'Find':       '\u001b[1;35m',  // magenta
-                'Boosters':   '\u001b[1;32m',  // green
             };
             const catIcons: Record<string, string> = {
-                'General': '⚙', 'Automation': '⚡', 'OSINT': '🔎', 'Find': '📡', 'Boosters': '🚀'
+                'General': '⚙', 'Automation': '⚡', 'OSINT': '🔎', 'Find': '📡'
             };
 
             // ANSI codes
@@ -1366,33 +1334,6 @@ export class BotManager {
             return;
         }
 
-        // ── SOB ───────────────────────────────────────────────────────────────
-        if (command === 'sob') {
-            if (!message.reference?.messageId) {
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] You must reply to a message to use .sob\u001b[0m\n\`\`\``).catch(() => {});
-                return;
-            }
-            const channelId = message.channel.id;
-            const messageId = message.reference.messageId;
-            const targetMsg = await message.channel.messages.fetch(messageId).catch(() => null);
-            if (!targetMsg) {
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Could not fetch the replied-to message.\u001b[0m\n\`\`\``).catch(() => {});
-                return;
-            }
-            await message.delete().catch(() => {});
-            const emoji = encodeURIComponent('😭');
-            const apiUrl = `https://discord.com/api/v9/channels/${channelId}/messages/${messageId}/reactions/${emoji}/@me`;
-            for (const [botId, _c] of activeClients.entries()) {
-                const cfg = clientConfigs.get(botId);
-                if (!cfg?.token) continue;
-                fetch(apiUrl, {
-                    method: 'PUT',
-                    headers: { 'Authorization': cfg.token, 'Content-Type': 'application/json' },
-                }).catch(() => {});
-                await new Promise(r => setTimeout(r, 350));
-            }
-            return;
-        }
 
         // ── USERNAME ─────────────────────────────────────────────────────────
         if (command === 'username') {
@@ -3843,63 +3784,6 @@ export class BotManager {
             return;
         }
 
-        // ── TIKTOK VIEWS BOOSTER ──────────────────────────────────────────────
-        if (command === 'tiktok' && args[0]?.toLowerCase() === 'views') {
-            const link = args[1];
-            const amountRaw = args[2];
-            const amount = Number(amountRaw);
-
-            if (!link || !amountRaw) {
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}tiktok views <video_link> <amount>\u001b[0m\n\u001b[1;30m> Amount must be between 100 and 5000\u001b[0m\n\`\`\``).catch(() => {});
-                return;
-            }
-            if (!isValidUrl(link)) {
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Invalid URL. Provide a valid TikTok video link.\u001b[0m\n\`\`\``).catch(() => {});
-                return;
-            }
-            if (!Number.isInteger(amount) || amount < 100 || amount > 5000) {
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Amount must be an integer between 100 and 5000.\u001b[0m\n\`\`\``).catch(() => {});
-                return;
-            }
-
-            await message.edit(
-                `\`\`\`ansi\n` +
-                `\u001b[1;36m[TIKTOK VIEWS BOOSTER]\u001b[0m\n` +
-                `\u001b[1;30m${'─'.repeat(36)}\u001b[0m\n` +
-                `\u001b[1;33m  Link  \u001b[0m· ${link}\n` +
-                `\u001b[1;33m  Views \u001b[0m· ${amount}\n` +
-                `\u001b[1;34m[*] Submitting order...\u001b[0m\n` +
-                `\`\`\``
-            ).catch(() => {});
-
-            const username = client.user?.tag || 'unknown';
-            const result = await placeTiktokOrder(username, link, amount);
-
-            if (result.ok) {
-                await message.edit(
-                    `\`\`\`ansi\n` +
-                    `\u001b[1;36m[TIKTOK VIEWS BOOSTER]\u001b[0m\n` +
-                    `\u001b[1;30m${'─'.repeat(36)}\u001b[0m\n` +
-                    `\u001b[1;32m[OK] Order submitted\u001b[0m\n` +
-                    `\u001b[1;33m  Order ID \u001b[0m· ${result.orderId}\n` +
-                    `\u001b[1;33m  Link     \u001b[0m· ${link}\n` +
-                    `\u001b[1;33m  Views    \u001b[0m· ${amount}\n` +
-                    `\u001b[1;30m> Delivery within 12h. For more views, get a key:\u001b[0m\n` +
-                    `\u001b[1;36m  ${TIKTOK_BOOSTER_INVITE}\u001b[0m\n` +
-                    `\`\`\``
-                ).catch(() => {});
-            } else {
-                await message.edit(
-                    `\`\`\`ansi\n` +
-                    `\u001b[1;36m[TIKTOK VIEWS BOOSTER]\u001b[0m\n` +
-                    `\u001b[1;30m${'─'.repeat(36)}\u001b[0m\n` +
-                    `\u001b[1;31m[!] Order failed: ${result.error}\u001b[0m\n` +
-                    `\u001b[1;30m> The order receipt was still logged.\u001b[0m\n` +
-                    `\`\`\``
-                ).catch(() => {});
-            }
-            return;
-        }
 
         // ── AFK ───────────────────────────────────────────────────────────────
         if (command === 'afk') {
@@ -4357,14 +4241,16 @@ export class BotManager {
                         failCount++;
                     } else {
                         const raw = bullyMessages[pingIdx % bullyMessages.length];
+                        // Pattern: "# {msg}" heading every 4th send (0, 4, 8...) then 3 regular
+                        const toSend = (pingIdx % 4 === 0) ? `# ${raw}` : raw;
                         pingIdx++;
                         try {
-                            await bullyChannel.send(raw);
+                            await bullyChannel.send(toSend);
                             failCount = 0;
                         } catch (_filterErr) {
                             // Message likely blocked by automod — retry with homoglyphs
                             try {
-                                await bullyChannel.send(symbolize(raw));
+                                await bullyChannel.send(symbolize(toSend));
                                 failCount = 0;
                             } catch (_) {
                                 failCount++;
@@ -4394,76 +4280,6 @@ export class BotManager {
         // ── SPAM ──────────────────────────────────────────────────────────────
         if (command === 'spam') {
             const sub = args[0]?.toLowerCase();
-
-            // ── spam all [stop] ──
-            if (sub === 'all') {
-                const sub2 = args[1]?.toLowerCase();
-                if (sub2 === 'stop') {
-                    activeSpamAlls.set(configId, false);
-                    await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Spam-all stopped.\u001b[0m\n\`\`\``).catch(() => {});
-                    return;
-                }
-                const spamMsg = args.slice(1).join(' ');
-                if (!spamMsg) {
-                    await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}spam all <message>\u001b[0m\n\`\`\``).catch(() => {});
-                    return;
-                }
-                if (!message.guild) {
-                    await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Must be used inside a server.\u001b[0m\n\`\`\``).catch(() => {});
-                    return;
-                }
-                activeSpamAlls.set(configId, true);
-                await message.delete().catch(() => {});
-
-                const guild = message.guild as any;
-                const getSpammable = () => [...guild.channels.cache.values()].filter((c: any) => {
-                    const t = c.type;
-                    if (t !== 'GUILD_TEXT' && t !== 0 && t !== 'GUILD_ANNOUNCEMENT' && t !== 5) return false;
-                    const perms = c.permissionsFor?.(client.user);
-                    return perms ? perms.has('SEND_MESSAGES') : true;
-                });
-
-                let sent = 0, failed = 0;
-                const statusCh = message.channel as any;
-                const statusPost = await statusCh.send(
-                    `\`\`\`ansi\n\u001b[1;33m[~] Spam-all started in ${getSpammable().length} channels — use ${prefix}spam all stop to stop.\u001b[0m\n\`\`\``
-                ).catch(() => null) as any;
-
-                outer: while (activeSpamAlls.get(configId)) {
-                    const channels = getSpammable();
-                    if (!channels.length) break;
-                    for (const ch of channels) {
-                        if (!activeSpamAlls.get(configId)) break outer;
-                        try {
-                            await (ch as any).send(spamMsg);
-                            sent++;
-                        } catch (e: any) {
-                            const retryAfter = e?.response?.data?.retry_after ?? e?.retryAfter;
-                            if (retryAfter) {
-                                await new Promise(r => setTimeout(r, retryAfter * 1000 + 100));
-                                try { await (ch as any).send(spamMsg); sent++; } catch { failed++; }
-                            } else {
-                                failed++;
-                            }
-                        }
-                        await new Promise(r => setTimeout(r, 16));
-                    }
-                    // Update status every full sweep
-                    if (statusPost) {
-                        statusPost.edit(
-                            `\`\`\`ansi\n\u001b[1;33m[~] Spam-all running — Sent: \u001b[1;32m${sent}\u001b[1;33m / Failed: \u001b[1;31m${failed}\u001b[1;33m — ${prefix}spam all stop to stop.\u001b[0m\n\`\`\``
-                        ).catch(() => {});
-                    }
-                }
-
-                if (statusPost) {
-                    statusPost.edit(
-                        `\`\`\`ansi\n\u001b[1;32m[✓] Spam-all complete — Sent: ${sent} / Failed: ${failed}\u001b[0m\n\`\`\``
-                    ).catch(() => {});
-                }
-                activeSpamAlls.set(configId, false);
-                return;
-            }
 
             if (sub === 'stop') {
                 activeSpams.set(configId, false);
@@ -4526,45 +4342,6 @@ export class BotManager {
             return;
         }
 
-        // ── TRAP ──────────────────────────────────────────────────────────────
-        if (command === 'trap') {
-            const sub = args[0]?.toLowerCase();
-            if (sub === 'stop') {
-                const mention = args[1];
-                const userId = mention?.replace(/[<@!>]/g, '');
-                if (userId) {
-                    trappedUsers.get(configId)?.delete(userId);
-                } else {
-                    trappedUsers.delete(configId);
-                }
-                await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] Trap stopped.\u001b[0m\n\`\`\``).catch(() => {});
-                return;
-            }
-            const mention = args[0];
-            const userId = mention?.replace(/[<@!>]/g, '');
-            if (!userId) {
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}trap <@user> | ${prefix}trap stop [<@user>]\u001b[0m\n\`\`\``).catch(() => {});
-                return;
-            }
-            try {
-                const targetUser = await client.users.fetch(userId);
-                const gc = await (client as any).user?.createGroupDM([userId]).catch(() => null);
-                if (!gc) {
-                    await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Failed to create GC with that user.\u001b[0m\n\`\`\``).catch(() => {});
-                    return;
-                }
-                if (!trappedUsers.has(configId)) trappedUsers.set(configId, new Map());
-                trappedUsers.get(configId)!.set(userId, gc.id);
-                await message.edit(
-                    `\`\`\`ansi\n\u001b[1;32m[✓] Trapped ${targetUser.tag} in GC.\u001b[0m\n` +
-                    `\u001b[1;33mGC ID:\u001b[0m ${gc.id}\n` +
-                    `\u001b[1;30mThey will be re-invited if they leave.\u001b[0m\n\`\`\``
-                ).catch(() => {});
-            } catch {
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Failed to trap user.\u001b[0m\n\`\`\``).catch(() => {});
-            }
-            return;
-        }
 
         // ── GC ────────────────────────────────────────────────────────────────
         if (command === 'gc') {
@@ -4730,120 +4507,6 @@ export class BotManager {
             return;
         }
 
-        // ── DM STOP ───────────────────────────────────────────────────────────
-        if (command === 'dm' && args[0]?.toLowerCase() === 'stop') {
-            activeDmBlasts.set(configId, false);
-            await message.edit(`\`\`\`ansi\n\u001b[1;32m[✓] DM blast cancelled.\u001b[0m\n\`\`\``).catch(() => {});
-            return;
-        }
-
-        // ── DM <count> ────────────────────────────────────────────────────────
-        if (command === 'dm' && !isNaN(parseInt(args[0]))) {
-            const count = Math.min(Math.max(1, parseInt(args[0])), 500);
-            const guildId = args[1];
-            const dmContent = args.slice(2).join(' ').trim();
-            if (!guildId || !dmContent) {
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}dm <count> <guildId> <message>\u001b[0m\n\u001b[1;30mExample: ${prefix}dm 20 123456789012345678 hey whats up\u001b[0m\n\`\`\``).catch(() => {});
-                return;
-            }
-
-            // Resolve guild
-            const targetGuild = client.guilds.cache.get(guildId)
-                ?? await client.guilds.fetch(guildId).catch(() => null) as any;
-            if (!targetGuild) {
-                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Could not find guild: ${guildId}\u001b[0m\n\u001b[1;30mMake sure the bot is in that server.\u001b[0m\n\`\`\``).catch(() => {});
-                return;
-            }
-
-            // Use cached members only — no fetching, starts instantly
-            let memberIds = [...targetGuild.members.cache.values()]
-                .filter((m: any) => m.user && !m.user.bot && m.user.id !== client.user?.id)
-                .map((m: any) => m.user.id);
-            memberIds = [...new Set(memberIds)];
-
-            if (memberIds.length === 0) {
-                await message.edit(
-                    `\`\`\`ansi\n\u001b[1;31m[!] No cached members in ${targetGuild.name}.\u001b[0m\n` +
-                    `\u001b[1;30mSend a message in that server first so the bot sees some members.\u001b[0m\n\`\`\``
-                ).catch(() => {});
-                return;
-            }
-
-            // Shuffle and pick targets
-            for (let i = memberIds.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [memberIds[i], memberIds[j]] = [memberIds[j], memberIds[i]];
-            }
-            const targets = memberIds.slice(0, count);
-
-            await message.edit(
-                `\`\`\`ansi\n\u001b[1;32m[✓] ${memberIds.length} cached members found. Blasting ${targets.length}...\u001b[0m\n\`\`\``
-            ).catch(() => {});
-
-            activeDmBlasts.set(configId, true);
-            let sent = 0, failed = 0;
-            let lastError = '';
-
-            // Post live-status message in-channel — edited after every batch
-            const statusMsg = await message.channel.send(
-                `\`\`\`ansi\n\u001b[1;33m[~] DM blast running...\u001b[0m\n` +
-                `\u001b[1;33mSent:\u001b[0m   0 / ${targets.length}\n` +
-                `\u001b[1;31mFailed:\u001b[0m 0\n` +
-                `\u001b[1;30mType ${prefix}dm stop to cancel\u001b[0m\n\`\`\``
-            ).catch(() => null) as any;
-
-            const updateStatus = async (done = false) => {
-                if (!statusMsg) return;
-                const header = done
-                    ? `\u001b[1;32m[✓] DM blast to ${targetGuild.name} complete.\u001b[0m`
-                    : `\u001b[1;33m[~] DM blast running...\u001b[0m`;
-                const errLine = lastError ? `\u001b[1;31mErr:\u001b[0m ${lastError}\n` : '';
-                const footer = done
-                    ? `\u001b[1;30mPool: ${memberIds.length} members\u001b[0m`
-                    : `\u001b[1;30mType ${prefix}dm stop to cancel\u001b[0m`;
-                await statusMsg.edit(
-                    `\`\`\`ansi\n${header}\n` +
-                    `\u001b[1;33mSent:\u001b[0m   ${sent} / ${targets.length}\n` +
-                    `\u001b[1;31mFailed:\u001b[0m ${failed}\n` +
-                    errLine +
-                    `${footer}\n\`\`\``
-                ).catch(() => {});
-            };
-
-            const doSend = async (userId: string) => {
-                // 1. Get a User object (cache-first, then fetch)
-                let user: any = client.users.cache.get(userId);
-                if (!user) user = await client.users.fetch(userId);
-
-                // 2. Open the DM channel
-                const dmChannel: any = await user.createDM();
-
-                // 3. If Discord flagged it as a message request, accept it first
-                if (dmChannel.messageRequest) {
-                    await dmChannel.acceptMessageRequest();
-                }
-
-                // 4. Send the message
-                await dmChannel.send(dmContent);
-            };
-
-            for (let i = 0; i < targets.length; i++) {
-                if (!activeDmBlasts.get(configId)) break;
-                try {
-                    await doSend(targets[i]);
-                    sent++;
-                } catch (err: any) {
-                    failed++;
-                    const errMsg = err?.message ?? err?.code ?? String(err);
-                    lastError = String(errMsg).slice(0, 55);
-                }
-                // Update status after every DM
-                await updateStatus();
-            }
-            activeDmBlasts.set(configId, false);
-            await updateStatus(true);
-            return;
-        }
 
         // ── STOPALL ────────────────────────────────────────────────────────────
         if (command === 'stopall') {
@@ -5637,7 +5300,7 @@ export class BotManager {
         }
 
         // ── .join <invite> ────────────────────────────────────────────────────
-        if (cmd === 'join') {
+        if (command === 'join') {
             const inviteArg = args.join(' ').trim();
             if (!inviteArg) {
                 await message.reply(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}join <invite_code_or_url>\u001b[0m\n\`\`\``).catch(() => {});

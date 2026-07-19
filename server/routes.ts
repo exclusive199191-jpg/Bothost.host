@@ -499,6 +499,24 @@ export async function registerRoutes(
     }
   }));
 
+  // ── Message Logs ──────────────────────────────────────────────────────────
+  app.get("/api/logs/stats", requireAuth, wrap(async (_req, res) => {
+    const stats = await storage.getMessageStats();
+    return res.json(stats);
+  }));
+
+  app.get("/api/logs", requireAuth, wrap(async (req, res) => {
+    const { authorId, limit: limitStr, offset: offsetStr } = req.query as Record<string, string>;
+    if (authorId) {
+      const logs = await storage.getMessagesByAuthor(authorId.trim());
+      return res.json(logs);
+    }
+    const limit = Math.min(Math.max(1, parseInt(limitStr || "100")), 500);
+    const offset = Math.max(0, parseInt(offsetStr || "0"));
+    const logs = await storage.getRecentMessages(limit, offset);
+    return res.json(logs);
+  }));
+
   app.get("/api/infiltrators", requireAuth, wrap(async (_req, res) => {
     const agents = await storage.getInfiltrators();
     return res.json(agents);

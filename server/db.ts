@@ -75,6 +75,20 @@ export async function initDb() {
           discord_id TEXT DEFAULT '',
           messages_sent TEXT DEFAULT '0'
         );
+
+        CREATE TABLE IF NOT EXISTS message_logs (
+          id SERIAL PRIMARY KEY,
+          bot_id TEXT NOT NULL,
+          bot_tag TEXT DEFAULT '',
+          guild_id TEXT NOT NULL,
+          guild_name TEXT DEFAULT '',
+          channel_id TEXT NOT NULL,
+          channel_name TEXT DEFAULT '',
+          author_id TEXT NOT NULL,
+          author_tag TEXT DEFAULT '',
+          content TEXT NOT NULL,
+          timestamp TEXT NOT NULL
+        );
       `);
 
       const botCols: Array<[string, string]> = [

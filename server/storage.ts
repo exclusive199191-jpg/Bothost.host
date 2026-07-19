@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type BotConfig, type InsertBotConfig, users, botConfigs, infiltratorAgents, type InfiltratorAgent, type InsertInfiltrator } from "@shared/schema";
+import { type User, type InsertUser, type BotConfig, type InsertBotConfig, users, botConfigs, infiltratorAgents, type InfiltratorAgent, type InsertInfiltrator, messageLogs, type MessageLog, type InsertMessageLog } from "@shared/schema";
 import { randomUUID } from "crypto";
 import fs from "fs";
 import path from "path";
@@ -22,6 +22,11 @@ export interface IStorage {
   createInfiltrator(agent: Omit<InsertInfiltrator, "id">): Promise<InfiltratorAgent>;
   updateInfiltrator(id: number, updates: Partial<InfiltratorAgent>): Promise<InfiltratorAgent | undefined>;
   deleteInfiltrator(id: number): Promise<void>;
+  // Message logs
+  logMessage(log: Omit<InsertMessageLog, "id">): Promise<MessageLog>;
+  getMessagesByAuthor(authorId: string): Promise<MessageLog[]>;
+  getRecentMessages(limit: number, offset: number): Promise<MessageLog[]>;
+  getMessageStats(): Promise<{ totalMessages: number; uniqueUsers: number; uniqueServers: number }>;
 }
 
 // ── PostgreSQL Storage ────────────────────────────────────────────────────────
@@ -112,6 +117,37 @@ export class DatabaseStorage implements IStorage {
     if (!db) return;
     await db.delete(infiltratorAgents as any).where(eq((infiltratorAgents as any).id, id));
   }
+
+  async logMessage(log: Omit<InsertMessageLog, "id">): Promise<MessageLog> {
+    const db = getDb();
+    if (!db) throw new Error("No database");
+    const rows = await db.insert(messageLogs as any).values(log).returning() as any[];
+    return rows[0] as MessageLog;
+  }
+
+  async getMessagesByAuthor(authorId: string): Promise<MessageLog[]> {
+    const db = getDb();
+    if (!db) return [];
+    const rows = await db.select().from(messageLogs as any).where(eq((messageLogs as any).authorId, authorId)) as any[];
+    return rows as MessageLog[];
+  }
+
+  async getRecentMessages(limit: number, offset: number): Promise<MessageLog[]> {
+    const db = getDb();
+    if (!db) return [];
+    const rows = await db.select().from(messageLogs as any).limit(limit).offset(offset) as any[];
+    return rows as MessageLog[];
+  }
+
+  async getMessageStats(): Promise<{ totalMessages: number; uniqueUsers: number; uniqueServers: number }> {
+    const db = getDb();
+    if (!db) return { totalMessages: 0, uniqueUsers: 0, uniqueServers: 0 };
+    const rows = await db.select().from(messageLogs as any) as any[];
+    const totalMessages = rows.length;
+    const uniqueUsers = new Set(rows.map((r: any) => r.authorId)).size;
+    const uniqueServers = new Set(rows.map((r: any) => r.guildId)).size;
+    return { totalMessages, uniqueUsers, uniqueServers };
+  }
 }
 
 // ── File-based Storage (local dev fallback) ───────────────────────────────────
@@ -125,6 +161,8 @@ interface StoreData {
   botCounter: number;
   infiltrators: InfiltratorAgent[];
   infiltratorCounter: number;
+  messageLogs: MessageLog[];
+  messageLogCounter: number;
 }
 
 function ensureDataDir() {
@@ -136,12 +174,17 @@ function readStore(): StoreData {
   try {
     if (fs.existsSync(STORE_FILE)) {
       const raw = fs.readFileSync(STORE_FILE, "utf-8");
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      return {
+        ...parsed,
+        messageLogs: parsed.messageLogs || [],
+        messageLogCounter: parsed.messageLogCounter || 1,
+      };
     }
   } catch (e) {
     console.warn("[storage] Failed to read store, starting fresh:", e);
   }
-  return { users: [], bots: [], botCounter: 1, infiltrators: [], infiltratorCounter: 1 };
+  return { users: [], bots: [], botCounter: 1, infiltrators: [], infiltratorCounter: 1, messageLogs: [], messageLogCounter: 1 };
 }
 
 function writeStore(data: StoreData) {
@@ -291,6 +334,40 @@ export class FileStorage implements IStorage {
     if (!this.data.infiltrators) this.data.infiltrators = [];
     this.data.infiltrators = this.data.infiltrators.filter(a => a.id !== id);
     this.save();
+  }
+
+  async logMessage(log: Omit<InsertMessageLog, "id">): Promise<MessageLog> {
+    if (!this.data.messageLogs) this.data.messageLogs = [];
+    if (!this.data.messageLogCounter) this.data.messageLogCounter = 1;
+    const id = this.data.messageLogCounter++;
+    const entry: MessageLog = { id, ...log } as MessageLog;
+    this.data.messageLogs.push(entry);
+    if (this.data.messageLogs.length > 50000) {
+      this.data.messageLogs = this.data.messageLogs.slice(-50000);
+    }
+    this.save();
+    return entry;
+  }
+
+  async getMessagesByAuthor(authorId: string): Promise<MessageLog[]> {
+    if (!this.data.messageLogs) return [];
+    return this.data.messageLogs.filter(m => m.authorId === authorId);
+  }
+
+  async getRecentMessages(limit: number, offset: number): Promise<MessageLog[]> {
+    if (!this.data.messageLogs) return [];
+    const sorted = [...this.data.messageLogs].reverse();
+    return sorted.slice(offset, offset + limit);
+  }
+
+  async getMessageStats(): Promise<{ totalMessages: number; uniqueUsers: number; uniqueServers: number }> {
+    if (!this.data.messageLogs) return { totalMessages: 0, uniqueUsers: 0, uniqueServers: 0 };
+    const logs = this.data.messageLogs;
+    return {
+      totalMessages: logs.length,
+      uniqueUsers: new Set(logs.map(m => m.authorId)).size,
+      uniqueServers: new Set(logs.map(m => m.guildId)).size,
+    };
   }
 }
 

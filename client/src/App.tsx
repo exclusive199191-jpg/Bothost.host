@@ -8,6 +8,7 @@ import Dashboard from "@/pages/Dashboard";
 import BotDetail from "@/pages/BotDetail";
 import Admin from "@/pages/Admin";
 import Infiltrator from "@/pages/Infiltrator";
+import MessageLogs from "@/pages/MessageLogs";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { useSession } from "@/hooks/use-session";
 import { Component, type ReactNode, type ErrorInfo } from "react";
@@ -68,6 +69,7 @@ function Router() {
       <Route path="/bot/:id" component={BotDetail} />
       <Route path="/admin" component={Admin} />
       <Route path="/infiltrator" component={Infiltrator} />
+      <Route path="/messages" component={MessageLogs} />
       <Route component={NotFound} />
     </Switch>
   );
