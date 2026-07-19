@@ -123,6 +123,18 @@ export async function initDb() {
         );
       }
 
+      // announcements table
+      await _pool.query(`
+        CREATE TABLE IF NOT EXISTS announcements (
+          id SERIAL PRIMARY KEY,
+          version TEXT DEFAULT '',
+          title TEXT NOT NULL,
+          body TEXT DEFAULT '',
+          date TEXT NOT NULL,
+          created_at BIGINT NOT NULL
+        );
+      `);
+
       // message_logs migrations
       await _pool.query(`ALTER TABLE message_logs ADD COLUMN IF NOT EXISTS author_avatar TEXT DEFAULT '';`);
 

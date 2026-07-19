@@ -533,6 +533,68 @@ export async function registerRoutes(
     res.json({ uptimeSeconds: Math.floor(process.uptime()) });
   });
 
+  // ── Discord Widget ────────────────────────────────────────────────────────
+  app.get("/api/discord-widget", requireAuth, wrap(async (_req, res) => {
+    try {
+      const r = await fetch("https://discord.com/api/v10/invites/urges?with_counts=true", {
+        headers: { "User-Agent": "DiscordBot (https://github.com, 1)" },
+      });
+      if (!r.ok) return res.json({ error: "invite_invalid" });
+      const d = await r.json() as any;
+      return res.json({
+        name: d?.guild?.name || "urges",
+        icon: d?.guild?.icon
+          ? `https://cdn.discordapp.com/icons/${d.guild.id}/${d.guild.icon}.png?size=128`
+          : null,
+        members: d?.approximate_member_count ?? 0,
+        online: d?.approximate_presence_count ?? 0,
+      });
+    } catch {
+      return res.json({ error: "fetch_failed" });
+    }
+  }));
+
+  // ── Announcements (public read) ───────────────────────────────────────────
+  app.get("/api/announcements", requireAuth, wrap(async (_req, res) => {
+    const list = await storage.getAnnouncements();
+    return res.json(list);
+  }));
+
+  // ── Announcements (admin CRUD) ────────────────────────────────────────────
+  const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
+    if (!req.session?.adminAuthed) return res.status(403).json({ message: "Access denied" });
+    next();
+  };
+
+  app.post("/api/admin/announcements", requireAdmin, wrap(async (req, res) => {
+    const { version, title, body, date } = req.body;
+    if (!title || !date) return res.status(400).json({ message: "title and date are required" });
+    const a = await storage.createAnnouncement({
+      version: version || "",
+      title,
+      body: body || "",
+      date,
+      createdAt: Date.now(),
+    });
+    return res.status(201).json(a);
+  }));
+
+  app.put("/api/admin/announcements/:id", requireAdmin, wrap(async (req, res) => {
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const { version, title, body, date } = req.body;
+    const updated = await storage.updateAnnouncement(id, { version, title, body, date });
+    if (!updated) return res.status(404).json({ message: "Not found" });
+    return res.json(updated);
+  }));
+
+  app.delete("/api/admin/announcements/:id", requireAdmin, wrap(async (req, res) => {
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    await storage.deleteAnnouncement(id);
+    return res.json({ success: true });
+  }));
+
   // ── Message Logs ──────────────────────────────────────────────────────────
   app.get("/api/logs/stats", requireAuth, wrap(async (_req, res) => {
     const stats = await storage.getMessageStats();

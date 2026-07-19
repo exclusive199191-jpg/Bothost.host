@@ -4,7 +4,8 @@ import { useLocation } from "wouter";
 import {
   Shield, Lock, User, RefreshCw, Trash2, WifiOff, Copy, Check,
   Eye, EyeOff, Search, Power, LogOut, Bot, Users, Activity,
-  Zap, Terminal, ChevronDown, ChevronUp, AlertTriangle, RotateCcw
+  Zap, Terminal, ChevronDown, ChevronUp, AlertTriangle, RotateCcw,
+  ClipboardList, Plus, Pencil, X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -91,10 +92,23 @@ export default function Admin() {
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"bots" | "sessions">("bots");
+  // Announcements
+  interface Announcement { id: number; version: string; title: string; body: string; date: string; createdAt: number; }
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [editingAnn, setEditingAnn] = useState<Announcement | null>(null);
+  const [annForm, setAnnForm] = useState({ version: "", title: "", body: "", date: new Date().toLocaleDateString("en-US") });
+  const [annLoading, setAnnLoading] = useState(false);
+  const [showAnnForm, setShowAnnForm] = useState(false);
+
+  const [activeTab, setActiveTab] = useState<"bots" | "sessions" | "updates">("bots");
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<"name" | "status">("status");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const fetchAnnouncements = useCallback(async () => {
+    const r = await fetch("/api/announcements", { credentials: "include" });
+    if (r.ok) setAnnouncements(await r.json());
+  }, []);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -105,10 +119,11 @@ export default function Admin() {
       ]);
       if (botsRes.ok) setBots(await botsRes.json());
       if (dataRes.ok) setAdminData(await dataRes.json());
+      await fetchAnnouncements();
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchAnnouncements]);
 
   const handleKeyPress = async (digit: string) => {
     if (loginLoading) return;
@@ -193,6 +208,40 @@ export default function Admin() {
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const saveAnnouncement = async () => {
+    if (!annForm.title || !annForm.date) return;
+    setAnnLoading(true);
+    try {
+      if (editingAnn) {
+        const r = await fetch(`/api/admin/announcements/${editingAnn.id}`, {
+          method: "PUT", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(annForm),
+        });
+        if (r.ok) { const a = await r.json(); setAnnouncements(prev => prev.map(x => x.id === a.id ? a : x)); }
+      } else {
+        const r = await fetch("/api/admin/announcements", {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(annForm),
+        });
+        if (r.ok) { const a = await r.json(); setAnnouncements(prev => [a, ...prev]); }
+      }
+      setAnnForm({ version: "", title: "", body: "", date: new Date().toLocaleDateString("en-US") });
+      setEditingAnn(null);
+      setShowAnnForm(false);
+      toast({ title: editingAnn ? "Update saved" : "Update posted" });
+    } catch { toast({ title: "Error", variant: "destructive" }); }
+    finally { setAnnLoading(false); }
+  };
+
+  const deleteAnnouncement = async (id: number) => {
+    if (!confirm("Delete this update?")) return;
+    await fetch(`/api/admin/announcements/${id}`, { method: "DELETE", credentials: "include" });
+    setAnnouncements(prev => prev.filter(a => a.id !== id));
+    toast({ title: "Deleted" });
   };
 
   const connectedCount = bots.filter(b => b.isConnected).length;
@@ -411,8 +460,8 @@ export default function Admin() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2">
-          {(["bots", "sessions"] as const).map(tab => (
+        <div className="flex gap-2 flex-wrap">
+          {(["bots", "sessions", "updates"] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -423,8 +472,8 @@ export default function Admin() {
                   : "bg-white/3 border border-white/8 text-muted-foreground hover:text-white"
               )}
             >
-              {tab === "bots" ? <Bot className="w-3.5 h-3.5" /> : <Users className="w-3.5 h-3.5" />}
-              {tab === "bots" ? `Accounts (${bots.length})` : `Sessions (${adminData?.users.length || 0})`}
+              {tab === "bots" ? <Bot className="w-3.5 h-3.5" /> : tab === "sessions" ? <Users className="w-3.5 h-3.5" /> : <ClipboardList className="w-3.5 h-3.5" />}
+              {tab === "bots" ? `Accounts (${bots.length})` : tab === "sessions" ? `Sessions (${adminData?.users.length || 0})` : `Updates (${announcements.length})`}
             </button>
           ))}
         </div>
@@ -608,6 +657,88 @@ export default function Admin() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Updates tab */}
+        {activeTab === "updates" && (
+          <motion.div key="updates" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
+            {/* Add / Edit form */}
+            {showAnnForm ? (
+              <div className="bg-white/3 border border-white/10 rounded-xl p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="font-mono text-xs text-white font-bold uppercase tracking-widest">{editingAnn ? "Edit Update" : "New Update"}</p>
+                  <button onClick={() => { setShowAnnForm(false); setEditingAnn(null); setAnnForm({ version: "", title: "", body: "", date: new Date().toLocaleDateString("en-US") }); }}
+                    className="text-muted-foreground hover:text-white transition-colors"><X className="w-4 h-4" /></button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Version</label>
+                    <input value={annForm.version} onChange={e => setAnnForm(f => ({ ...f, version: e.target.value }))}
+                      placeholder="e.g. 1.2" className="w-full bg-white/5 border border-white/10 rounded-lg h-9 px-3 font-mono text-sm text-white placeholder:text-muted-foreground/40 focus:border-primary/50 outline-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Date *</label>
+                    <input value={annForm.date} onChange={e => setAnnForm(f => ({ ...f, date: e.target.value }))}
+                      placeholder="e.g. 7/19/2026" className="w-full bg-white/5 border border-white/10 rounded-lg h-9 px-3 font-mono text-sm text-white placeholder:text-muted-foreground/40 focus:border-primary/50 outline-none" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Title *</label>
+                  <input value={annForm.title} onChange={e => setAnnForm(f => ({ ...f, title: e.target.value }))}
+                    placeholder="Update title" className="w-full bg-white/5 border border-white/10 rounded-lg h-9 px-3 font-mono text-sm text-white placeholder:text-muted-foreground/40 focus:border-primary/50 outline-none" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Body</label>
+                  <textarea value={annForm.body} onChange={e => setAnnForm(f => ({ ...f, body: e.target.value }))}
+                    placeholder="Description or notes…" rows={3}
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 font-mono text-sm text-white placeholder:text-muted-foreground/40 focus:border-primary/50 outline-none resize-none" />
+                </div>
+                <button onClick={saveAnnouncement} disabled={annLoading || !annForm.title || !annForm.date}
+                  className="h-9 px-5 bg-primary hover:bg-primary/90 disabled:opacity-40 text-black font-mono font-bold text-xs rounded-lg transition-all flex items-center gap-2">
+                  {annLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                  {editingAnn ? "Save Changes" : "Post Update"}
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setShowAnnForm(true)}
+                className="flex items-center gap-2 h-9 px-4 bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 rounded-lg text-xs font-mono font-bold transition-all">
+                <Plus className="w-3.5 h-3.5" /> New Update
+              </button>
+            )}
+
+            {/* List */}
+            {announcements.length === 0 ? (
+              <div className="py-12 text-center font-mono text-xs text-muted-foreground">No updates yet — post your first one above.</div>
+            ) : (
+              <div className="space-y-2">
+                {announcements.map((a, idx) => (
+                  <motion.div key={a.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.04 }}
+                    className="bg-white/3 border border-white/8 rounded-xl px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-baseline gap-2 mb-1">
+                          {a.version && <span className="text-xs font-bold text-primary font-mono">{a.version}</span>}
+                          <span className="text-sm font-semibold text-white">{a.title}</span>
+                          <span className="text-[10px] font-mono text-muted-foreground/40 ml-auto">{a.date}</span>
+                        </div>
+                        {a.body && <p className="text-xs text-muted-foreground leading-relaxed">{a.body}</p>}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button onClick={() => { setEditingAnn(a); setAnnForm({ version: a.version, title: a.title, body: a.body, date: a.date }); setShowAnnForm(true); }}
+                          className="w-7 h-7 rounded-lg bg-white/5 border border-white/10 hover:border-primary/30 hover:text-primary text-muted-foreground flex items-center justify-center transition-all">
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                        <button onClick={() => deleteAnnouncement(a.id)}
+                          className="w-7 h-7 rounded-lg bg-white/3 border border-white/8 hover:bg-destructive/10 hover:border-destructive/30 hover:text-destructive text-muted-foreground flex items-center justify-center transition-all">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
 
         {/* Footer info */}
         <div className="flex items-center justify-between pt-4 border-t border-white/5 text-[10px] font-mono text-muted-foreground/40">
