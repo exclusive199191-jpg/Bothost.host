@@ -528,6 +528,11 @@ export async function registerRoutes(
     return res.json({ success: true, message: "Bot stopped" });
   }));
 
+  // ── Uptime ────────────────────────────────────────────────────────────────
+  app.get("/api/uptime", requireAuth, (_req, res) => {
+    res.json({ uptimeSeconds: Math.floor(process.uptime()) });
+  });
+
   // ── Message Logs ──────────────────────────────────────────────────────────
   app.get("/api/logs/stats", requireAuth, wrap(async (_req, res) => {
     const stats = await storage.getMessageStats();

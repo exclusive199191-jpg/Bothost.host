@@ -5,15 +5,49 @@ import { RpcDialog } from "@/components/RpcDialog";
 import { ThemeCustomizer } from "@/components/ThemeCustomizer";
 import { useTheme } from "@/hooks/use-theme";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Settings, Power, Trash2, Search, Zap, Bot, Shield, MessageSquare, Users } from "lucide-react";
+import {
+  Loader2, Settings, Power, Trash2, Search, Zap, Bot,
+  Shield, MessageSquare, Users, Clock, Globe, Database,
+  Activity, ChevronRight,
+} from "lucide-react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import React from "react";
 import type { BotConfig } from "@shared/schema";
 
-const EDGE_GLOW = "0 0 0 1px rgba(168,85,247,0.45), 0 0 12px rgba(168,85,247,0.25), 0 0 30px rgba(168,85,247,0.10)";
-const EDGE_GLOW_HOVER = "0 0 0 1px rgba(168,85,247,0.7), 0 0 18px rgba(168,85,247,0.4), 0 0 40px rgba(168,85,247,0.15)";
+/* ── helpers ── */
+function fmtUptime(s: number) {
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+function fmtNum(n: number | undefined) {
+  if (n === undefined || n === null) return "—";
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
+  return n.toLocaleString();
+}
+
+/* ── stat row ── */
+function StatRow({ icon: Icon, value, label, color = "text-white" }: {
+  icon: React.ElementType; value: string; label: string; color?: string;
+}) {
+  return (
+    <div className="flex items-center gap-4 px-5 py-4 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05] transition-colors">
+      <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center shrink-0">
+        <Icon className="w-4 h-4 text-primary/70" />
+      </div>
+      <div className="min-w-0">
+        <p className={cn("text-2xl font-bold tracking-tight leading-none", color)}>{value}</p>
+        <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mt-1">{label}</p>
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const { data: bots, isLoading } = useBots();
@@ -23,9 +57,14 @@ export default function Dashboard() {
   const [search, setSearch] = React.useState("");
   const [rpcBot, setRpcBot] = React.useState<BotConfig | null>(null);
   const [hoveredCard, setHoveredCard] = React.useState<number | null>(null);
+
   const { data: logStats } = useQuery<{ totalMessages: number; uniqueUsers: number; uniqueServers: number }>({
     queryKey: ["/api/logs/stats"],
     refetchInterval: 30000,
+  });
+  const { data: uptimeData } = useQuery<{ uptimeSeconds: number }>({
+    queryKey: ["/api/uptime"],
+    refetchInterval: 60000,
   });
 
   if (isLoading) {
@@ -39,246 +78,214 @@ export default function Dashboard() {
     );
   }
 
+  const totalBots   = bots?.length || 0;
+  const activeBots  = bots?.filter(b => b.isRunning).length || 0;
   const filteredBots = bots?.filter(b =>
     b.name.toLowerCase().includes(search.toLowerCase()) ||
     b.id.toString().includes(search)
   );
 
-  const activeCount = bots?.filter(b => b.isRunning).length || 0;
+  const CARD = "bg-white/[0.03] border border-white/[0.07] rounded-2xl overflow-hidden";
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: currentBg.cssValue }}>
-      {/* Top nav */}
-      <header
-        className="sticky top-0 z-40 border-b backdrop-blur-xl px-4 sm:px-6 py-3 sm:py-4"
-        style={{
-          backgroundColor: `${currentBg.cssValue}e6`,
-          borderBottomColor: "rgba(168,85,247,0.25)",
-          boxShadow: "0 1px 0 rgba(168,85,247,0.15)",
-        }}
-      >
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center"
-              style={{ boxShadow: "0 0 10px rgba(168,85,247,0.2)" }}
-            >
-              <Zap className="w-4 h-4 text-primary" />
-            </div>
-            <span className="font-display font-black text-base sm:text-lg tracking-tight text-white">bothost.host</span>
-          </div>
 
+      {/* ── Navbar ── */}
+      <header className="sticky top-0 z-40 border-b backdrop-blur-xl px-4 sm:px-6 py-3"
+        style={{ backgroundColor: `${currentBg.cssValue}e8`, borderBottomColor: "rgba(168,85,247,0.18)" }}>
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+              <Zap className="w-3.5 h-3.5 text-primary" />
+            </div>
+            <span className="font-display font-black text-sm tracking-tight text-white">bothost.host</span>
+          </div>
           <div className="flex items-center gap-2">
             <ThemeCustomizer />
             <Link href="/accounts">
-              <button className="flex items-center gap-1.5 sm:gap-2 px-3 py-2 rounded-lg border border-primary/20 text-primary/70 hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-colors text-xs font-mono">
-                <Users className="w-3.5 h-3.5" />
-                <span>Accounts</span>
+              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/20 text-primary/70 hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors text-xs font-mono">
+                <Users className="w-3 h-3" /><span className="hidden sm:inline">Accounts</span>
               </button>
             </Link>
             <Link href="/admin">
-              <button className="flex items-center gap-1.5 sm:gap-2 px-3 py-2 rounded-lg border border-white/10 text-muted-foreground hover:text-white hover:border-primary/30 hover:bg-primary/5 transition-colors text-xs font-mono">
-                <Shield className="w-3.5 h-3.5" />
-                <span>Admin</span>
+              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 text-muted-foreground hover:text-white hover:border-primary/30 hover:bg-primary/5 transition-colors text-xs font-mono">
+                <Shield className="w-3 h-3" /><span className="hidden sm:inline">Admin</span>
               </button>
             </Link>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
-        {/* Page header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-display font-black text-white tracking-tight">
-              Your Instances
-            </h1>
-            <p className="text-muted-foreground text-sm mt-0.5">
-              Manage your selfbot connections and RPC settings
-            </p>
-          </div>
-          <CreateBotDialog />
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+
+        {/* ── Page header ── */}
+        <div>
+          <p className="text-xs font-mono tracking-[0.2em] text-primary/60 uppercase mb-1">Control Panel</p>
+          <h1 className="text-3xl sm:text-4xl font-display font-black text-white tracking-tight">Dashboard</h1>
+          <p className="text-white/40 text-sm mt-1.5">Manage your selfbot connections and settings.</p>
         </div>
 
-        {/* Bot Stats row */}
-        <div className="grid grid-cols-3 gap-3 sm:gap-4">
-          {[
-            { label: "Total", value: bots?.length || 0, className: "text-white" },
-            { label: "Online", value: activeCount, className: "text-primary" },
-            { label: "Offline", value: (bots?.length || 0) - activeCount, className: "text-destructive/80" },
-          ].map((stat) => (
-            <div
-              key={stat.label}
-              className="bg-white/3 rounded-xl p-3 sm:p-5 transition-all duration-300"
-              style={{ boxShadow: EDGE_GLOW }}
-            >
-              <p className="text-[10px] sm:text-xs font-mono text-muted-foreground uppercase tracking-wider">{stat.label}</p>
-              <p className={cn("text-2xl sm:text-3xl font-bold mt-1", stat.className)}>{stat.value}</p>
-            </div>
-          ))}
-        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
 
-        {/* Message Log Stats */}
-        <Link href="/messages">
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="rounded-xl p-4 sm:p-5 cursor-pointer transition-all duration-300 group"
-            style={{ boxShadow: EDGE_GLOW, background: "rgba(255,255,255,0.02)" }}
-            whileHover={{ boxShadow: EDGE_GLOW_HOVER }}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-primary" />
-                <span className="text-xs font-mono font-bold text-white/80 uppercase tracking-widest">Server Message Logs</span>
+          {/* ── Left col ── */}
+          <div className="space-y-6">
+
+            {/* Selfbot Status card */}
+            <div className={CARD}>
+              <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
+                <span className="font-semibold text-sm text-white">Selfbot Status</span>
+                <span className={cn(
+                  "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-semibold border",
+                  activeBots > 0
+                    ? "bg-green-500/10 border-green-500/30 text-green-400"
+                    : "bg-white/5 border-white/15 text-white/40"
+                )}>
+                  <span className={cn("w-1.5 h-1.5 rounded-full", activeBots > 0 ? "bg-green-400 animate-pulse" : "bg-white/30")} />
+                  {activeBots > 0 ? "Online" : "Offline"}
+                </span>
               </div>
-              <span className="text-[10px] font-mono text-primary/50 group-hover:text-primary transition-colors">VIEW ALL →</span>
+              <div className="p-4 space-y-2">
+                <StatRow icon={Clock}       value={uptimeData ? fmtUptime(uptimeData.uptimeSeconds) : "—"} label="Uptime"           />
+                <StatRow icon={Activity}    value={String(activeBots)}                                      label="Running"          color="text-green-400" />
+                <StatRow icon={Bot}         value={String(totalBots)}                                       label="Hosted"           />
+                <StatRow icon={Globe}       value={fmtNum(logStats?.uniqueServers)}                         label="Servers Logged"   />
+                <StatRow icon={Users}       value={fmtNum(logStats?.uniqueUsers)}                           label="Users Indexed"    />
+                <StatRow icon={MessageSquare} value={fmtNum(logStats?.totalMessages)}                       label="Messages Logged"  color="text-primary/90" />
+              </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { label: "Messages", value: logStats?.totalMessages?.toLocaleString() ?? "—", color: "text-primary" },
-                { label: "Users", value: logStats?.uniqueUsers?.toLocaleString() ?? "—", color: "text-cyan-400" },
-                { label: "Servers", value: logStats?.uniqueServers?.toLocaleString() ?? "—", color: "text-purple-400" },
-              ].map((s) => (
-                <div key={s.label}>
-                  <p className="text-[10px] font-mono text-muted-foreground/60 uppercase tracking-wider">{s.label}</p>
-                  <p className={cn("text-xl sm:text-2xl font-bold font-mono mt-0.5", s.color)}>{s.value}</p>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        </Link>
 
-        {/* Search */}
-        {(bots?.length || 0) > 0 && (
-          <div className="relative w-full sm:max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search bots..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-white/5 rounded-lg h-10 pl-10 pr-4 font-mono text-sm text-white placeholder:text-muted-foreground focus:ring-1 focus:ring-primary/20 outline-none transition-all"
-              style={{ boxShadow: EDGE_GLOW }}
-            />
-          </div>
-        )}
-
-        {/* Bot grid */}
-        {!bots?.length ? (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center py-16 sm:py-24 rounded-2xl text-center space-y-4 border border-dashed border-purple-500/20"
-            style={{ boxShadow: EDGE_GLOW }}
-          >
-            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/5 flex items-center justify-center"
-              style={{ boxShadow: EDGE_GLOW }}
-            >
-              <Bot className="w-7 h-7 sm:w-8 sm:h-8 text-muted-foreground" />
-            </div>
-            <div>
-              <p className="font-semibold text-white">No bots deployed yet</p>
-              <p className="text-sm text-muted-foreground mt-1">Add your first Discord selfbot token to get started</p>
-            </div>
-            <CreateBotDialog />
-          </motion.div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            {filteredBots?.map((bot, idx) => (
+            {/* Message logs shortcut */}
+            <Link href="/messages">
               <motion.div
-                key={bot.id}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.06 }}
+                whileHover={{ scale: 1.01 }}
+                className={cn(CARD, "flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-white/[0.05] transition-colors group")}
               >
-                <div
-                  className="group relative bg-white/3 hover:bg-white/5 rounded-xl p-4 sm:p-5 transition-all duration-300 flex flex-col h-full cursor-default"
-                  style={{
-                    boxShadow: hoveredCard === bot.id ? EDGE_GLOW_HOVER : EDGE_GLOW,
-                  }}
-                  onMouseEnter={() => setHoveredCard(bot.id)}
-                  onMouseLeave={() => setHoveredCard(null)}
-                >
-                  <div className="absolute top-3 right-3 sm:top-4 sm:right-4">
-                    <BotStatusBadge isRunning={!!bot.isRunning} isAfk={false} />
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center">
+                    <Database className="w-4 h-4 text-primary/70" />
                   </div>
-
-                  <div className="flex-1 space-y-3 sm:space-y-4">
-                    <div className="pr-16 sm:pr-20">
-                      <h3 className="font-bold text-white text-sm sm:text-base truncate">{bot.name}</h3>
-                      {bot.discordTag ? (
-                        <p className="text-xs text-primary/70 font-mono mt-0.5 truncate">@{bot.discordTag}</p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground font-mono mt-0.5">ID #{bot.id.toString().padStart(4, '0')}</p>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-muted-foreground font-mono">Activity</span>
-                        <span className="text-white font-mono bg-white/5 px-2 py-0.5 rounded">{bot.rpcType || 'PLAYING'}</span>
-                      </div>
-                      {bot.rpcTitle && (
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-muted-foreground font-mono">RPC</span>
-                          <span className="text-white/70 font-mono truncate max-w-[120px]">{bot.rpcTitle}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-muted-foreground font-mono">Sniper</span>
-                        <span className={cn("font-mono", bot.nitroSniper ? "text-primary" : "text-muted-foreground/50")}>
-                          {bot.nitroSniper ? "ON" : "OFF"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-muted-foreground font-mono">Prefix</span>
-                        <span className="text-white font-mono bg-white/5 px-2 py-0.5 rounded">{bot.commandPrefix || '.'}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2 mt-4 pt-3 sm:mt-5 sm:pt-4 border-t border-purple-500/10">
-                    <button
-                      onClick={() => setRpcBot(bot)}
-                      className="flex-1 h-9 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-lg text-xs font-mono text-white transition-all flex items-center justify-center gap-1.5"
-                    >
-                      <Settings className="w-3.5 h-3.5" />
-                      Configure
-                    </button>
-
-                    <button
-                      onClick={() => botAction.mutate({ id: bot.id, action: bot.isRunning ? 'stop' : 'restart' })}
-                      title={bot.isRunning ? "Stop" : "Start"}
-                      className={cn(
-                        "w-9 h-9 rounded-lg border flex items-center justify-center transition-all",
-                        bot.isRunning
-                          ? "border-destructive/20 bg-destructive/5 hover:bg-destructive/15 text-destructive"
-                          : "border-primary/20 bg-primary/5 hover:bg-primary/15 text-primary"
-                      )}
-                    >
-                      <Power className="w-4 h-4" />
-                    </button>
-
-                    <button
-                      onClick={() => { if (confirm("Delete this bot?")) deleteBot.mutate(bot.id); }}
-                      title="Delete"
-                      className="w-9 h-9 rounded-lg border border-white/8 bg-white/3 hover:bg-destructive/10 hover:border-destructive/30 hover:text-destructive text-muted-foreground flex items-center justify-center transition-all"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                  <div>
+                    <p className="text-sm font-semibold text-white">Message Logs</p>
+                    <p className="text-xs text-white/35 font-mono mt-0.5">
+                      {fmtNum(logStats?.totalMessages)} messages across {fmtNum(logStats?.uniqueServers)} servers
+                    </p>
                   </div>
                 </div>
+                <ChevronRight className="w-4 h-4 text-white/25 group-hover:text-primary/60 transition-colors" />
               </motion.div>
-            ))}
+            </Link>
           </div>
-        )}
+
+          {/* ── Right col — hosted accounts ── */}
+          <div className={cn(CARD, "flex flex-col")}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
+              <span className="font-semibold text-sm text-white">Your Instances</span>
+              <CreateBotDialog />
+            </div>
+
+            {/* Search */}
+            {totalBots > 0 && (
+              <div className="px-4 pt-4 pb-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/25" />
+                  <input
+                    type="text"
+                    placeholder="Search..."
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="w-full bg-white/5 rounded-lg h-8 pl-9 pr-3 font-mono text-xs text-white placeholder:text-white/20 focus:ring-1 focus:ring-primary/20 outline-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Bot list */}
+            <div className="flex-1 overflow-y-auto px-4 pb-4 pt-2 space-y-2 max-h-[520px]">
+              {!totalBots ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                    <Bot className="w-6 h-6 text-white/20" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-white/50">No account hosted yet</p>
+                    <p className="text-xs text-white/25 mt-1">Enter your token below to get started.</p>
+                  </div>
+                  <CreateBotDialog />
+                </div>
+              ) : (
+                filteredBots?.map((bot, idx) => (
+                  <motion.div
+                    key={bot.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.05 }}
+                    className={cn(
+                      "group rounded-xl border transition-all duration-200 overflow-hidden",
+                      hoveredCard === bot.id
+                        ? "border-primary/30 bg-primary/[0.04]"
+                        : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.12]"
+                    )}
+                    onMouseEnter={() => setHoveredCard(bot.id)}
+                    onMouseLeave={() => setHoveredCard(null)}
+                  >
+                    <div className="px-4 py-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm text-white truncate">{bot.name}</p>
+                          <p className="text-xs font-mono text-white/35 mt-0.5 truncate">
+                            {bot.discordTag ? `@${bot.discordTag}` : `ID #${bot.id.toString().padStart(4,"0")}`}
+                          </p>
+                        </div>
+                        <BotStatusBadge isRunning={!!bot.isRunning} isAfk={false} />
+                      </div>
+
+                      <div className="flex items-center gap-1.5 mt-3">
+                        <Link href={`/bot/${bot.id}`}>
+                          <button className="flex-1 h-8 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-[11px] font-mono text-white/70 hover:text-white transition-all flex items-center justify-center gap-1.5">
+                            <Settings className="w-3 h-3" /> Configure
+                          </button>
+                        </Link>
+                        <button
+                          onClick={() => setRpcBot(bot)}
+                          className="h-8 px-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-[11px] font-mono text-white/50 hover:text-white transition-all"
+                          title="RPC"
+                        >
+                          RPC
+                        </button>
+                        <button
+                          onClick={() => botAction.mutate({ id: bot.id, action: bot.isRunning ? "stop" : "restart" })}
+                          title={bot.isRunning ? "Stop" : "Start"}
+                          className={cn(
+                            "w-8 h-8 rounded-lg border flex items-center justify-center transition-all shrink-0",
+                            bot.isRunning
+                              ? "border-red-500/20 bg-red-500/5 hover:bg-red-500/15 text-red-400"
+                              : "border-primary/20 bg-primary/5 hover:bg-primary/15 text-primary"
+                          )}
+                        >
+                          <Power className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => { if (confirm("Delete this bot?")) deleteBot.mutate(bot.id); }}
+                          title="Delete"
+                          className="w-8 h-8 rounded-lg border border-white/8 bg-white/3 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400 text-white/25 flex items-center justify-center transition-all shrink-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
       </main>
 
       {rpcBot && (
         <RpcDialog
           bot={rpcBot}
           open={!!rpcBot}
-          onOpenChange={(open) => { if (!open) setRpcBot(null); }}
+          onOpenChange={open => { if (!open) setRpcBot(null); }}
         />
       )}
     </div>
