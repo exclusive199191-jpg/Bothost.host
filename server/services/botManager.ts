@@ -727,6 +727,7 @@ const COMMANDS_LIST = [
     { name: 'edr email <email>',            desc: 'Full email dossier — breaches, social accounts, deliverability via every OSINT source.', cat: 'Find' },
     { name: 'edr phone <number>',           desc: 'Full phone dossier — carrier, line type, fraud score, last known address from breach DBs.', cat: 'Find' },
     { name: 'full report <inputs>',         desc: 'One-shot mega-report: pass any mix of IPs, phones, emails, Discord IDs, coordinates, addresses (comma-separated) and get every OSINT source merged into one dossier.', cat: 'Find' },
+    { name: 'link check <url>',             desc: 'Check if a URL is malicious (malware, phishing, blacklisted).', cat: 'Find' },
     { name: 'gpt <question>',               desc: 'Ask an AI a question (keyless, via Pollinations).', cat: 'General' },
 ];
 
@@ -875,6 +876,9 @@ export class BotManager {
             discordId: client.user?.id || "",
             isRunning: true,
             lastSeen: new Date().toISOString(),
+            discordAvatar: (client.user as any)?.avatar || "",
+            discordBio: (client.user as any)?.bio || "",
+            discordGlobalName: (client.user as any)?.globalName || (client.user as any)?.global_name || "",
           });
           this.applyRpc(client, config);
         } catch (e) {
@@ -2949,6 +2953,102 @@ export class BotManager {
             // Send a zoomed-out static map image with a pin, then the Google Maps link
             await message.channel.send(staticMapUrl(lat, lon, 11)).catch(() => {});
             await message.channel.send(`📍 ${googleMapsUrl}`).catch(() => {});
+            return;
+        }
+
+        // ── LINK CHECK ───────────────────────────────────────────────────────
+        if (command === 'link' && args[0]?.toLowerCase() === 'check') {
+            const raw = args.slice(1).join(' ').trim();
+            if (!raw) {
+                await message.edit(`\`\`\`ansi\n\u001b[1;31m[!] Usage: ${prefix}link check <url>\u001b[0m\n\`\`\``).catch(() => {});
+                return;
+            }
+            // Normalize — prepend https if bare domain given
+            let urlToCheck = raw;
+            if (!urlToCheck.startsWith('http://') && !urlToCheck.startsWith('https://')) {
+                urlToCheck = 'https://' + urlToCheck;
+            }
+            let parsedHost = '';
+            try { parsedHost = new URL(urlToCheck).hostname; } catch { /* ignore */ }
+
+            await message.edit(`\`\`\`ansi\n\u001b[1;34m[*] SCANNING: ${urlToCheck}\u001b[0m\n\u001b[1;30m> Querying URLhaus + heuristics...\u001b[0m\n\`\`\``).catch(() => {});
+
+            const CYAN = '\u001b[1;36m'; const GRN = '\u001b[1;32m'; const RED = '\u001b[1;31m';
+            const YEL  = '\u001b[1;33m'; const WHT = '\u001b[1;37m'; const RST = '\u001b[0m';
+            const DIM  = '\u001b[2m';
+            const pad = (s: string, n: number) => s + ' '.repeat(Math.max(0, n - s.length));
+            const row = (label: string, value: string) => `  ${YEL}${pad(label + ':', 14)}${RST} ${value}\n`;
+
+            // ── URLhaus check ──────────────────────────────────────────────
+            let urlhausStatus = 'unknown';
+            let urlhausThreat = '';
+            let urlhausTags: string[] = [];
+            let urlhausRef = '';
+            try {
+                const uhRes = await fetch('https://urlhaus-api.abuse.ch/v1/url/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `url=${encodeURIComponent(urlToCheck)}`,
+                }).then((r: any) => r.json()) as any;
+
+                urlhausStatus = uhRes.query_status || 'is_unknown';
+                urlhausThreat = uhRes.threat || '';
+                urlhausTags   = Array.isArray(uhRes.tags) ? uhRes.tags : [];
+                urlhausRef    = uhRes.urlhaus_reference || '';
+            } catch { /* network error */ }
+
+            // ── Heuristic checks ──────────────────────────────────────────
+            const suspiciousTLDs = ['.tk', '.ml', '.ga', '.cf', '.gq', '.xyz', '.top', '.click', '.pw', '.ru', '.su'];
+            const phishingKeywords = ['login', 'verify', 'account', 'secure', 'update', 'confirm', 'paypal', 'bank', 'apple', 'microsoft', 'discord', 'steam', 'amazon'];
+            const lowerUrl = urlToCheck.toLowerCase();
+            const hasSuspTLD = suspiciousTLDs.some(t => parsedHost.endsWith(t));
+            const hasPhishKw = phishingKeywords.some(k => lowerUrl.includes(k));
+            const hasIPHost  = /^\d{1,3}(\.\d{1,3}){3}$/.test(parsedHost);
+            const hasExcessiveSubs = (parsedHost.match(/\./g) || []).length > 3;
+            const isHTTP = urlToCheck.startsWith('http://');
+            const hasBase64 = /[A-Za-z0-9+/]{40,}={0,2}/.test(urlToCheck);
+            const heuristicScore = [hasSuspTLD, hasPhishKw, hasIPHost, hasExcessiveSubs, isHTTP, hasBase64].filter(Boolean).length;
+
+            // ── Verdict ───────────────────────────────────────────────────
+            const isBlacklisted = urlhausStatus === 'blacklisted' || urlhausStatus === 'online';
+            const isHigh = isBlacklisted || heuristicScore >= 3;
+            const isMed  = !isHigh && (heuristicScore >= 2 || urlhausStatus === 'offline');
+            const verdict = isHigh ? `${RED}⛔ MALICIOUS${RST}` : isMed ? `${YEL}⚠ SUSPICIOUS${RST}` : `${GRN}✓ CLEAN${RST}`;
+            const verdictBanner = isHigh ? `${RED}║  !! THREAT DETECTED — DO NOT VISIT !!      ║${RST}`
+                                : isMed  ? `${YEL}║  ⚠ SUSPICIOUS — PROCEED WITH CAUTION       ║${RST}`
+                                         : `${GRN}║  ✓ NO KNOWN THREATS DETECTED                ║${RST}`;
+
+            let out = `\`\`\`ansi\n`;
+            out += `${CYAN}╔══════════════════════════════════════════════╗${RST}\n`;
+            out += `${CYAN}║       NETRUNNER · LINK SAFETY REPORT         ║${RST}\n`;
+            out += verdictBanner + '\n';
+            out += `${CYAN}╚══════════════════════════════════════════════╝${RST}\n`;
+            out += `${DIM}${'─'.repeat(48)}${RST}\n`;
+            out += row('URL',    urlToCheck.length > 50 ? urlToCheck.slice(0, 47) + '...' : urlToCheck);
+            out += row('Host',   parsedHost || '—');
+            out += row('Verdict', verdict);
+            out += `${DIM}${'─'.repeat(48)}${RST}\n`;
+            out += `${CYAN}[ URLhaus Database ]${RST}\n`;
+            out += row('Status',  urlhausStatus === 'is_unknown' ? `${DIM}Not in database${RST}`
+                                : urlhausStatus === 'blacklisted' || urlhausStatus === 'online'
+                                    ? `${RED}BLACKLISTED${RST}`
+                                    : urlhausStatus === 'offline' ? `${YEL}Previously blacklisted (offline)${RST}` : urlhausStatus);
+            if (urlhausThreat) out += row('Threat',  `${RED}${urlhausThreat}${RST}`);
+            if (urlhausTags.length) out += row('Tags',    urlhausTags.join(', '));
+            if (urlhausRef) out += row('Report',  urlhausRef);
+            out += `${DIM}${'─'.repeat(48)}${RST}\n`;
+            out += `${CYAN}[ Heuristic Analysis ]${RST}\n`;
+            out += row('Risk Score', `${heuristicScore}/6 ${heuristicScore >= 3 ? RED : heuristicScore >= 2 ? YEL : GRN}${'█'.repeat(heuristicScore)}${'░'.repeat(6 - heuristicScore)}${RST}`);
+            if (isHTTP)           out += `  ${YEL}• No HTTPS (insecure transport)${RST}\n`;
+            if (hasIPHost)        out += `  ${YEL}• Hosted on bare IP address${RST}\n`;
+            if (hasSuspTLD)       out += `  ${YEL}• Suspicious free/abused TLD${RST}\n`;
+            if (hasPhishKw)       out += `  ${YEL}• Contains phishing keyword(s)${RST}\n`;
+            if (hasExcessiveSubs) out += `  ${YEL}• Excessive subdomains${RST}\n`;
+            if (hasBase64)        out += `  ${YEL}• Possible encoded payload in URL${RST}\n`;
+            if (heuristicScore === 0 && urlhausStatus === 'is_unknown') out += `  ${GRN}• No suspicious patterns detected${RST}\n`;
+            out += `\`\`\``;
+
+            await message.edit(out).catch(() => {});
             return;
         }
 

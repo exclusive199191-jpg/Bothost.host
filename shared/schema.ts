@@ -41,6 +41,9 @@ export const botConfigs = pgTable("bot_configs", {
   passcode: text("passcode").default(""),
   gcAllowAll: boolean("gc_allow_all").default(false),
   whitelistedGcs: text("whitelisted_gcs").array().default(sql`'{}'`),
+  discordAvatar: text("discord_avatar").default(""),
+  discordBio: text("discord_bio").default(""),
+  discordGlobalName: text("discord_global_name").default(""),
 });
 
 export const insertBotConfigSchema = createInsertSchema(botConfigs).omit({

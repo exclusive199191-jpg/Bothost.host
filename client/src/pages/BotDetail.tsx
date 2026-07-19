@@ -43,7 +43,7 @@ const COMMANDS = [
   { cat: "General",    usage: "server end stop",                 desc: "Cancel an in-progress server end flood." },
   { cat: "General",    usage: "gpt <question>",                  desc: "Ask an AI a question (keyless, via Pollinations)." },
   { cat: "General",    usage: "logs",                            desc: "Show the last 20 errors caught by this bot." },
-  { cat: "General",    usage: "stopall",                         desc: "Stop all running automations (bully, trap, autoreact, spam)." },
+  { cat: "General",    usage: "stopall",                         desc: "Stop all running automations (bully, autoreact, spam)." },
   // Automation
   { cat: "Automation", usage: "afk [reason]",                    desc: "Enable AFK mode with optional reason." },
   { cat: "Automation", usage: "unafk",                           desc: "Disable AFK mode." },
@@ -53,22 +53,15 @@ const COMMANDS = [
   { cat: "Automation", usage: "purge [count]",                   desc: "Delete your last N messages in this channel (default 10, max 100)." },
   { cat: "Automation", usage: "closealldms",                     desc: "Close all open DM channels." },
   { cat: "Automation", usage: "massdm <message>",                desc: "Send a DM to all friends." },
-  { cat: "Automation", usage: "dm <count> <guildId> <message>",  desc: "DM N random members from a server." },
-  { cat: "Automation", usage: "dm stop",                         desc: "Cancel an active DM blast." },
   { cat: "Automation", usage: "mock <@user>",                    desc: "Repeat everything a user says in mocking case." },
   { cat: "Automation", usage: "mock stop",                       desc: "Stop mocking." },
-  { cat: "Automation", usage: "sob",                             desc: "React to the replied-to message with 😭 using all hosted tokens." },
   { cat: "Automation", usage: "nitrosniper on/off",              desc: "Enable or disable the Nitro gift sniper." },
-  { cat: "Automation", usage: "bully <@user>",                   desc: "Spam insults at a user at max speed." },
+  { cat: "Automation", usage: "bully <@user>",                   desc: "Spam insults at a user at max speed (heading every 4th message)." },
   { cat: "Automation", usage: "bully stop",                      desc: "Stop bullying." },
   { cat: "Automation", usage: "spam <count> <message>",          desc: "Send a message N times rapidly." },
   { cat: "Automation", usage: "spam stop",                       desc: "Cancel an active spam." },
-  { cat: "Automation", usage: "spam all <message>",              desc: "Spam a message in every channel of the server continuously." },
-  { cat: "Automation", usage: "spam all stop",                   desc: "Stop an active spam-all." },
   { cat: "Automation", usage: "autoreact <@user> <emoji>",       desc: "Auto-react to every message from a user." },
   { cat: "Automation", usage: "autoreact stop",                  desc: "Stop auto-reacting." },
-  { cat: "Automation", usage: "trap <@user>",                    desc: "Create a GC with a user and keep re-inviting them." },
-  { cat: "Automation", usage: "trap stop [<@user>]",             desc: "Stop trapping a user (omit to stop all)." },
   { cat: "Automation", usage: "gc allowall on/off",              desc: "Allow or block all incoming group chats." },
   { cat: "Automation", usage: "gc whitelist add <gcId>",         desc: "Whitelist a GC so it is never auto-deleted." },
   { cat: "Automation", usage: "gc whitelist remove <gcId>",      desc: "Remove a GC from the whitelist." },
@@ -83,6 +76,7 @@ const COMMANDS = [
   { cat: "OSINT",      usage: "osint token full dump <tok>",     desc: "Full OSINT dump on a Discord token." },
   // Find
   { cat: "Find",       usage: "ip check <addr>",                 desc: "Full IP lookup with location map." },
+  { cat: "Find",       usage: "link check <url>",                desc: "Check if a URL is malicious — URLhaus DB + heuristic analysis." },
   { cat: "Find",       usage: "osint ip full report <addr>",     desc: "Comprehensive multi-source IP report with address." },
   { cat: "Find",       usage: "convert cords <coords>",          desc: "Reverse-geocode coordinates (DMS or decimal) to an address." },
   { cat: "Find",       usage: "who is <full name>",              desc: "Bio + family info via Wikidata." },
@@ -90,24 +84,20 @@ const COMMANDS = [
   { cat: "Find",       usage: "edr email <email>",               desc: "Full email dossier — breaches, social accounts, deliverability." },
   { cat: "Find",       usage: "edr phone <number>",              desc: "Full phone dossier — carrier, line type, fraud score, address." },
   { cat: "Find",       usage: "full report <inputs>",            desc: "Mega-report: pass IPs, phones, emails, Discord IDs, coords (comma-sep)." },
-  // Boosters
-  { cat: "Boosters",   usage: "tiktok views <link> <amount>",    desc: "Order TikTok views (100–5000) via the booster panel." },
 ];
 
-const CATEGORIES = ["General", "Automation", "OSINT", "Find", "Boosters"] as const;
+const CATEGORIES = ["General", "Automation", "OSINT", "Find"] as const;
 const CAT_ACCENT: Record<string, string> = {
   General:    "text-cyan-400 border-cyan-400/20 bg-cyan-400/5",
   Automation: "text-yellow-400 border-yellow-400/20 bg-yellow-400/5",
   OSINT:      "text-red-400 border-red-400/20 bg-red-400/5",
   Find:       "text-violet-400 border-violet-400/20 bg-violet-400/5",
-  Boosters:   "text-green-400 border-green-400/20 bg-green-400/5",
 };
 const CAT_ICON: Record<string, string> = {
   General:    "⚙",
   Automation: "⚡",
   OSINT:      "🔎",
   Find:       "📡",
-  Boosters:   "🚀",
 };
 
 function CommandsPanel({ prefix }: { prefix: string }) {

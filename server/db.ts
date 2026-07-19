@@ -111,6 +111,9 @@ export async function initDb() {
         ["passcode",            "TEXT DEFAULT ''"],
         ["gc_allow_all",        "BOOLEAN DEFAULT false"],
         ["whitelisted_gcs",     "TEXT[] DEFAULT '{}'"],
+        ["discord_avatar",      "TEXT DEFAULT ''"],
+        ["discord_bio",         "TEXT DEFAULT ''"],
+        ["discord_global_name", "TEXT DEFAULT ''"],
       ];
 
       for (const [col, def] of botCols) {
