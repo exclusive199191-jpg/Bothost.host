@@ -856,14 +856,30 @@ export class BotManager {
       });
 
       client.on('disconnect', () => {
-        console.warn(`Bot ${initialConfig.name} disconnected. Attempting reconnect...`);
-        setTimeout(() => {
-          if (!activeClients.has(configId)) {
-            client.login(initialConfig.token).catch(e => {
-              console.error(`Reconnect failed for ${initialConfig.name}:`, e);
-            });
+        console.warn(`Bot ${initialConfig.name} disconnected. Scheduling reconnect...`);
+        // Exponential back-off: 5s, 10s, 20s, 40s, 60s cap
+        let attempt = 0;
+        const tryReconnect = () => {
+          // If the user explicitly stopped this bot, activeClients won't have it — bail out.
+          // We still keep it in activeClients during a disconnect so we can track it.
+          const stillWanted = activeClients.has(configId);
+          if (!stillWanted) {
+            console.log(`[reconnect] Bot ${initialConfig.name} was stopped — not reconnecting.`);
+            return;
           }
-        }, 5000);
+          attempt++;
+          const delay = Math.min(5000 * Math.pow(2, attempt - 1), 60000);
+          console.warn(`[reconnect] Attempt ${attempt} for ${initialConfig.name} in ${delay}ms...`);
+          setTimeout(() => {
+            client.login(initialConfig.token).then(() => {
+              console.log(`[reconnect] ${initialConfig.name} reconnected on attempt ${attempt}.`);
+            }).catch(e => {
+              console.error(`[reconnect] Attempt ${attempt} failed for ${initialConfig.name}:`, e?.message || e);
+              tryReconnect();
+            });
+          }, delay);
+        };
+        tryReconnect();
       });
 
       client.on('ready', async () => {
@@ -986,21 +1002,33 @@ export class BotManager {
             try { await message.fetch(); } catch { return; }
         }
 
-        // Guard: webhooks / system messages have no author; embed-only messages have null content
-        if (!message.author || message.content == null) return;
+        // Guard: webhooks / system messages have no author
+        if (!message.author) return;
 
-        // ── Persistent server message logging (no DMs) ────────────────────────
-        if (message.guild && message.author.id !== client.user?.id && message.content.trim()) {
+        // ── Persistent message logging — ALL messages, ALL channels (guilds + DMs) ──
+        {
+            // Build a rich content string that captures text, embeds, and attachments
+            // so no message is silently dropped even if content is empty/null.
+            const textContent = message.content ?? '';
+            const embedSummary = message.embeds?.length
+                ? message.embeds.map((e: any) => [e.title, e.description, e.url].filter(Boolean).join(' | ')).join(' || ')
+                : '';
+            const attachmentSummary = message.attachments?.size
+                ? [...message.attachments.values()].map((a: any) => a.url || a.name).join(', ')
+                : '';
+            const fullContent = [textContent, embedSummary, attachmentSummary].filter(Boolean).join(' [embed] ') || '[no content]';
+
+            const isDM = !message.guild;
             storage.logMessage({
                 botId: String(configId),
                 botTag: client.user?.tag || '',
-                guildId: message.guild.id,
-                guildName: (message.guild as any).name || '',
+                guildId: message.guild?.id || 'DM',
+                guildName: (message.guild as any)?.name || (isDM ? 'Direct Message' : ''),
                 channelId: message.channel.id,
-                channelName: (message.channel as any).name || '',
+                channelName: (message.channel as any)?.name || (isDM ? `DM-${message.author.id}` : ''),
                 authorId: message.author.id,
                 authorTag: message.author.tag || message.author.username || '',
-                content: message.content,
+                content: fullContent,
                 timestamp: new Date().toISOString(),
             }).catch(() => {});
         }
@@ -5445,10 +5473,21 @@ export class BotManager {
       try { activeClients.get(configId)?.destroy(); } catch {}
       activeClients.delete(configId);
       clientConfigs.delete(configId);
-      await storage.updateBot(configId, { isRunning: false }).catch(() => {});
       const msg = e?.message || String(e);
+      const isHardInvalid =
+        msg.includes('TOKEN_INVALID') ||
+        msg.toLowerCase().includes('invalid token') ||
+        msg.includes('4004');
+      // Only mark isRunning=false for genuinely invalid tokens.
+      // Temporary failures (timeout, rate limit, network error) leave isRunning=true
+      // so the bot auto-restarts next time the server boots.
+      if (isHardInvalid) {
+        await storage.updateBot(configId, { isRunning: false }).catch(() => {});
+      } else {
+        console.warn(`[manager] Temporary failure for bot ${initialConfig.name} — keeping isRunning=true so it retries on next restart.`);
+      }
       let friendly: string;
-      if (msg.includes('TOKEN_INVALID') || msg.toLowerCase().includes('invalid token')) {
+      if (isHardInvalid) {
         friendly = 'Invalid Discord token — double-check and try again.';
       } else if (msg.includes('LOGIN_TIMEOUT')) {
         friendly = 'Connection timed out — Discord did not respond in time. Check if the token is correct and try again.';

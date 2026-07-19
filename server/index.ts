@@ -74,6 +74,17 @@ httpServer.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
   log(`serving on port ${port}`);
 });
 
+// ── Graceful shutdown — do NOT clear isRunning so bots auto-restart on boot ──
+// When Replit / Railway sends SIGTERM (deploy, restart, idle shutdown), we exit
+// cleanly without touching token state in storage.  On the next boot, startAll()
+// picks up every bot that still has isRunning=true and reconnects automatically.
+function gracefulShutdown(signal: string) {
+  console.log(`[shutdown] Received ${signal} — exiting without clearing token state.`);
+  process.exit(0);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
+
 // ── Finish async setup in the background (DB, sessions, routes, Vite) ────────
 (async () => {
   try {
