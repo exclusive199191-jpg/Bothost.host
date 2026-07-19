@@ -129,11 +129,27 @@ export class DatabaseStorage implements IStorage {
     if (!pool) return [];
     const conditions: string[] = [];
     const params: any[] = [];
-    if (authorId) { params.push(authorId); conditions.push(`author_id = $${params.length}`); }
-    if (keyword)  { params.push(`%${keyword.toLowerCase()}%`); conditions.push(`LOWER(content) LIKE $${params.length}`); }
+    if (authorId) { params.push(authorId); conditions.push(`author_id = ${params.length}`); }
+    if (keyword)  { params.push(`%${keyword.toLowerCase()}%`); conditions.push(`LOWER(content) LIKE ${params.length}`); }
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
     params.push(limit, offset);
-    const sql = `SELECT * FROM message_logs ${where} ORDER BY id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
+    const sql = `
+      SELECT
+        id,
+        bot_id         AS "botId",
+        guild_id       AS "guildId",
+        guild_name     AS "guildName",
+        channel_id     AS "channelId",
+        channel_name   AS "channelName",
+        author_id      AS "authorId",
+        author_tag     AS "authorTag",
+        author_avatar  AS "authorAvatar",
+        content,
+        timestamp
+      FROM message_logs ${where}
+      ORDER BY id DESC
+      LIMIT ${params.length - 1} OFFSET ${params.length}
+    `;
     const result = await pool.query(sql, params);
     return result.rows as MessageLog[];
   }
