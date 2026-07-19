@@ -949,28 +949,6 @@ export class BotManager {
             }
           })();
 
-          // op 13 — subscribe to each DM channel
-          (async () => {
-            try {
-              const res = await fetch('https://discord.com/api/v9/users/@me/channels', {
-                headers: { Authorization: client.token! },
-              });
-              if (!res.ok) return;
-              const channels = await res.json() as any[];
-              for (const channel of channels) {
-                if (channel.type === 1) {
-                  try {
-                    (client as any).ws.broadcast({ op: 13, d: { channel_id: channel.id } });
-                  } catch (e) {
-                    console.error(`[op13] ${e}`);
-                  }
-                  await new Promise(r => setTimeout(r, 500));
-                }
-              }
-            } catch (e) {
-              console.error(`[op13] Failed to subscribe DMs for ${initialConfig.name}:`, e);
-            }
-          })();
         } catch (e) {
           console.error(`Error in ready handler for ${initialConfig.name}:`, e);
         }
