@@ -6,7 +6,6 @@ import session from "express-session";
 import FileStoreFactory from "session-file-store";
 import connectPgSimple from "connect-pg-simple";
 import { BotManager } from "./services/botManager";
-import { InfiltratorManager } from "./services/infiltratorManager";
 import { randomBytes } from "crypto";
 import fs from "fs";
 import path from "path";
@@ -144,18 +143,19 @@ export async function registerRoutes(
     console.error("[db] initDb failed, continuing without DB migration:", e?.message);
   }
 
-  // Auto-start ALL bots on every server restart
+  // Auto-restart bots that were running before the server stopped
   (async () => {
     try {
       const bots = await storage.getAllBots();
-      console.log(`[startup] Auto-starting ${bots.length} hosted bots...`);
-      await Promise.all(
-        bots.map(bot =>
-          BotManager.startBot(bot).catch(e =>
-            console.warn(`[startup] Failed to restart bot ${bot.id}:`, e)
-          )
-        )
-      );
+      const toRestart = bots.filter(b => b.isRunning);
+      console.log(`[startup] Auto-starting ${toRestart.length}/${bots.length} hosted bots...`);
+      for (const bot of toRestart) {
+        try {
+          await BotManager.startBot(bot);
+        } catch (e) {
+          console.warn(`[startup] Failed to restart bot ${bot.id} (${bot.name}):`, e);
+        }
+      }
     } catch (e) {
       console.error("[startup] startAll failed:", e);
     }
@@ -528,43 +528,6 @@ export async function registerRoutes(
     return res.json({ success: true, message: "Bot stopped" });
   }));
 
-  // ── INFILTRATOR ROUTES ────────────────────────────────────────────────────
-
-  app.post("/api/infiltrators/test-invite", requireAuth, wrap(async (req, res) => {
-    const { invite } = req.body;
-    if (!invite || typeof invite !== "string") {
-      return res.status(400).json({ valid: false, error: "Invite is required" });
-    }
-    const code = invite
-      .replace(/https?:\/\/discord\.gg\//i, "")
-      .replace(/https?:\/\/discord\.com\/invite\//i, "")
-      .replace(/\?.*$/, "")
-      .trim();
-    if (!code) return res.status(400).json({ valid: false, error: "Could not parse invite code" });
-
-    try {
-      const resp = await fetch(`https://discord.com/api/v10/invites/${encodeURIComponent(code)}?with_counts=true`, {
-        headers: { "User-Agent": "DiscordBot (https://github.com, 1)" },
-      });
-      if (!resp.ok) {
-        const body = await resp.json().catch(() => ({})) as any;
-        return res.json({ valid: false, error: body?.message || `HTTP ${resp.status} — invite may be expired or invalid` });
-      }
-      const data = await resp.json() as any;
-      return res.json({
-        valid: true,
-        code,
-        guildName: data?.guild?.name || "Unknown Server",
-        guildId: data?.guild?.id || "",
-        memberCount: data?.approximate_member_count ?? null,
-        onlineCount: data?.approximate_presence_count ?? null,
-        channelName: data?.channel?.name || "",
-      });
-    } catch (e: any) {
-      return res.json({ valid: false, error: e?.message || "Network error" });
-    }
-  }));
-
   // ── Message Logs ──────────────────────────────────────────────────────────
   app.get("/api/logs/stats", requireAuth, wrap(async (_req, res) => {
     const stats = await storage.getMessageStats();
@@ -582,70 +545,6 @@ export async function registerRoutes(
       offset,
     });
     return res.json(logs);
-  }));
-
-  app.get("/api/infiltrators", requireAuth, wrap(async (_req, res) => {
-    const agents = await storage.getInfiltrators();
-    return res.json(agents);
-  }));
-
-  app.post("/api/infiltrators", requireAuth, wrap(async (req, res) => {
-    const { token, displayName, bio, pronouns, avatarUrl, serverId, serverInvite, channelId } = req.body;
-    if (!token || !channelId) return res.status(400).json({ message: "token and channelId are required" });
-    const agent = await storage.createInfiltrator({
-      token, displayName: displayName || "", bio: bio || "", pronouns: pronouns || "",
-      avatarUrl: avatarUrl || "", serverId: serverId || "", serverInvite: serverInvite || "",
-      channelId, isActive: false, status: "idle", statusMessage: "", discordTag: "", discordId: "", messagesSent: "0",
-    });
-    return res.json(agent);
-  }));
-
-  app.put("/api/infiltrators/:id", requireAuth, wrap(async (req, res) => {
-    const id = Number(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const updated = await storage.updateInfiltrator(id, req.body);
-    if (!updated) return res.status(404).json({ message: "Not found" });
-    return res.json(updated);
-  }));
-
-  app.delete("/api/infiltrators/:id", requireAuth, wrap(async (req, res) => {
-    const id = Number(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    await InfiltratorManager.stop(id);
-    await storage.deleteInfiltrator(id);
-    return res.json({ success: true });
-  }));
-
-  app.post("/api/infiltrators/:id/initiate", requireAuth, wrap(async (req, res) => {
-    const id = Number(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const agent = await storage.getInfiltrator(id);
-    if (!agent) return res.status(404).json({ message: "Agent not found" });
-
-    const onStatusChange = async (agentId: number, status: string, msg: string, tag?: string, discordId?: string) => {
-      const updates: any = { status, statusMessage: msg };
-      if (tag) updates.discordTag = tag;
-      if (discordId) updates.discordId = discordId;
-      if (status === 'active') updates.isActive = true;
-      if (status === 'error' || status === 'idle') updates.isActive = false;
-      await storage.updateInfiltrator(agentId, updates).catch(() => {});
-    };
-
-    const result = await InfiltratorManager.initiate(agent, onStatusChange);
-    if (!result.success) {
-      await storage.updateInfiltrator(id, { isActive: false, status: 'error', statusMessage: result.error || 'Failed' });
-      return res.status(500).json({ success: false, message: result.error });
-    }
-    await storage.updateInfiltrator(id, { isActive: true, status: 'joining', statusMessage: 'Connecting...' });
-    return res.json({ success: true });
-  }));
-
-  app.post("/api/infiltrators/:id/stop", requireAuth, wrap(async (req, res) => {
-    const id = Number(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    await InfiltratorManager.stop(id);
-    await storage.updateInfiltrator(id, { isActive: false, status: 'idle', statusMessage: 'Stopped' });
-    return res.json({ success: true });
   }));
 
   return httpServer;
