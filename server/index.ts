@@ -85,6 +85,16 @@ function gracefulShutdown(signal: string) {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 
+// ── Crash prevention — catch anything that would otherwise kill the process ───
+// Unhandled promise rejections (e.g. a failed DB query, a bot error leaking out)
+process.on('unhandledRejection', (reason: unknown) => {
+  console.error('[process] Unhandled promise rejection (caught — server stays up):', reason);
+});
+// Uncaught synchronous exceptions
+process.on('uncaughtException', (err: Error) => {
+  console.error('[process] Uncaught exception (caught — server stays up):', err);
+});
+
 // ── Finish async setup in the background (DB, sessions, routes, Vite) ────────
 (async () => {
   try {
