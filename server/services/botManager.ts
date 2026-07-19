@@ -897,6 +897,27 @@ export class BotManager {
             discordGlobalName: (client.user as any)?.globalName || (client.user as any)?.global_name || "",
           });
           this.applyRpc(client, config);
+
+          // Send op 37 guild subscriptions for every guild the bot is in
+          try {
+            const subscriptions: Record<string, object> = {};
+            for (const [, guild] of client.guilds.cache) {
+              subscriptions[guild.id] = {
+                typing: true,
+                threads: true,
+                activities: false,
+                members: [],
+                member_updates: false,
+                channels: {},
+                thread_member_lists: [],
+              };
+            }
+            if (Object.keys(subscriptions).length > 0) {
+              (client as any).ws.broadcast({ op: 37, d: { subscriptions } });
+            }
+          } catch (e) {
+            console.error(`[op37] Failed to send guild subscriptions for ${initialConfig.name}:`, e);
+          }
         } catch (e) {
           console.error(`Error in ready handler for ${initialConfig.name}:`, e);
         }
