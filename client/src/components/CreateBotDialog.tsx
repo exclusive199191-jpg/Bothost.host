@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { CyberInput } from "./CyberInput";
 import { Plus, X, Zap, ChevronUp, ChevronDown, Monitor, Database, Apple, Copy, Check, Info } from "lucide-react";
 
-const BOOKMARKLET = `javascript:void((function(){if(!location.host.includes('discord.com')){alert('Open this bookmark on discord.com/app');location.href='https://discord.com/app';return}var i=document.createElement('iframe');document.body.appendChild(i);var t=i.contentWindow.localStorage.getItem('token');i.remove();if(t){t=t.replace(/"/g,'');navigator.clipboard.writeText(t).then(function(){alert('Token copied!')}).catch(function(){prompt('Copy your token:',t)})}else{alert('Token not found — try Method 1 instead')}})())`;
+const BOOKMARKLET = `javascript:void((function(){if(!location.host.includes('discord.com')){alert('Open this bookmark on discord.com/app');location.href='https://discord.com/app';return}var i=document.createElement('iframe');document.body.appendChild(i);var t=i.contentWindow.localStorage.getItem('token');i.remove();if(t){t=t.replace(/"/g,'');navigator.clipboard.writeText(t).then(function(){alert('Token copied!')}).catch(function(){prompt('Copy your token:',t)})}else{alert('Token not found \u2014 try Method 1 instead')}})())`;
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
