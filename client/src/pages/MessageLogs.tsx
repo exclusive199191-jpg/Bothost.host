@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, Search, MessageSquare, Users, Server, Hash,
   Bot, ChevronLeft, ChevronRight, X, Tag, Filter, RotateCcw,
-  Activity, Lock, CheckCircle,
+  Activity,
 } from "lucide-react";
 import type { MessageLog } from "@shared/schema";
 
@@ -57,18 +57,10 @@ export default function MessageLogs() {
     totalMessages: number; uniqueUsers: number; uniqueServers: number;
   }>({ queryKey: ["/api/logs/stats"], refetchInterval: 10000 });
 
-  // Check whether this user has at least one hosted (running) token
-  const { data: bots } = useQuery<{ id: number; isRunning: boolean }[]>({
-    queryKey: ["/api/bots"],
-    refetchInterval: 15000,
-  });
-  const isHosted = Array.isArray(bots) && bots.some((b) => b.isRunning);
-
-  // Full message log — only fetched when user is hosted
+  // Full message log — always fetched
   const logsQueryKey = ["/api/logs", { authorId: active.userId, keyword: active.keyword, limit: PAGE_SIZE, offset: page * PAGE_SIZE }];
   const { data: logs, isLoading: logsLoading } = useQuery<MessageLog[]>({
     queryKey: logsQueryKey,
-    enabled: isHosted,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (active.userId)  params.set("authorId", active.userId);
@@ -152,9 +144,8 @@ export default function MessageLogs() {
           ))}
         </div>
 
-        {/* ── HOSTED: show full search + message table ── */}
-        {isHosted ? (
-          <>
+        {/* Search & Filter */}
+        <>
             {/* Search & Filter */}
             <form
               onSubmit={applyFilters}
@@ -360,49 +351,7 @@ export default function MessageLogs() {
                 </div>
               </div>
             )}
-          </>
-        ) : (
-          /* ── NOT HOSTED: teaser + CTA ── */
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="rounded-xl border border-primary/25 bg-primary/5 overflow-hidden"
-            style={{ boxShadow: EDGE_GLOW }}
-          >
-            <div className="flex items-center gap-3 px-5 py-3 border-b border-primary/15 bg-primary/10">
-              <Lock className="w-4 h-4 text-primary shrink-0" />
-              <p className="text-xs font-mono font-bold text-primary uppercase tracking-widest">
-                Full Message Access — Host Your Account to Unlock
-              </p>
-            </div>
-            <div className="px-5 py-5 space-y-4">
-              <p className="text-sm font-mono text-white/80 leading-relaxed">
-                Once you add and host your token on this site, you'll have complete access to every server
-                message logged by your account — searchable, filterable, and updated in real time.
-              </p>
-              <ul className="space-y-2">
-                {[
-                  "Full access to every logged server message",
-                  "Search & filter by user, keyword, or server",
-                  "Real-time feed — new messages appear instantly",
-                  "Complete history stored and never lost on restart",
-                ].map((perk, i) => (
-                  <motion.li key={perk} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 + i * 0.06 }}
-                    className="flex items-center gap-2.5">
-                    <CheckCircle className="w-3.5 h-3.5 text-primary shrink-0" />
-                    <span className="text-xs font-mono text-white/70">{perk}</span>
-                  </motion.li>
-                ))}
-              </ul>
-              <Link href="/">
-                <button className="mt-1 h-9 px-5 bg-primary hover:bg-primary/90 text-black font-mono font-bold text-xs rounded-lg transition-all">
-                  → Add & Host a Token on the Dashboard
-                </button>
-              </Link>
-            </div>
-          </motion.div>
-        )}
+        </>
 
       </main>
     </div>
