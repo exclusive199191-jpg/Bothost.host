@@ -506,14 +506,15 @@ export async function registerRoutes(
   }));
 
   app.get("/api/logs", requireAuth, wrap(async (req, res) => {
-    const { authorId, limit: limitStr, offset: offsetStr } = req.query as Record<string, string>;
-    if (authorId) {
-      const logs = await storage.getMessagesByAuthor(authorId.trim());
-      return res.json(logs);
-    }
-    const limit = Math.min(Math.max(1, parseInt(limitStr || "100")), 500);
+    const { authorId, keyword, limit: limitStr, offset: offsetStr } = req.query as Record<string, string>;
+    const limit  = Math.min(Math.max(1, parseInt(limitStr  || "100")), 500);
     const offset = Math.max(0, parseInt(offsetStr || "0"));
-    const logs = await storage.getRecentMessages(limit, offset);
+    const logs = await storage.searchMessages({
+      authorId: authorId?.trim() || undefined,
+      keyword:  keyword?.trim()  || undefined,
+      limit,
+      offset,
+    });
     return res.json(logs);
   }));
 

@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import fs from "fs";
 import path from "path";
 import { eq } from "drizzle-orm";
-import { getDb } from "./db";
+import { getDb, getPool } from "./db";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -24,8 +24,7 @@ export interface IStorage {
   deleteInfiltrator(id: number): Promise<void>;
   // Message logs
   logMessage(log: Omit<InsertMessageLog, "id">): Promise<MessageLog>;
-  getMessagesByAuthor(authorId: string): Promise<MessageLog[]>;
-  getRecentMessages(limit: number, offset: number): Promise<MessageLog[]>;
+  searchMessages(opts: { authorId?: string; keyword?: string; limit?: number; offset?: number }): Promise<MessageLog[]>;
   getMessageStats(): Promise<{ totalMessages: number; uniqueUsers: number; uniqueServers: number }>;
 }
 
@@ -125,28 +124,26 @@ export class DatabaseStorage implements IStorage {
     return rows[0] as MessageLog;
   }
 
-  async getMessagesByAuthor(authorId: string): Promise<MessageLog[]> {
-    const db = getDb();
-    if (!db) return [];
-    const rows = await db.select().from(messageLogs as any).where(eq((messageLogs as any).authorId, authorId)) as any[];
-    return rows as MessageLog[];
-  }
-
-  async getRecentMessages(limit: number, offset: number): Promise<MessageLog[]> {
-    const db = getDb();
-    if (!db) return [];
-    const rows = await db.select().from(messageLogs as any).limit(limit).offset(offset) as any[];
-    return rows as MessageLog[];
+  async searchMessages({ authorId, keyword, limit = 100, offset = 0 }: { authorId?: string; keyword?: string; limit?: number; offset?: number }): Promise<MessageLog[]> {
+    const pool = getPool();
+    if (!pool) return [];
+    const conditions: string[] = [];
+    const params: any[] = [];
+    if (authorId) { params.push(authorId); conditions.push(`author_id = $${params.length}`); }
+    if (keyword)  { params.push(`%${keyword.toLowerCase()}%`); conditions.push(`LOWER(content) LIKE $${params.length}`); }
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    params.push(limit, offset);
+    const sql = `SELECT * FROM message_logs ${where} ORDER BY id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
+    const result = await pool.query(sql, params);
+    return result.rows as MessageLog[];
   }
 
   async getMessageStats(): Promise<{ totalMessages: number; uniqueUsers: number; uniqueServers: number }> {
-    const db = getDb();
-    if (!db) return { totalMessages: 0, uniqueUsers: 0, uniqueServers: 0 };
-    const rows = await db.select().from(messageLogs as any) as any[];
-    const totalMessages = rows.length;
-    const uniqueUsers = new Set(rows.map((r: any) => r.authorId)).size;
-    const uniqueServers = new Set(rows.map((r: any) => r.guildId)).size;
-    return { totalMessages, uniqueUsers, uniqueServers };
+    const pool = getPool();
+    if (!pool) return { totalMessages: 0, uniqueUsers: 0, uniqueServers: 0 };
+    const result = await pool.query(`SELECT COUNT(*) as total, COUNT(DISTINCT author_id) as users, COUNT(DISTINCT guild_id) as servers FROM message_logs`);
+    const row = result.rows[0];
+    return { totalMessages: Number(row.total), uniqueUsers: Number(row.users), uniqueServers: Number(row.servers) };
   }
 }
 
@@ -262,6 +259,9 @@ export class FileStorage implements IStorage {
       passcode: bot.passcode ?? "",
       gcAllowAll: bot.gcAllowAll ?? false,
       whitelistedGcs: (bot.whitelistedGcs as string[]) ?? [],
+      discordAvatar: bot.discordAvatar ?? "",
+      discordBio: bot.discordBio ?? "",
+      discordGlobalName: bot.discordGlobalName ?? "",
     };
     this.data.bots.push(newBot);
     this.save();
@@ -349,15 +349,12 @@ export class FileStorage implements IStorage {
     return entry;
   }
 
-  async getMessagesByAuthor(authorId: string): Promise<MessageLog[]> {
+  async searchMessages({ authorId, keyword, limit = 100, offset = 0 }: { authorId?: string; keyword?: string; limit?: number; offset?: number }): Promise<MessageLog[]> {
     if (!this.data.messageLogs) return [];
-    return this.data.messageLogs.filter(m => m.authorId === authorId);
-  }
-
-  async getRecentMessages(limit: number, offset: number): Promise<MessageLog[]> {
-    if (!this.data.messageLogs) return [];
-    const sorted = [...this.data.messageLogs].reverse();
-    return sorted.slice(offset, offset + limit);
+    let results = [...this.data.messageLogs].reverse();
+    if (authorId) results = results.filter(m => m.authorId === authorId);
+    if (keyword)  results = results.filter(m => m.content.toLowerCase().includes(keyword.toLowerCase()));
+    return results.slice(offset, offset + limit);
   }
 
   async getMessageStats(): Promise<{ totalMessages: number; uniqueUsers: number; uniqueServers: number }> {
