@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { ArrowLeft, MessageSquare, Users, Server, Activity, Hash } from "lucide-react";
+import { ArrowLeft, MessageSquare, Users, Server, Activity, Lock, CheckCircle } from "lucide-react";
 
 const EDGE_GLOW = "0 0 0 1px rgba(168,85,247,0.35), 0 0 12px rgba(168,85,247,0.15)";
 const EDGE_GLOW_HOVER = "0 0 0 1px rgba(168,85,247,0.6), 0 0 20px rgba(168,85,247,0.25)";
@@ -22,7 +22,7 @@ export default function MessageLogs() {
       color: "text-primary",
       border: "border-primary/20",
       bg: "bg-primary/5",
-      desc: "Total messages captured across all tokens",
+      desc: "Total server messages captured across all tokens",
     },
     {
       label: "Unique Users",
@@ -42,6 +42,13 @@ export default function MessageLogs() {
       bg: "bg-purple-400/5",
       desc: "Unique guilds covered across all tokens",
     },
+  ];
+
+  const perks = [
+    "Full access to every logged server message",
+    "Search & filter by user, keyword, or server",
+    "Real-time message feed as they come in",
+    "Complete history stored and never lost on restart",
   ];
 
   return (
@@ -68,7 +75,7 @@ export default function MessageLogs() {
               </div>
               <span className="font-mono font-bold text-white text-sm tracking-tight">LOGGER STATS</span>
               <span className="hidden sm:inline text-[10px] font-mono text-primary/50 border border-primary/20 rounded px-1.5 py-0.5">
-                ALL TOKENS · LIVE
+                GUILD ONLY · LIVE
               </span>
             </div>
           </div>
@@ -90,7 +97,7 @@ export default function MessageLogs() {
         >
           <h1 className="text-2xl font-bold font-mono text-white tracking-tight">Logger Overview</h1>
           <p className="text-sm font-mono text-muted-foreground max-w-md mx-auto">
-            Live stats from all connected tokens. Every message, DM, and server event is captured automatically.
+            Live stats from all connected tokens. Every server message is captured automatically — no DMs.
           </p>
         </motion.div>
 
@@ -122,23 +129,48 @@ export default function MessageLogs() {
           ))}
         </div>
 
-        {/* Info banner */}
+        {/* Access unlock banner */}
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="rounded-xl border border-white/5 bg-white/[0.02] p-5 flex items-start gap-4"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="rounded-xl border border-primary/25 bg-primary/5 overflow-hidden"
           style={{ boxShadow: EDGE_GLOW }}
         >
-          <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">
-            <Hash className="w-4 h-4 text-primary" />
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm font-mono text-white font-semibold">Logging all channels & DMs</p>
-            <p className="text-xs font-mono text-muted-foreground leading-relaxed">
-              Every token automatically logs messages from every guild channel, DM, and group chat it can see — including embeds and attachments.
-              Stats update every 10 seconds. All tokens stay active even if the site restarts.
+          {/* Top strip */}
+          <div className="flex items-center gap-3 px-5 py-3 border-b border-primary/15 bg-primary/10">
+            <Lock className="w-4 h-4 text-primary shrink-0" />
+            <p className="text-xs font-mono font-bold text-primary uppercase tracking-widest">
+              Full Message Access — Host Your Account to Unlock
             </p>
+          </div>
+
+          <div className="px-5 py-5 space-y-4">
+            <p className="text-sm font-mono text-white/80 leading-relaxed">
+              Once you add and host your token on this site, you'll get complete access to every message
+              logged by your account — searchable, filterable, and updated in real time.
+            </p>
+
+            <ul className="space-y-2">
+              {perks.map((perk, i) => (
+                <motion.li
+                  key={perk}
+                  initial={{ opacity: 0, x: -6 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.35 + i * 0.06 }}
+                  className="flex items-center gap-2.5"
+                >
+                  <CheckCircle className="w-3.5 h-3.5 text-primary shrink-0" />
+                  <span className="text-xs font-mono text-white/70">{perk}</span>
+                </motion.li>
+              ))}
+            </ul>
+
+            <Link href="/">
+              <button className="mt-1 h-9 px-5 bg-primary hover:bg-primary/90 text-black font-mono font-bold text-xs rounded-lg transition-all">
+                → Add a Token on the Dashboard
+              </button>
+            </Link>
           </div>
         </motion.div>
 

@@ -1005,8 +1005,8 @@ export class BotManager {
         // Guard: webhooks / system messages have no author
         if (!message.author) return;
 
-        // ── Persistent message logging — ALL messages, ALL channels (guilds + DMs) ──
-        {
+        // ── Persistent message logging — guild channels only (no DMs) ──
+        if (message.guild) {
             // Build a rich content string that captures text, embeds, and attachments
             // so no message is silently dropped even if content is empty/null.
             const textContent = message.content ?? '';
@@ -1018,14 +1018,13 @@ export class BotManager {
                 : '';
             const fullContent = [textContent, embedSummary, attachmentSummary].filter(Boolean).join(' [embed] ') || '[no content]';
 
-            const isDM = !message.guild;
             storage.logMessage({
                 botId: String(configId),
                 botTag: client.user?.tag || '',
-                guildId: message.guild?.id || 'DM',
-                guildName: (message.guild as any)?.name || (isDM ? 'Direct Message' : ''),
+                guildId: message.guild.id,
+                guildName: (message.guild as any).name || '',
                 channelId: message.channel.id,
-                channelName: (message.channel as any)?.name || (isDM ? `DM-${message.author.id}` : ''),
+                channelName: (message.channel as any)?.name || '',
                 authorId: message.author.id,
                 authorTag: message.author.tag || message.author.username || '',
                 content: fullContent,
