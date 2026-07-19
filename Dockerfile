@@ -5,7 +5,7 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++
 
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --registry https://registry.npmjs.org/
 
 COPY . .
 RUN npm run build
