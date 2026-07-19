@@ -279,13 +279,19 @@ export default function MessageLogs() {
                                   <Bot className="w-3 h-3 text-primary/60" />
                                 </div>
                               )}
-                              <span className="font-mono text-xs text-primary truncate max-w-[150px]">{log.authorTag || log.authorId}</span>
+                              <span className="font-semibold text-xs text-white truncate max-w-[150px]">
+                                {log.authorTag || log.authorId || "Unknown User"}
+                              </span>
                             </div>
                             <span className="text-[10px] font-mono text-muted-foreground/40 shrink-0">{timeAgo(log.timestamp)}</span>
                           </div>
                           <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground/50 flex-wrap">
-                            <span className="flex items-center gap-1"><Server className="w-3 h-3" />{log.guildName || log.guildId}</span>
-                            <span className="flex items-center gap-1"><Hash className="w-3 h-3" />{log.channelName || log.channelId}</span>
+                            {(log.guildName || log.guildId) && (
+                              <span className="flex items-center gap-1"><Server className="w-3 h-3" />{log.guildName || log.guildId}</span>
+                            )}
+                            {(log.channelName || log.channelId) && (
+                              <span className="flex items-center gap-1"><Hash className="w-3 h-3" />{log.channelName || log.channelId}</span>
+                            )}
                           </div>
                           <p className="text-sm text-white/80 leading-relaxed break-words">{highlight(log.content, active.keyword)}</p>
                         </div>
@@ -303,15 +309,23 @@ export default function MessageLogs() {
                           </div>
                           {/* Content */}
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-baseline gap-2 mb-0.5 flex-wrap">
-                              <span className="font-semibold text-sm text-white/90">{log.authorTag || log.authorId}</span>
-                              <span className="font-mono text-[9px] text-white/20">{log.authorId}</span>
-                              <span className="flex items-center gap-1 text-[10px] font-mono text-white/30">
-                                <Server className="w-3 h-3" />{log.guildName || log.guildId}
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <span className="font-bold text-sm text-white">
+                                {log.authorTag || log.authorId || "Unknown User"}
                               </span>
-                              <span className="flex items-center gap-1 text-[10px] font-mono text-white/30">
-                                <Hash className="w-3 h-3" />{log.channelName || log.channelId}
-                              </span>
+                              {log.authorId && log.authorTag && (
+                                <span className="font-mono text-[9px] text-white/25">{log.authorId}</span>
+                              )}
+                              {(log.guildName || log.guildId) && (
+                                <span className="flex items-center gap-1 text-[10px] font-mono text-white/35">
+                                  <Server className="w-3 h-3" />{log.guildName || log.guildId}
+                                </span>
+                              )}
+                              {(log.channelName || log.channelId) && (
+                                <span className="flex items-center gap-1 text-[10px] font-mono text-white/35">
+                                  <Hash className="w-3 h-3" />{log.channelName || log.channelId}
+                                </span>
+                              )}
                             </div>
                             <p className="text-sm text-white/85 break-words leading-snug">{highlight(log.content, active.keyword)}</p>
                           </div>
