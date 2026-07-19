@@ -81,10 +81,10 @@ export default function Admin() {
   const { toast } = useToast();
 
   const [authed, setAuthed] = useState(false);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [pin, setPin] = useState<string[]>([]);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const [shake, setShake] = useState(false);
 
   const [bots, setBots] = useState<AdminBot[]>([]);
   const [adminData, setAdminData] = useState<AdminData | null>(null);
@@ -110,8 +110,12 @@ export default function Admin() {
     }
   }, []);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleKeyPress = async (digit: string) => {
+    if (loginLoading) return;
+    const next = [...pin, digit];
+    setPin(next);
+    if (next.length < 4) return;
+
     setLoginLoading(true);
     setLoginError("");
     try {
@@ -119,10 +123,12 @@ export default function Admin() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ pin: next.join("") }),
       });
       if (!res.ok) {
-        setLoginError("Invalid credentials. Access denied.");
+        setShake(true);
+        setTimeout(() => { setShake(false); setPin([]); }, 600);
+        setLoginError("Incorrect PIN.");
         setLoginLoading(false);
         return;
       }
@@ -130,9 +136,16 @@ export default function Admin() {
       await fetchAll();
     } catch {
       setLoginError("Connection failed. Try again.");
+      setPin([]);
     } finally {
       setLoginLoading(false);
     }
+  };
+
+  const handleDelete = () => {
+    if (loginLoading) return;
+    setPin(p => p.slice(0, -1));
+    setLoginError("");
   };
 
   const disconnectAll = async () => {
@@ -207,6 +220,7 @@ export default function Admin() {
   };
 
   if (!authed) {
+    const keys = ["1","2","3","4","5","6","7","8","9","","0","⌫"];
     return (
       <div className="min-h-screen bg-black flex items-center justify-center relative overflow-hidden p-4">
         <div className="absolute inset-0 bg-[linear-gradient(rgba(34,197,94,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(34,197,94,0.02)_1px,transparent_1px)] bg-[size:40px_40px]" />
@@ -216,7 +230,7 @@ export default function Admin() {
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="relative z-10 w-full max-w-sm"
+          className="relative z-10 w-full max-w-xs"
         >
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl border border-primary/30 bg-primary/5 mb-4 shadow-[0_0_40px_rgba(34,197,94,0.15)]">
@@ -231,46 +245,35 @@ export default function Admin() {
 
           <div className="bg-black/80 border border-primary/20 rounded-xl overflow-hidden backdrop-blur-xl shadow-[0_0_40px_rgba(34,197,94,0.08)]">
             <div className="h-px bg-gradient-to-r from-transparent via-primary to-transparent" />
-            <form onSubmit={handleLogin} className="p-6 space-y-4">
-              <div className="space-y-1.5">
-                <label className="font-mono text-[10px] uppercase text-muted-foreground tracking-widest">Username</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/40" />
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={e => setUsername(e.target.value)}
-                    placeholder="Admin username"
-                    required
-                    autoComplete="username"
-                    autoCapitalize="none"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg h-11 pl-10 pr-4 font-mono text-sm text-white placeholder:text-muted-foreground/40 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
-                  />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <label className="font-mono text-[10px] uppercase text-muted-foreground tracking-widest">Password</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/40" />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    placeholder="Admin password"
-                    required
-                    autoComplete="current-password"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg h-11 pl-10 pr-4 font-mono text-sm text-white placeholder:text-muted-foreground/40 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
-                  />
-                </div>
-              </div>
+            <div className="p-6 space-y-6">
 
+              {/* PIN dots */}
+              <motion.div
+                animate={shake ? { x: [0, -10, 10, -8, 8, -4, 4, 0] } : {}}
+                transition={{ duration: 0.5 }}
+                className="flex items-center justify-center gap-4"
+              >
+                {[0,1,2,3].map(i => (
+                  <div
+                    key={i}
+                    className={cn(
+                      "w-4 h-4 rounded-full border-2 transition-all duration-150",
+                      i < pin.length
+                        ? "bg-primary border-primary shadow-[0_0_8px_rgba(34,197,94,0.6)]"
+                        : "bg-transparent border-white/20"
+                    )}
+                  />
+                ))}
+              </motion.div>
+
+              {/* Error */}
               <AnimatePresence>
                 {loginError && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="flex items-center gap-2 text-destructive text-xs font-mono bg-destructive/5 border border-destructive/20 rounded-lg px-3 py-2"
+                    className="flex items-center justify-center gap-2 text-destructive text-xs font-mono"
                   >
                     <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
                     {loginError}
@@ -278,21 +281,33 @@ export default function Admin() {
                 )}
               </AnimatePresence>
 
-              <button
-                type="submit"
-                disabled={loginLoading}
-                className="w-full h-11 bg-primary hover:bg-primary/90 disabled:opacity-50 text-black font-bold font-mono uppercase tracking-widest text-sm rounded-lg transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(34,197,94,0.25)]"
-              >
-                {loginLoading ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Shield className="w-4 h-4" />
-                    Authenticate
-                  </>
-                )}
-              </button>
-            </form>
+              {/* Keypad */}
+              <div className="grid grid-cols-3 gap-3">
+                {keys.map((key, idx) => {
+                  if (key === "") return <div key={idx} />;
+                  const isDelete = key === "⌫";
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => isDelete ? handleDelete() : handleKeyPress(key)}
+                      disabled={loginLoading || (!isDelete && pin.length >= 4)}
+                      className={cn(
+                        "h-14 rounded-xl font-mono font-bold text-lg transition-all active:scale-95 select-none",
+                        isDelete
+                          ? "bg-white/5 hover:bg-white/10 border border-white/10 text-muted-foreground hover:text-white"
+                          : "bg-white/[0.06] hover:bg-primary/20 border border-white/10 hover:border-primary/40 text-white hover:text-primary shadow-sm",
+                        "disabled:opacity-40 disabled:cursor-not-allowed"
+                      )}
+                    >
+                      {loginLoading && !isDelete ? (
+                        <RefreshCw className="w-4 h-4 animate-spin mx-auto" />
+                      ) : key}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
             <div className="px-6 py-3 text-center">
               <button

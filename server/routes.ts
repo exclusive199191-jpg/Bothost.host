@@ -26,9 +26,8 @@ import {
 const FileStore = FileStoreFactory(session);
 const PgStore = connectPgSimple(session);
 
-// ── Admin credentials ─────────────────────────────────────────────────────────
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "1";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "1";
+// ── Admin PIN (server-side only — never sent to client) ───────────────────────
+const ADMIN_PIN = process.env.ADMIN_PIN || "2365";
 
 // ── Stable session secret ─────────────────────────────────────────────────────
 const SECRET_FILE = path.resolve(process.cwd(), "data", "session_secret");
@@ -399,15 +398,15 @@ export async function registerRoutes(
       const mins = Math.ceil((lockout.retryAfterMs ?? 0) / 60000);
       return res.status(429).json({ message: `Too many failed attempts. Try again in ${mins} minute(s).` });
     }
-    const { username, password } = req.body;
-    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    const { pin } = req.body;
+    if (typeof pin === "string" && pin === ADMIN_PIN) {
       clearAdminFailures(ip);
       req.session.adminAuthed = true;
       await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
       return res.json({ ok: true });
     }
     recordAdminFailure(ip);
-    console.warn(`[security] Admin login failure from ${ip} (username: ${username})`);
+    console.warn(`[security] Admin login failure from ${ip}`);
     return res.status(403).json({ message: "Access denied." });
   }));
 
