@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Loader2, Settings, Power, Trash2, Search, Zap, Bot,
   Shield, MessageSquare, Users, Clock, Globe, Database,
-  Activity, ChevronRight, ExternalLink, ClipboardList,
+  Activity, ChevronRight, ExternalLink, ClipboardList, Send,
 } from "lucide-react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
@@ -292,8 +292,8 @@ export default function Dashboard() {
           </div>
         </div>{/* end 2-col grid */}
 
-        {/* ── Bottom row: Discord widget + Recent Updates ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        {/* ── Bottom row: Discord widget + csintduck ad + Recent Updates ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
 
           {/* Discord Server Widget */}
           <div className={CARD}>
@@ -350,6 +350,71 @@ export default function Dashboard() {
                 </svg>
                 Join Server
               </a>
+            </div>
+          </div>
+
+          {/* csintduck.cc Advertisement */}
+          <div className={cn(CARD, "relative overflow-hidden border-cyan-500/20 flex flex-col")}>
+            {/* subtle glow accent */}
+            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-blue-500/5 pointer-events-none" />
+            <div className="px-5 py-4 border-b border-cyan-500/15 flex items-center justify-between relative z-10">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                <span className="font-semibold text-sm text-white tracking-tight">Featured Tool</span>
+              </div>
+              <span className="text-[9px] font-mono text-cyan-400/60 uppercase tracking-widest border border-cyan-500/20 px-2 py-0.5 rounded-full">Partner</span>
+            </div>
+
+            {/* Screenshot preview */}
+            <div className="relative mx-4 mt-4 rounded-xl overflow-hidden border border-white/10 shadow-xl flex-shrink-0">
+              <img
+                src="/csintduck-preview.jpeg"
+                alt="csintduck.cc dashboard preview"
+                className="w-full h-28 object-cover object-top"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+              <div className="absolute bottom-2 left-3">
+                <span className="text-[10px] font-mono text-white/50">Live Dashboard Preview</span>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-3 relative z-10 flex-1 flex flex-col justify-between">
+              <div className="space-y-1.5">
+                <div className="flex items-baseline gap-2">
+                  <h3 className="font-black text-base text-white tracking-tight">csintduck.cc</h3>
+                  <span className="text-[9px] font-mono text-cyan-400/70 uppercase tracking-widest">Advanced OSINT</span>
+                </div>
+                <p className="text-xs text-white/45 leading-relaxed">
+                  Professional-grade intelligence platform. Deep people search, breach data, social media scan, network intel, Telegram lookup &amp; more — built by Jax.
+                </p>
+              </div>
+
+              <div className="space-y-2.5">
+                {/* Contact row */}
+                <div className="flex items-center gap-2 text-xs font-mono text-white/40">
+                  <Send className="w-3 h-3 text-cyan-400/60 shrink-0" />
+                  <span>Contact Jax on Telegram:</span>
+                  <a
+                    href="https://t.me/fancyjaxy"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-cyan-400 hover:text-cyan-300 transition-colors font-semibold"
+                  >
+                    @fancyjaxy
+                  </a>
+                </div>
+
+                {/* CTA */}
+                <a
+                  href="https://csintduck.cc"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full h-10 rounded-xl font-bold text-xs text-black transition-all bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 shadow-[0_0_20px_rgba(6,182,212,0.25)] hover:shadow-[0_0_28px_rgba(6,182,212,0.4)]"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Visit csintduck.cc
+                </a>
+              </div>
             </div>
           </div>
 
