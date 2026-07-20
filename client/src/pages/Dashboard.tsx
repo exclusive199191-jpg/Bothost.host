@@ -292,133 +292,10 @@ export default function Dashboard() {
           </div>
         </div>{/* end 2-col grid */}
 
-        {/* ── Bottom row: Discord widget + csintduck ad + Recent Updates ── */}
+        {/* ── Bottom row: Recent Updates + Community Server + csintduck ad ── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
 
-          {/* Discord Server Widget */}
-          <div className={CARD}>
-            <div className="px-5 py-4 border-b border-white/[0.06]">
-              <span className="font-semibold text-sm text-white">Community Server</span>
-            </div>
-            <div className="p-5 space-y-4">
-              {/* Server identity */}
-              <div className="flex items-center gap-3">
-                {widget?.icon ? (
-                  <img src={widget.icon} alt="" className="w-12 h-12 rounded-xl object-cover" />
-                ) : (
-                  <div className="w-12 h-12 rounded-xl bg-[#5865F2]/20 border border-[#5865F2]/30 flex items-center justify-center text-xl">
-                    🐰
-                  </div>
-                )}
-                <div>
-                  <p className="font-bold text-white text-base">{widget?.name ?? "urges"}</p>
-                  <p className="text-xs text-white/35 font-mono">Join our community server</p>
-                </div>
-              </div>
-
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-2">
-                <div className="bg-white/[0.04] rounded-xl p-3 text-center border border-white/[0.06]">
-                  <p className="text-xl font-bold text-white">{widget?.members?.toLocaleString() ?? "—"}</p>
-                  <p className="text-[9px] font-mono text-white/30 uppercase tracking-widest mt-0.5">Members</p>
-                </div>
-                <div className="bg-white/[0.04] rounded-xl p-3 text-center border border-white/[0.06]">
-                  <p className="text-xl font-bold text-green-400">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400 mb-0.5 mr-0.5 align-middle" />
-                    {widget?.online?.toLocaleString() ?? "—"}
-                  </p>
-                  <p className="text-[9px] font-mono text-white/30 uppercase tracking-widest mt-0.5">Online</p>
-                </div>
-                <div className="bg-white/[0.04] rounded-xl p-3 text-center border border-white/[0.06]">
-                  <p className="text-xl font-bold text-white/50">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-white/30 mb-0.5 mr-0.5 align-middle" />
-                    {widget && !widget.error ? ((widget.members ?? 0) - (widget.online ?? 0)).toLocaleString() : "—"}
-                  </p>
-                  <p className="text-[9px] font-mono text-white/30 uppercase tracking-widest mt-0.5">Offline</p>
-                </div>
-              </div>
-
-              {/* Join button */}
-              <a
-                href="https://discord.gg/urges"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 w-full h-11 rounded-xl bg-[#5865F2] hover:bg-[#4752c4] text-white font-bold text-sm transition-colors"
-              >
-                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.042.03.052a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
-                </svg>
-                Join Server
-              </a>
-            </div>
-          </div>
-
-          {/* csintduck.cc Advertisement */}
-          <div className={cn(CARD, "relative overflow-hidden border-cyan-500/20 flex flex-col")}>
-            {/* subtle glow accent */}
-            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-blue-500/5 pointer-events-none" />
-            <div className="px-5 py-4 border-b border-cyan-500/15 flex items-center justify-between relative z-10">
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                <span className="font-semibold text-sm text-white tracking-tight">Featured Tool</span>
-              </div>
-              <span className="text-[9px] font-mono text-cyan-400/60 uppercase tracking-widest border border-cyan-500/20 px-2 py-0.5 rounded-full">Partner</span>
-            </div>
-
-            {/* Screenshot preview */}
-            <div className="relative mx-4 mt-4 rounded-xl overflow-hidden border border-white/10 shadow-xl flex-shrink-0">
-              <img
-                src="/csintduck-preview.jpeg"
-                alt="csintduck.cc dashboard preview"
-                className="w-full h-28 object-cover object-top"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-              <div className="absolute bottom-2 left-3">
-                <span className="text-[10px] font-mono text-white/50">Live Dashboard Preview</span>
-              </div>
-            </div>
-
-            <div className="p-5 space-y-3 relative z-10 flex-1 flex flex-col justify-between">
-              <div className="space-y-1.5">
-                <div className="flex items-baseline gap-2">
-                  <h3 className="font-black text-base text-white tracking-tight">csintduck.cc</h3>
-                  <span className="text-[9px] font-mono text-cyan-400/70 uppercase tracking-widest">Advanced OSINT</span>
-                </div>
-                <p className="text-xs text-white/45 leading-relaxed">
-                  Professional-grade intelligence platform. Deep people search, breach data, social media scan, network intel, Telegram lookup &amp; more — built by Jax.
-                </p>
-              </div>
-
-              <div className="space-y-2.5">
-                {/* Contact row */}
-                <div className="flex items-center gap-2 text-xs font-mono text-white/40">
-                  <Send className="w-3 h-3 text-cyan-400/60 shrink-0" />
-                  <span>Contact Jax on Telegram:</span>
-                  <a
-                    href="https://t.me/fancyjaxy"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-cyan-400 hover:text-cyan-300 transition-colors font-semibold"
-                  >
-                    @fancyjaxy
-                  </a>
-                </div>
-
-                {/* CTA */}
-                <a
-                  href="https://csintduck.cc"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 w-full h-10 rounded-xl font-bold text-xs text-black transition-all bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 shadow-[0_0_20px_rgba(6,182,212,0.25)] hover:shadow-[0_0_28px_rgba(6,182,212,0.4)]"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Visit csintduck.cc
-                </a>
-              </div>
-            </div>
-          </div>
-
-          {/* Recent Updates */}
+          {/* Recent Updates — first */}
           <div className={CARD}>
             <div className="flex items-center gap-2 px-5 py-4 border-b border-white/[0.06]">
               <ClipboardList className="w-4 h-4 text-primary/60" />
@@ -442,6 +319,167 @@ export default function Dashboard() {
                 ))
               )}
             </div>
+          </div>
+
+          {/* Discord Server Widget — second */}
+          <div className={CARD}>
+            <div className="px-5 py-4 border-b border-white/[0.06]">
+              <span className="font-semibold text-sm text-white">Community Server</span>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="flex items-center gap-3">
+                {widget?.icon ? (
+                  <img src={widget.icon} alt="" className="w-12 h-12 rounded-xl object-cover" />
+                ) : (
+                  <div className="w-12 h-12 rounded-xl bg-[#5865F2]/20 border border-[#5865F2]/30 flex items-center justify-center text-xl">🐰</div>
+                )}
+                <div>
+                  <p className="font-bold text-white text-base">{widget?.name ?? "urges"}</p>
+                  <p className="text-xs text-white/35 font-mono">Join our community server</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-white/[0.04] rounded-xl p-3 text-center border border-white/[0.06]">
+                  <p className="text-xl font-bold text-white">{widget?.members?.toLocaleString() ?? "—"}</p>
+                  <p className="text-[9px] font-mono text-white/30 uppercase tracking-widest mt-0.5">Members</p>
+                </div>
+                <div className="bg-white/[0.04] rounded-xl p-3 text-center border border-white/[0.06]">
+                  <p className="text-xl font-bold text-green-400">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400 mb-0.5 mr-0.5 align-middle" />
+                    {widget?.online?.toLocaleString() ?? "—"}
+                  </p>
+                  <p className="text-[9px] font-mono text-white/30 uppercase tracking-widest mt-0.5">Online</p>
+                </div>
+                <div className="bg-white/[0.04] rounded-xl p-3 text-center border border-white/[0.06]">
+                  <p className="text-xl font-bold text-white/50">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-white/30 mb-0.5 mr-0.5 align-middle" />
+                    {widget && !widget.error ? ((widget.members ?? 0) - (widget.online ?? 0)).toLocaleString() : "—"}
+                  </p>
+                  <p className="text-[9px] font-mono text-white/30 uppercase tracking-widest mt-0.5">Offline</p>
+                </div>
+              </div>
+              <a
+                href="https://discord.gg/urges"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full h-11 rounded-xl bg-[#5865F2] hover:bg-[#4752c4] text-white font-bold text-sm transition-colors"
+              >
+                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.042.03.052a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
+                </svg>
+                Join Server
+              </a>
+            </div>
+          </div>
+
+          {/* csintduck.cc Advertisement — third */}
+          <div className={cn(CARD, "relative overflow-hidden border-cyan-500/20 flex flex-col")}>
+            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-blue-500/5 pointer-events-none" />
+            <div className="px-5 py-4 border-b border-cyan-500/15 flex items-center justify-between relative z-10">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                <span className="font-semibold text-sm text-white tracking-tight">Featured Tool</span>
+              </div>
+              <span className="text-[9px] font-mono text-cyan-400/60 uppercase tracking-widest border border-cyan-500/20 px-2 py-0.5 rounded-full">Partner</span>
+            </div>
+            <div className="relative mx-4 mt-4 rounded-xl overflow-hidden border border-white/10 shadow-xl flex-shrink-0">
+              <img src="/csintduck-preview.jpeg" alt="csintduck.cc dashboard preview" className="w-full h-28 object-cover object-top" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+              <div className="absolute bottom-2 left-3">
+                <span className="text-[10px] font-mono text-white/50">Live Dashboard Preview</span>
+              </div>
+            </div>
+            <div className="p-5 space-y-3 relative z-10 flex-1 flex flex-col justify-between">
+              <div className="space-y-1.5">
+                <div className="flex items-baseline gap-2">
+                  <h3 className="font-black text-base text-white tracking-tight">csintduck.cc</h3>
+                  <span className="text-[9px] font-mono text-cyan-400/70 uppercase tracking-widest">Advanced OSINT</span>
+                </div>
+                <p className="text-xs text-white/45 leading-relaxed">
+                  Professional-grade intelligence platform. Deep people search, breach data, social media scan, network intel, Telegram lookup &amp; more — built by Jax.
+                </p>
+              </div>
+              <div className="space-y-2.5">
+                <div className="flex items-center gap-2 text-xs font-mono text-white/40">
+                  <Send className="w-3 h-3 text-cyan-400/60 shrink-0" />
+                  <span>Contact Jax:</span>
+                  <a href="https://t.me/fancyjaxy" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300 transition-colors font-semibold">@fancyjaxy</a>
+                </div>
+                <a href="https://csintduck.cc" target="_blank" rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full h-10 rounded-xl font-bold text-xs text-black transition-all bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 shadow-[0_0_20px_rgba(6,182,212,0.25)] hover:shadow-[0_0_28px_rgba(6,182,212,0.4)]">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Visit csintduck.cc
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Creator footer ── */}
+        <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
+          {/* top accent line */}
+          <div className="h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+          <div className="px-6 py-6 flex flex-col sm:flex-row items-center sm:items-start gap-6">
+
+            {/* Avatar + Telegram profile card */}
+            <div className="flex-shrink-0">
+              <div className="relative">
+                {/* Telegram-style profile bubble */}
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/30 to-purple-600/30 border border-primary/25 flex items-center justify-center shadow-[0_0_24px_rgba(168,85,247,0.2)]">
+                  <span className="text-3xl font-black text-primary select-none">K</span>
+                </div>
+                {/* online dot */}
+                <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-green-400 border-2 border-black shadow" />
+              </div>
+            </div>
+
+            {/* Identity block */}
+            <div className="flex-1 text-center sm:text-left space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3">
+                <span className="text-white font-black text-lg tracking-tight">known4frauds</span>
+                <span className="text-[10px] font-mono text-primary/60 uppercase tracking-widest border border-primary/20 px-2 py-0.5 rounded-full w-fit mx-auto sm:mx-0">Site Developer</span>
+              </div>
+              <p className="text-xs text-white/45 leading-relaxed max-w-lg">
+                Built and maintains <span className="text-white/70 font-semibold">bothost</span> — reach out if you need help, have a bug to report, or want a specific feature added. DMs are open.
+              </p>
+
+              {/* Contact pills */}
+              <div className="flex flex-wrap justify-center sm:justify-start gap-2 pt-1">
+                <a
+                  href="https://t.me/known4frauds"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#2AABEE]/10 border border-[#2AABEE]/25 text-[#2AABEE] hover:bg-[#2AABEE]/20 hover:border-[#2AABEE]/40 transition-all text-xs font-mono font-semibold"
+                >
+                  {/* Telegram plane icon */}
+                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+                  </svg>
+                  @known4frauds
+                </a>
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#5865F2]/10 border border-[#5865F2]/25 text-[#7289da] text-xs font-mono font-semibold">
+                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.042.03.052a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
+                  </svg>
+                  awaiteddiscovery
+                </div>
+              </div>
+            </div>
+
+            {/* Right — made with label */}
+            <div className="hidden lg:flex flex-col items-end gap-1 flex-shrink-0">
+              <span className="text-[10px] font-mono text-white/20 uppercase tracking-widest">Built by</span>
+              <div className="flex items-center gap-1.5">
+                <div className="w-5 h-5 rounded-md bg-primary/20 border border-primary/30 flex items-center justify-center">
+                  <Zap className="w-3 h-3 text-primary" />
+                </div>
+                <span className="text-sm font-black text-white/60 tracking-tight">bothost.host</span>
+              </div>
+            </div>
+          </div>
+          <div className="h-px bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+          <div className="px-6 py-3 flex items-center justify-center">
+            <p className="text-[10px] font-mono text-white/15">© 2025 bothost.host · All rights reserved</p>
           </div>
         </div>
 
