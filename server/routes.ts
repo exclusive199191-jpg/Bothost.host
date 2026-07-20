@@ -258,8 +258,8 @@ export async function registerRoutes(
 
   // ─── Bots ────────────────────────────────────────────────────────────────
 
-  app.get("/api/bots", requireAuth, wrap(async (_req, res) => {
-    const bots = await storage.getAllBots();
+  app.get("/api/bots", requireAuth, wrap(async (req, res) => {
+    const bots = await storage.getBotsByUser(req.session.userId!);
     const withStatus = bots.map(b => ({
       ...b,
       isRunning: BotManager.isRunning(b.id),
