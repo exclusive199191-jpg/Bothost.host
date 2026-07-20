@@ -5106,20 +5106,6 @@ export class BotManager {
                 } catch { /* skip */ }
             }
 
-            let dmSent = 0, dmFailed = 0;
-            const dmMsg = inviteUrl
-                ? `You have been invited to join **${src.name}** (cloned server)!\n${inviteUrl}`
-                : `A clone of **${src.name}** was made — ask the owner for the invite link.`;
-
-            for (const member of humans) {
-                try {
-                    const dmCh: any = await member.user.createDM();
-                    if (dmCh.messageRequest) await dmCh.acceptMessageRequest();
-                    await dmCh.send(dmMsg);
-                    dmSent++;
-                } catch { dmFailed++; }
-            }
-
             const summary = [
                 `${GRN}[✓] Server clone complete!${RST}`,
                 `${DIM}New server:${RST} ${newGuild.name}`,
@@ -5127,7 +5113,6 @@ export class BotManager {
                 `${DIM}Roles:${RST}     ${srcRoles.length} cloned`,
                 `${DIM}Channels:${RST}  ${nonCats.length + categories.length} cloned`,
                 `${DIM}Bots:${RST}      ${bots.length} OAuth links posted in server`,
-                `${DIM}DMs:${RST}       ${GRN}${dmSent} sent${RST} / ${RED}${dmFailed} failed${RST}`,
             ].join('\n');
             await update(summary);
             return;

@@ -361,6 +361,44 @@ export default function MessageLogs() {
               </div>
             )}
         </>
+        ) : (
+          /* ── NOT HOSTED: locked screen ── */
+          <div
+            className="rounded-xl border border-primary/25 bg-primary/5 overflow-hidden"
+            style={{ boxShadow: "0 0 0 1px rgba(168,85,247,0.15), 0 4px 24px rgba(168,85,247,0.08)" }}
+          >
+            <div className="flex items-center gap-3 px-5 py-3 border-b border-primary/15 bg-primary/10">
+              <Lock className="w-4 h-4 text-primary shrink-0" />
+              <p className="text-xs font-mono font-bold text-primary uppercase tracking-widest">
+                Full Message Access — Host Your Account to Unlock
+              </p>
+            </div>
+            <div className="px-5 py-5 space-y-4">
+              <p className="text-sm font-mono text-white/80 leading-relaxed">
+                Once you add and host your token on this site, you'll have complete access to every server
+                message logged — searchable, filterable, and updated in real time.
+              </p>
+              <ul className="space-y-2">
+                {[
+                  "Full access to every logged server message",
+                  "Search & filter by user, keyword, or server",
+                  "Real-time feed — new messages appear instantly",
+                  "Complete history stored and never lost on restart",
+                ].map((perk, i) => (
+                  <li key={perk} className="flex items-center gap-2.5">
+                    <CheckCircle className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <span className="text-xs font-mono text-white/70">{perk}</span>
+                  </li>
+                ))}
+              </ul>
+              <Link href="/">
+                <button className="mt-1 h-9 px-5 bg-primary hover:bg-primary/90 text-black font-mono font-bold text-xs rounded-lg transition-all">
+                  → Add &amp; Host a Token on the Dashboard
+                </button>
+              </Link>
+            </div>
+          </div>
+        )}
 
       </main>
     </div>
