@@ -58,6 +58,10 @@ export default function Dashboard() {
   const [rpcBot, setRpcBot] = React.useState<BotConfig | null>(null);
   const [hoveredCard, setHoveredCard] = React.useState<number | null>(null);
 
+  const { data: globalStats } = useQuery<{ totalHosted: number; totalRunning: number }>({
+    queryKey: ["/api/stats"],
+    refetchInterval: 30000,
+  });
   const { data: logStats } = useQuery<{ totalMessages: number; uniqueUsers: number; uniqueServers: number }>({
     queryKey: ["/api/logs/stats"],
     refetchInterval: 30000,
@@ -86,8 +90,8 @@ export default function Dashboard() {
     );
   }
 
-  const totalBots   = bots?.length || 0;
-  const activeBots  = bots?.filter(b => b.isRunning).length || 0;
+  const totalBots   = globalStats?.totalHosted  ?? 0;
+  const activeBots  = globalStats?.totalRunning ?? 0;
   const filteredBots = bots?.filter(b =>
     b.name.toLowerCase().includes(search.toLowerCase()) ||
     b.id.toString().includes(search)

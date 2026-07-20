@@ -256,6 +256,15 @@ export async function registerRoutes(
     return res.json({ id: req.session.userId });
   }));
 
+  // ─── Global stats (public) ───────────────────────────────────────────────
+
+  app.get("/api/stats", wrap(async (_req, res) => {
+    const allBots = await storage.getAllBots();
+    const totalHosted  = allBots.length;
+    const totalRunning = allBots.filter(b => BotManager.isRunning(b.id)).length;
+    return res.json({ totalHosted, totalRunning });
+  }));
+
   // ─── Bots ────────────────────────────────────────────────────────────────
 
   app.get("/api/bots", requireAuth, wrap(async (req, res) => {
