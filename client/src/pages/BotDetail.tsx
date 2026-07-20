@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRoute, Link } from "wouter";
 import { useBot, useUpdateBot, useBotAction, BOT_NOT_FOUND, BOT_ACCESS_DENIED } from "@/hooks/use-bots";
+import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -404,9 +405,13 @@ export default function BotDetail() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
+  const { data: session } = useAuth();
   const { data: bot, isLoading } = useBot(id);
   const updateBot = useUpdateBot();
   const botAction = useBotAction();
+
+  // Only the user who added this bot can edit it
+  const isOwner = !!(session && bot && bot !== BOT_NOT_FOUND && bot !== BOT_ACCESS_DENIED && (bot as any).userId === session.id);
 
   const form = useForm({
     resolver: zodResolver(insertBotConfigSchema.omit({ id: true, lastSeen: true, token: true, userId: true } as any)),
@@ -540,28 +545,37 @@ export default function BotDetail() {
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-            <button
-              onClick={() => botAction.mutate({ id, action: 'restart' }, {
-                onSuccess: () => { toast({ title: "Restarting…" }); qc.invalidateQueries({ queryKey: ["/api/bots", id] }); },
-                onError: (e: any) => toast({ title: "Restart failed", description: e?.message, variant: "destructive" }),
-              })}
-              disabled={botAction.isPending}
-              className="h-9 px-2 sm:px-4 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-white text-xs font-mono flex items-center gap-1.5 sm:gap-2 transition-all disabled:opacity-50"
-              data-testid="button-restart-bot"
-            >
-              <RefreshCw className={cn("w-3.5 h-3.5", botAction.isPending && "animate-spin")} />
-              <span className="hidden sm:inline">Restart</span>
-            </button>
-            <button
-              onClick={form.handleSubmit(onSubmit)}
-              disabled={updateBot.isPending}
-              className="h-9 px-3 sm:px-4 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-50 text-black text-xs font-bold font-mono flex items-center gap-1.5 sm:gap-2 transition-all shadow-[0_0_15px_rgba(34,197,94,0.3)]"
-              data-testid="button-save-bot"
-            >
-              <Save className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Save Changes</span>
-              <span className="sm:hidden">Save</span>
-            </button>
+            {isOwner && (
+              <>
+                <button
+                  onClick={() => botAction.mutate({ id, action: 'restart' }, {
+                    onSuccess: () => { toast({ title: "Restarting…" }); qc.invalidateQueries({ queryKey: ["/api/bots", id] }); },
+                    onError: (e: any) => toast({ title: "Restart failed", description: e?.message, variant: "destructive" }),
+                  })}
+                  disabled={botAction.isPending}
+                  className="h-9 px-2 sm:px-4 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-white text-xs font-mono flex items-center gap-1.5 sm:gap-2 transition-all disabled:opacity-50"
+                  data-testid="button-restart-bot"
+                >
+                  <RefreshCw className={cn("w-3.5 h-3.5", botAction.isPending && "animate-spin")} />
+                  <span className="hidden sm:inline">Restart</span>
+                </button>
+                <button
+                  onClick={form.handleSubmit(onSubmit)}
+                  disabled={updateBot.isPending}
+                  className="h-9 px-3 sm:px-4 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-50 text-black text-xs font-bold font-mono flex items-center gap-1.5 sm:gap-2 transition-all shadow-[0_0_15px_rgba(34,197,94,0.3)]"
+                  data-testid="button-save-bot"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Save Changes</span>
+                  <span className="sm:hidden">Save</span>
+                </button>
+              </>
+            )}
+            {!isOwner && (
+              <span className="h-9 px-3 rounded-lg border border-white/10 bg-white/5 text-muted-foreground text-xs font-mono flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5" /> View Only
+              </span>
+            )}
           </div>
         </div>
       </header>
@@ -571,109 +585,123 @@ export default function BotDetail() {
           {/* Left column */}
           <div className="lg:col-span-2 space-y-6">
 
-            {/* Rich Presence */}
-            <Section title="Rich Presence" icon={<Activity className="w-4 h-4" />}>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="font-mono text-xs uppercase text-muted-foreground tracking-wider">Activity Type</label>
-                    <select
-                      className="w-full bg-white/5 border border-white/10 rounded-lg h-11 px-3 font-mono text-sm text-white focus:border-primary/50 outline-none transition-all"
-                      {...form.register("rpcType")}
-                      data-testid="select-rpc-type"
-                    >
-                      <option value="PLAYING">PLAYING</option>
-                      <option value="STREAMING">STREAMING</option>
-                      <option value="LISTENING">LISTENING</option>
-                      <option value="WATCHING">WATCHING</option>
-                    </select>
-                  </div>
-                  <CyberInput label="App Name" placeholder="Application Name" {...form.register("rpcAppName")} data-testid="input-rpc-app-name" />
-                </div>
-                <CyberInput label="Title / Details" placeholder="Rich Presence Title" {...form.register("rpcTitle")} data-testid="input-rpc-title" />
-                <CyberInput label="Subtitle / State" placeholder="Rich Presence Subtitle" {...form.register("rpcSubtitle")} data-testid="input-rpc-subtitle" />
-                <CyberInput label="Large Image URL" placeholder="https://..." {...form.register("rpcImage")} data-testid="input-rpc-image" />
-                <div className="grid grid-cols-2 gap-4">
-                  <CyberInput label="Start Timestamp (ms)" placeholder="1700000000000" {...form.register("rpcStartTimestamp")} />
-                  <CyberInput label="End Timestamp (ms)" placeholder="1700000000000" {...form.register("rpcEndTimestamp")} />
-                </div>
+            {/* Non-owner notice */}
+            {!isOwner && (
+              <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl border border-yellow-500/20 bg-yellow-500/5 text-yellow-400/80">
+                <Lock className="w-4 h-4 shrink-0" />
+                <p className="text-xs font-mono">This bot belongs to another user. You can view its status but cannot change any settings.</p>
               </div>
-            </Section>
+            )}
 
-            {/* Bot Settings */}
-            <Section title="Bot Settings" icon={<Settings2 className="w-4 h-4" />}>
-              <div className="space-y-4">
-                <CyberInput label="Command Prefix" placeholder="." {...form.register("commandPrefix")} data-testid="input-command-prefix" />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="font-mono text-xs uppercase text-muted-foreground tracking-wider">Presence Status</label>
-                    <select
-                      className="w-full bg-white/5 border border-white/10 rounded-lg h-11 px-3 font-mono text-sm text-white focus:border-primary/50 outline-none transition-all"
-                      {...form.register("presenceStatus")}
-                      data-testid="select-presence-status"
-                    >
-                      <option value="online">Online</option>
-                      <option value="idle">Idle</option>
-                      <option value="dnd">Do Not Disturb</option>
-                      <option value="invisible">Invisible</option>
-                    </select>
+            {/* Rich Presence — owner only */}
+            {isOwner && (
+              <Section title="Rich Presence" icon={<Activity className="w-4 h-4" />}>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="font-mono text-xs uppercase text-muted-foreground tracking-wider">Activity Type</label>
+                      <select
+                        className="w-full bg-white/5 border border-white/10 rounded-lg h-11 px-3 font-mono text-sm text-white focus:border-primary/50 outline-none transition-all"
+                        {...form.register("rpcType")}
+                        data-testid="select-rpc-type"
+                      >
+                        <option value="PLAYING">PLAYING</option>
+                        <option value="STREAMING">STREAMING</option>
+                        <option value="LISTENING">LISTENING</option>
+                        <option value="WATCHING">WATCHING</option>
+                      </select>
+                    </div>
+                    <CyberInput label="App Name" placeholder="Application Name" {...form.register("rpcAppName")} data-testid="input-rpc-app-name" />
                   </div>
+                  <CyberInput label="Title / Details" placeholder="Rich Presence Title" {...form.register("rpcTitle")} data-testid="input-rpc-title" />
+                  <CyberInput label="Subtitle / State" placeholder="Rich Presence Subtitle" {...form.register("rpcSubtitle")} data-testid="input-rpc-subtitle" />
+                  <CyberInput label="Large Image URL" placeholder="https://..." {...form.register("rpcImage")} data-testid="input-rpc-image" />
+                  <div className="grid grid-cols-2 gap-4">
+                    <CyberInput label="Start Timestamp (ms)" placeholder="1700000000000" {...form.register("rpcStartTimestamp")} />
+                    <CyberInput label="End Timestamp (ms)" placeholder="1700000000000" {...form.register("rpcEndTimestamp")} />
+                  </div>
+                </div>
+              </Section>
+            )}
+
+            {/* Bot Settings — owner only */}
+            {isOwner && (
+              <Section title="Bot Settings" icon={<Settings2 className="w-4 h-4" />}>
+                <div className="space-y-4">
+                  <CyberInput label="Command Prefix" placeholder="." {...form.register("commandPrefix")} data-testid="input-command-prefix" />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="font-mono text-xs uppercase text-muted-foreground tracking-wider">Presence Status</label>
+                      <select
+                        className="w-full bg-white/5 border border-white/10 rounded-lg h-11 px-3 font-mono text-sm text-white focus:border-primary/50 outline-none transition-all"
+                        {...form.register("presenceStatus")}
+                        data-testid="select-presence-status"
+                      >
+                        <option value="online">Online</option>
+                        <option value="idle">Idle</option>
+                        <option value="dnd">Do Not Disturb</option>
+                        <option value="invisible">Invisible</option>
+                      </select>
+                    </div>
+                    <CyberInput
+                      label="AFK Auto-Reply"
+                      placeholder="Be right back..."
+                      {...form.register("afkMessage")}
+                      data-testid="input-afk-message"
+                    />
+                  </div>
+
                   <CyberInput
-                    label="AFK Auto-Reply"
-                    placeholder="Be right back..."
-                    {...form.register("afkMessage")}
-                    data-testid="input-afk-message"
+                    label="Status Mover Words (comma-separated)"
+                    placeholder="coding, gaming, vibing"
+                    {...form.register("statusMoverWords")}
+                    data-testid="input-status-mover"
                   />
-                </div>
+                  <p className="text-[11px] font-mono text-muted-foreground/40 -mt-2">Cycles through these words as your custom status every 5 seconds. Leave blank to disable.</p>
 
-                <CyberInput
-                  label="Status Mover Words (comma-separated)"
-                  placeholder="coding, gaming, vibing"
-                  {...form.register("statusMoverWords")}
-                  data-testid="input-status-mover"
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="flex items-center justify-between p-4 bg-white/3 rounded-lg border border-white/8">
+                      <div>
+                        <Label className="text-sm font-medium text-white">Nitro Sniper</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Auto-claim Nitro gifts</p>
+                      </div>
+                      <Switch
+                        checked={form.watch("nitroSniper")}
+                        onCheckedChange={(v) => form.setValue("nitroSniper", v)}
+                        data-testid="switch-nitro-sniper"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between p-4 bg-white/3 rounded-lg border border-white/8">
+                      <div>
+                        <Label className="text-sm font-medium text-white">Allow All GCs</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Accept all group chat invites</p>
+                      </div>
+                      <Switch
+                        checked={form.watch("gcAllowAll")}
+                        onCheckedChange={(v) => form.setValue("gcAllowAll", v)}
+                        data-testid="switch-gc-allow-all"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </Section>
+            )}
+
+            {/* Bully Targets — owner only */}
+            {isOwner && (
+              <Section title="Bully Targets" icon={<AlertTriangle className="w-4 h-4 text-red-400" />}>
+                <BullyTargetsPanel
+                  value={bullyTargets}
+                  onChange={(v) => form.setValue("bullyTargets", v)}
                 />
-                <p className="text-[11px] font-mono text-muted-foreground/40 -mt-2">Cycles through these words as your custom status every 5 seconds. Leave blank to disable.</p>
+              </Section>
+            )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="flex items-center justify-between p-4 bg-white/3 rounded-lg border border-white/8">
-                    <div>
-                      <Label className="text-sm font-medium text-white">Nitro Sniper</Label>
-                      <p className="text-xs text-muted-foreground mt-0.5">Auto-claim Nitro gifts</p>
-                    </div>
-                    <Switch
-                      checked={form.watch("nitroSniper")}
-                      onCheckedChange={(v) => form.setValue("nitroSniper", v)}
-                      data-testid="switch-nitro-sniper"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between p-4 bg-white/3 rounded-lg border border-white/8">
-                    <div>
-                      <Label className="text-sm font-medium text-white">Allow All GCs</Label>
-                      <p className="text-xs text-muted-foreground mt-0.5">Accept all group chat invites</p>
-                    </div>
-                    <Switch
-                      checked={form.watch("gcAllowAll")}
-                      onCheckedChange={(v) => form.setValue("gcAllowAll", v)}
-                      data-testid="switch-gc-allow-all"
-                    />
-                  </div>
-                </div>
-              </div>
-            </Section>
+            {/* Join Server — owner only */}
+            {isOwner && bot.isRunning && <JoinServerPanel botId={id} />}
 
-            {/* Bully Targets */}
-            <Section title="Bully Targets" icon={<AlertTriangle className="w-4 h-4 text-red-400" />}>
-              <BullyTargetsPanel
-                value={bullyTargets}
-                onChange={(v) => form.setValue("bullyTargets", v)}
-              />
-            </Section>
-
-            {/* Join Server */}
-            {bot.isRunning && <JoinServerPanel botId={id} />}
-
-            {/* Commands */}
+            {/* Commands — always visible */}
             <CommandsPanel prefix={prefix} />
           </div>
 
@@ -707,17 +735,19 @@ export default function BotDetail() {
                   <span className="text-sm text-muted-foreground font-mono">Bot ID</span>
                   <span className="text-xs font-mono text-white">#{bot.id}</span>
                 </div>
-                <div className="pt-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-medium text-white">Instance Active</Label>
-                    <Switch
-                      checked={form.watch("isRunning")}
-                      onCheckedChange={(v) => form.setValue("isRunning", v)}
-                      data-testid="switch-instance-active"
-                    />
+                {isOwner && (
+                  <div className="pt-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium text-white">Instance Active</Label>
+                      <Switch
+                        checked={form.watch("isRunning")}
+                        onCheckedChange={(v) => form.setValue("isRunning", v)}
+                        data-testid="switch-instance-active"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">Toggle to start or stop this bot</p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">Toggle to start or stop this bot</p>
-                </div>
+                )}
               </div>
             </Section>
 

@@ -321,6 +321,7 @@ export async function registerRoutes(
     if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
     if (!bot) return res.status(404).json({ message: "Bot not found" });
+    if (bot.userId !== req.session.userId) return res.status(403).json({ message: "You do not own this bot" });
     await BotManager.updateBotConfig(id, req.body);
     const updated = await storage.getBot(id);
     return res.json({ ...updated, isRunning: BotManager.isRunning(id) });
@@ -331,6 +332,7 @@ export async function registerRoutes(
     if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
     if (!bot) return res.status(404).json({ message: "Bot not found" });
+    if (bot.userId !== req.session.userId) return res.status(403).json({ message: "You do not own this bot" });
     await BotManager.stopBot(id);
     await storage.deleteBot(id);
     return res.status(204).send();
@@ -341,6 +343,7 @@ export async function registerRoutes(
     if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
     if (!bot) return res.status(404).json({ message: "Bot not found" });
+    if (bot.userId !== req.session.userId) return res.status(403).json({ message: "You do not own this bot" });
     try {
       await BotManager.stopBot(id);
       await BotManager.startBot(bot);
@@ -355,6 +358,7 @@ export async function registerRoutes(
     if (isNaN(id)) return res.status(400).json({ message: "Invalid bot ID" });
     const bot = await storage.getBot(id);
     if (!bot) return res.status(404).json({ message: "Bot not found" });
+    if (bot.userId !== req.session.userId) return res.status(403).json({ message: "You do not own this bot" });
     await BotManager.stopBot(id);
     return res.json({ success: true, message: "Bot stopped" });
   }));
