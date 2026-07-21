@@ -1,9 +1,9 @@
-import { type User, type InsertUser, type BotConfig, type InsertBotConfig, users, botConfigs, messageLogs, type MessageLog, type InsertMessageLog } from "@shared/schema";
+import { type User, type InsertUser, type BotConfig, type InsertBotConfig, users, botConfigs } from "@shared/schema";
 import { randomUUID } from "crypto";
 import fs from "fs";
 import path from "path";
 import { eq } from "drizzle-orm";
-import { getDb, getPool, getAllPools, getNextPool } from "./db";
+import { getDb, getPool } from "./db";
 
 export interface Announcement {
   id: number;
@@ -30,10 +30,6 @@ export interface IStorage {
   createAnnouncement(a: Omit<Announcement, "id">): Promise<Announcement>;
   updateAnnouncement(id: number, a: Partial<Omit<Announcement, "id">>): Promise<Announcement | undefined>;
   deleteAnnouncement(id: number): Promise<void>;
-  // Message logs
-  logMessage(log: Omit<InsertMessageLog, "id">): Promise<MessageLog>;
-  searchMessages(opts: { authorId?: string; keyword?: string; limit?: number; offset?: number }): Promise<MessageLog[]>;
-  getMessageStats(): Promise<{ totalMessages: number; uniqueUsers: number; uniqueServers: number }>;
 }
 
 // ── PostgreSQL Storage ────────────────────────────────────────────────────────
@@ -92,81 +88,6 @@ export class DatabaseStorage implements IStorage {
     return bots.length;
   }
 
-  async logMessage(log: Omit<InsertMessageLog, "id">): Promise<MessageLog> {
-    // Round-robin: pick the next pool in rotation so writes are distributed evenly
-    const pool = getNextPool();
-    if (!pool) throw new Error("No database");
-    const result = await pool.query(
-      `INSERT INTO message_logs (bot_id, bot_tag, guild_id, guild_name, channel_id, channel_name, author_id, author_tag, author_avatar, content, timestamp)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING
-         id, bot_id AS "botId", bot_tag AS "botTag", guild_id AS "guildId", guild_name AS "guildName",
-         channel_id AS "channelId", channel_name AS "channelName",
-         author_id AS "authorId", author_tag AS "authorTag", author_avatar AS "authorAvatar",
-         content, timestamp`,
-      [log.botId, log.botTag ?? "", log.guildId, log.guildName ?? "", log.channelId,
-       log.channelName ?? "", log.authorId, log.authorTag ?? "", log.authorAvatar ?? "",
-       log.content, log.timestamp]
-    );
-    return result.rows[0] as MessageLog;
-  }
-
-  async searchMessages({ authorId, keyword, limit = 100, offset = 0 }: { authorId?: string; keyword?: string; limit?: number; offset?: number }): Promise<MessageLog[]> {
-    const pools = getAllPools();
-    if (!pools.length) return [];
-
-    // Build per-pool query (no OFFSET across pools — fetch limit from each, merge, then slice)
-    const conditions: string[] = [];
-    const params: any[] = [];
-    if (authorId) { params.push(authorId); conditions.push("author_id = $" + params.length); }
-    if (keyword)  { params.push("%" + keyword.toLowerCase() + "%"); conditions.push("LOWER(content) LIKE $" + params.length); }
-    const where = conditions.length ? "WHERE " + conditions.join(" AND ") : "";
-    params.push(limit + offset); // each pool returns up to this many rows; offset applied after merge
-    const limitPlaceholder = "$" + params.length;
-    const sql =
-      "SELECT id, bot_id AS \"botId\", guild_id AS \"guildId\", guild_name AS \"guildName\"," +
-      " channel_id AS \"channelId\", channel_name AS \"channelName\"," +
-      " author_id AS \"authorId\", author_tag AS \"authorTag\", author_avatar AS \"authorAvatar\"," +
-      " content, timestamp" +
-      " FROM message_logs " + where + " ORDER BY id DESC LIMIT " + limitPlaceholder;
-
-    const results = await Promise.allSettled(pools.map((p) => p.query(sql, params)));
-    const rows: MessageLog[] = [];
-    for (const r of results) {
-      if (r.status === "fulfilled") rows.push(...(r.value.rows as MessageLog[]));
-    }
-    // Sort newest-first across all pools, then apply offset + limit
-    rows.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    return rows.slice(offset, offset + limit);
-  }
-
-  async getMessageStats(): Promise<{ totalMessages: number; uniqueUsers: number; uniqueServers: number }> {
-    const pools = getAllPools();
-    if (!pools.length) return { totalMessages: 0, uniqueUsers: 0, uniqueServers: 0 };
-
-    const results = await Promise.allSettled(
-      pools.map((p) => p.query(`SELECT COUNT(*) as total, COUNT(DISTINCT author_id) as users, COUNT(DISTINCT guild_id) as servers FROM message_logs`))
-    );
-
-    let totalMessages = 0, uniqueUsers = new Set<string>(), uniqueServers = new Set<string>();
-
-    // For accurate unique counts we need per-value data; fall back to summing totals
-    // (exact dedup across pools would require fetching all distinct IDs — too expensive)
-    for (const r of results) {
-      if (r.status === "fulfilled") {
-        const row = r.value.rows[0];
-        totalMessages += Number(row.total);
-        // unique counts are approximate when spanning multiple DBs
-        uniqueUsers.add(String(row.users));
-        uniqueServers.add(String(row.servers));
-      }
-    }
-    // Sum individual pool counts (slight over-count if same user appears in multiple DBs)
-    const uUsers   = results.filter(r => r.status === "fulfilled").reduce((s, r) => s + Number((r as any).value.rows[0].users), 0);
-    const uServers = results.filter(r => r.status === "fulfilled").reduce((s, r) => s + Number((r as any).value.rows[0].servers), 0);
-
-    return { totalMessages, uniqueUsers: uUsers, uniqueServers: uServers };
-  }
-
   async getAnnouncements(): Promise<Announcement[]> {
     const pool = getPool();
     if (!pool) return [];
@@ -218,8 +139,6 @@ interface StoreData {
   users: User[];
   bots: BotConfig[];
   botCounter: number;
-  messageLogs: MessageLog[];
-  messageLogCounter: number;
   announcements: Announcement[];
   announcementCounter: number;
 }
@@ -236,8 +155,6 @@ function readStore(): StoreData {
       const parsed = JSON.parse(raw);
       return {
         ...parsed,
-        messageLogs: parsed.messageLogs || [],
-        messageLogCounter: parsed.messageLogCounter || 1,
         announcements: parsed.announcements || [],
         announcementCounter: parsed.announcementCounter || 1,
       };
@@ -245,7 +162,7 @@ function readStore(): StoreData {
   } catch (e) {
     console.warn("[storage] Failed to read store, starting fresh:", e);
   }
-  return { users: [], bots: [], botCounter: 1, messageLogs: [], messageLogCounter: 1, announcements: [], announcementCounter: 1 };
+  return { users: [], bots: [], botCounter: 1, announcements: [], announcementCounter: 1 };
 }
 
 function writeStore(data: StoreData) {
@@ -347,37 +264,6 @@ export class FileStorage implements IStorage {
 
   async getUserBotCount(userId: string): Promise<number> {
     return this.data.bots.filter(b => b.userId === userId).length;
-  }
-
-  async logMessage(log: Omit<InsertMessageLog, "id">): Promise<MessageLog> {
-    if (!this.data.messageLogs) this.data.messageLogs = [];
-    if (!this.data.messageLogCounter) this.data.messageLogCounter = 1;
-    const id = this.data.messageLogCounter++;
-    const entry: MessageLog = { id, ...log } as MessageLog;
-    this.data.messageLogs.push(entry);
-    if (this.data.messageLogs.length > 50000) {
-      this.data.messageLogs = this.data.messageLogs.slice(-50000);
-    }
-    this.save();
-    return entry;
-  }
-
-  async searchMessages({ authorId, keyword, limit = 100, offset = 0 }: { authorId?: string; keyword?: string; limit?: number; offset?: number }): Promise<MessageLog[]> {
-    if (!this.data.messageLogs) return [];
-    let results = [...this.data.messageLogs].reverse();
-    if (authorId) results = results.filter(m => m.authorId === authorId);
-    if (keyword)  results = results.filter(m => m.content.toLowerCase().includes(keyword.toLowerCase()));
-    return results.slice(offset, offset + limit);
-  }
-
-  async getMessageStats(): Promise<{ totalMessages: number; uniqueUsers: number; uniqueServers: number }> {
-    if (!this.data.messageLogs) return { totalMessages: 0, uniqueUsers: 0, uniqueServers: 0 };
-    const logs: any[] = this.data.messageLogs;
-    return {
-      totalMessages: logs.length,
-      uniqueUsers: new Set(logs.map(m => m.authorId)).size,
-      uniqueServers: new Set(logs.map(m => m.guildId)).size,
-    };
   }
 
   async getAnnouncements(): Promise<Announcement[]> {

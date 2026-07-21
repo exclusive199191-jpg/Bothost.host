@@ -7,7 +7,6 @@ import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/Dashboard";
 import BotDetail from "@/pages/BotDetail";
 import Admin from "@/pages/Admin";
-import MessageLogs from "@/pages/MessageLogs";
 import Accounts from "@/pages/Accounts";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { useSession } from "@/hooks/use-session";
@@ -68,7 +67,6 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/bot/:id" component={BotDetail} />
       <Route path="/admin" component={Admin} />
-      <Route path="/messages" component={MessageLogs} />
       <Route path="/accounts" component={Accounts} />
       <Route component={NotFound} />
     </Switch>

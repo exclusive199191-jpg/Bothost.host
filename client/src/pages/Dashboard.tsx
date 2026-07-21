@@ -62,10 +62,6 @@ export default function Dashboard() {
     queryKey: ["/api/stats"],
     refetchInterval: 30000,
   });
-  const { data: logStats } = useQuery<{ totalMessages: number; uniqueUsers: number; uniqueServers: number }>({
-    queryKey: ["/api/logs/stats"],
-    refetchInterval: 30000,
-  });
   const { data: uptimeData } = useQuery<{ uptimeSeconds: number }>({
     queryKey: ["/api/uptime"],
     refetchInterval: 60000,
@@ -160,32 +156,9 @@ export default function Dashboard() {
                 <StatRow icon={Clock}       value={uptimeData ? fmtUptime(uptimeData.uptimeSeconds) : "—"} label="Uptime"           />
                 <StatRow icon={Activity}    value={String(activeBots)}                                      label="Running"          color="text-green-400" />
                 <StatRow icon={Bot}         value={String(totalBots)}                                       label="Hosted"           />
-                <StatRow icon={Globe}       value={fmtNum(logStats?.uniqueServers)}                         label="Servers Logged"   />
-                <StatRow icon={Users}       value={fmtNum(logStats?.uniqueUsers)}                           label="Users Indexed"    />
-                <StatRow icon={MessageSquare} value={fmtNum(logStats?.totalMessages)}                       label="Messages Logged"  color="text-primary/90" />
               </div>
             </div>
 
-            {/* Message logs shortcut */}
-            <Link href="/messages">
-              <motion.div
-                whileHover={{ scale: 1.01 }}
-                className={cn(CARD, "flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-white/[0.05] transition-colors group")}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center">
-                    <Database className="w-4 h-4 text-primary/70" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-white">Message Logs</p>
-                    <p className="text-xs text-white/35 font-mono mt-0.5">
-                      {fmtNum(logStats?.totalMessages)} messages across {fmtNum(logStats?.uniqueServers)} servers
-                    </p>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-white/25 group-hover:text-primary/60 transition-colors" />
-              </motion.div>
-            </Link>
           </div>
 
           {/* ── Right col — hosted accounts ── */}

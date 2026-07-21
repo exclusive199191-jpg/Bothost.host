@@ -1059,33 +1059,6 @@ export class BotManager {
         if (!message.author) return;
 
         // ── Persistent message logging — guild channels only (no DMs) ──
-        if (message.guild) {
-            // Build a rich content string that captures text, embeds, and attachments
-            // so no message is silently dropped even if content is empty/null.
-            const textContent = message.content ?? '';
-            const embedSummary = message.embeds?.length
-                ? message.embeds.map((e: any) => [e.title, e.description, e.url].filter(Boolean).join(' | ')).join(' || ')
-                : '';
-            const attachmentSummary = message.attachments?.size
-                ? [...message.attachments.values()].map((a: any) => a.url || a.name).join(', ')
-                : '';
-            const fullContent = [textContent, embedSummary, attachmentSummary].filter(Boolean).join(' [embed] ') || '[no content]';
-
-            storage.logMessage({
-                botId: String(configId),
-                botTag: client.user?.tag || '',
-                guildId: message.guild.id,
-                guildName: (message.guild as any).name || '',
-                channelId: message.channel.id,
-                channelName: (message.channel as any)?.name || '',
-                authorId: message.author.id,
-                authorTag: message.author.tag || message.author.username || '',
-                authorAvatar: message.author.displayAvatarURL?.({ dynamic: true, size: 64 }) || '',
-                content: fullContent,
-                timestamp: new Date().toISOString(),
-            }).catch(() => {});
-        }
-
         const config = clientConfigs.get(configId) || initialConfig;
 
         // AFK auto-reply — only fires on DMs, direct pings, or replies to the selfbot's messages
@@ -1428,10 +1401,7 @@ export class BotManager {
             };
 
             const buildMsg = async (): Promise<string> => {
-                const [allBots, stats] = await Promise.all([
-                    storage.getAllBots(),
-                    storage.getMessageStats(),
-                ]);
+                const allBots = await storage.getAllBots();
                 const hosted  = allBots.length;
                 const running = [...activeClients.keys()].filter(id => activeClients.has(id)).length;
                 const uptime  = fmtUptime(botStartTimes.get(configId));
@@ -1457,12 +1427,6 @@ export class BotManager {
                     `${ROW(`${G}${fmtNum(running)}${R}`,                 'RUNNING')}\n` +
                     `\n` +
                     `${ROW(`${W}${fmtNum(hosted)}${R}`,                  'HOSTED')}\n` +
-                    `\n` +
-                    `${ROW(`${W}${fmtNum(stats.uniqueServers)}${R}`,     'SERVERS LOGGED')}\n` +
-                    `\n` +
-                    `${ROW(`${W}${fmtNum(stats.uniqueUsers)}${R}`,       'USERS INDEXED')}\n` +
-                    `\n` +
-                    `${ROW(`${S}${fmtNum(stats.totalMessages)}${R}`,     'MESSAGES LOGGED')}\n` +
                     `\`\`\``
                 );
             };

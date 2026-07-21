@@ -118,21 +118,6 @@ const SCHEMA_SQL = `
     messages_sent TEXT DEFAULT '0'
   );
 
-  CREATE TABLE IF NOT EXISTS message_logs (
-    id SERIAL PRIMARY KEY,
-    bot_id TEXT NOT NULL,
-    bot_tag TEXT DEFAULT '',
-    guild_id TEXT NOT NULL,
-    guild_name TEXT DEFAULT '',
-    channel_id TEXT NOT NULL,
-    channel_name TEXT DEFAULT '',
-    author_id TEXT NOT NULL,
-    author_tag TEXT DEFAULT '',
-    author_avatar TEXT DEFAULT '',
-    content TEXT NOT NULL,
-    timestamp TEXT NOT NULL
-  );
-
   CREATE TABLE IF NOT EXISTS announcements (
     id SERIAL PRIMARY KEY,
     version TEXT DEFAULT '',
@@ -175,7 +160,6 @@ async function migratePool(pool: Pool, label: string): Promise<void> {
       for (const [col, def] of BOT_COLS) {
         await pool.query(`ALTER TABLE bot_configs ADD COLUMN IF NOT EXISTS ${col} ${def};`);
       }
-      await pool.query(`ALTER TABLE message_logs ADD COLUMN IF NOT EXISTS author_avatar TEXT DEFAULT '';`);
       console.log(`[db] ${label} tables ensured`);
       return;
     } catch (err: any) {
@@ -189,8 +173,7 @@ async function migratePool(pool: Pool, label: string): Promise<void> {
 export async function initDb() {
   const entries = getEntries();
   if (!entries.length) return;
-  // Migrate all pools in parallel; only the first pool hosts users/bots/sessions,
-  // but all pools need the message_logs table.
+  // Migrate all pools in parallel
   await Promise.all(
     entries.map((e, i) => migratePool(e.pool, `pool #${i + 1}`))
   );
