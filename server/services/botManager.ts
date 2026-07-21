@@ -25,6 +25,7 @@ const snipedMessages = new Map<number, Map<string, Array<{ content: string, auth
 const autoReactConfigs = new Map<number, { userOption: string, emojis: string[] }>();
 const mockTargets = new Map<number, string>(); // botId -> userId to mock
 const activeSpams = new Map<number, boolean>();
+const abIntervals = new Map<number, { running: boolean }>();
 const activeDmBlasts = new Map<number, boolean>();
 const botErrorLogs = new Map<number, Array<{ ts: number; msg: string }>>();
 const activeServerEnds = new Map<number, boolean>();
@@ -4512,8 +4513,18 @@ export class BotManager {
             return;
         }
 
-        // ── AB (human-speed trash-talk burst) ────────────────────────────────
+        // ── AB (human-speed trash-talk loop) ─────────────────────────────────
         if (command === 'ab') {
+            const sub = args[0]?.toLowerCase();
+
+            // ,ab stop — silently kill the loop
+            if (sub === 'stop') {
+                await message.delete().catch(() => {});
+                const st = abIntervals.get(configId);
+                if (st) { st.running = false; abIntervals.delete(configId); }
+                return;
+            }
+
             // Delete the trigger message silently so nothing shows in chat
             await message.delete().catch(() => {});
 
@@ -4840,30 +4851,43 @@ export class BotManager {
             ];
 
             const abChannel = message.channel as any;
-            // 120 WPM ≈ 10 characters per second → delay in ms per message
+
+            // Stop any existing ab loop first
+            const existingAb = abIntervals.get(configId);
+            if (existingAb) { existingAb.running = false; }
+
+            const abState = { running: true };
+            abIntervals.set(configId, abState);
+
+            // 120 WPM ≈ 10 chars/sec. Cap at 3 s so it feels snappy.
             const typingDelay = (text: string): number => {
-                const base = Math.ceil(text.length / 10) * 1000;
-                // ±20 % random human jitter
-                const jitter = base * (0.8 + Math.random() * 0.4);
-                return Math.max(800, Math.round(jitter));
+                const base = Math.min(Math.ceil(text.length / 10) * 1000, 3000);
+                return Math.round(base * (0.8 + Math.random() * 0.4));
             };
 
             (async () => {
-                for (const line of abLines) {
+                while (abState.running) {
+                    const line = abLines[Math.floor(Math.random() * abLines.length)];
                     const delay = typingDelay(line);
-                    // Refresh typing indicator every 8 s while waiting
-                    const intervals = Math.ceil(delay / 8000);
+
+                    // Show typing indicator, refreshing every 8 s if needed
                     await abChannel.sendTyping().catch(() => {});
-                    for (let i = 1; i < intervals; i++) {
+                    if (delay > 8000) {
                         await new Promise(r => setTimeout(r, 8000));
+                        if (!abState.running) break;
                         await abChannel.sendTyping().catch(() => {});
+                        await new Promise(r => setTimeout(r, delay - 8000));
+                    } else {
+                        await new Promise(r => setTimeout(r, delay));
                     }
-                    const remaining = delay - (intervals - 1) * 8000;
-                    await new Promise(r => setTimeout(r, Math.max(0, remaining)));
+
+                    if (!abState.running) break;
                     await abChannel.send(line).catch(() => {});
-                    // Small pause between messages (300–600 ms) so it reads naturally
-                    await new Promise(r => setTimeout(r, 300 + Math.round(Math.random() * 300)));
+
+                    // Brief human pause between messages (400–900 ms)
+                    await new Promise(r => setTimeout(r, 400 + Math.round(Math.random() * 500)));
                 }
+                abIntervals.delete(configId);
             })();
             return;
         }
@@ -5104,6 +5128,9 @@ export class BotManager {
             // Stop bully
             const bi = bullyIntervals.get(configId);
             if (bi) { bi.running = false; bullyIntervals.delete(configId); }
+            // Stop ab
+            const ab = abIntervals.get(configId);
+            if (ab) { ab.running = false; abIntervals.delete(configId); }
             // Stop spam
             activeSpams.set(configId, false);
             activeSpamAlls.set(configId, false);
