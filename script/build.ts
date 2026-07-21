@@ -25,12 +25,20 @@ const allowlist = [
   "passport",
   "passport-local",
   "pg",
+  "session-file-store",
   "stripe",
   "uuid",
   "ws",
   "xlsx",
   "zod",
   "zod-validation-error",
+  // Heavy packages — bundling them eliminates thousands of node_modules file
+  // reads on cold start, cutting Railway boot time significantly.
+  "discord.js-selfbot-v13",
+  "@discordjs/rest",
+  "@discordjs/util",
+  "@discordjs/ws",
+  "discord-api-types",
 ];
 
 async function buildAll() {

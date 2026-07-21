@@ -136,12 +136,10 @@ export async function registerRoutes(
     res.status(200).json({ status: "ok" });
   });
 
-  // Initialise DB tables if using PostgreSQL — failure is non-fatal
-  try {
-    await initDb();
-  } catch (e: any) {
-    console.error("[db] initDb failed, continuing without DB migration:", e?.message);
-  }
+  // Initialise DB tables in the background — never blocks route/static setup
+  initDb().catch((e: any) =>
+    console.error("[db] background initDb failed:", e?.message)
+  );
 
   // Auto-restart bots that were running before the server stopped
   (async () => {

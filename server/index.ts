@@ -74,6 +74,13 @@ httpServer.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
   log(`serving on port ${port}`);
 });
 
+// ── Keep-alive self-ping — prevents Railway from sleeping the instance ────────
+const KEEPALIVE_INTERVAL = 4 * 60 * 1000; // every 4 minutes
+setInterval(() => {
+  const url = `http://127.0.0.1:${port}/health`;
+  fetch(url).catch(() => {}); // fire-and-forget; errors are fine
+}, KEEPALIVE_INTERVAL);
+
 // ── Graceful shutdown — do NOT clear isRunning so bots auto-restart on boot ──
 // When Replit / Railway sends SIGTERM (deploy, restart, idle shutdown), we exit
 // cleanly without touching token state in storage.  On the next boot, startAll()
