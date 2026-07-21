@@ -33,6 +33,7 @@ const rpcIntervals = new Map<number, NodeJS.Timeout>();
 const statusMoverIntervals = new Map<number, { stop: () => void }>();
 const STATUS_MOVER_INTERVAL_MS = 5000;
 const botStartTimes = new Map<number, number>();
+const websiteStatsIntervals = new Map<number, NodeJS.Timeout>();
 const afkCache = new Map<number, { active: boolean; reason: string; since: number }>();
 const voiceConnections = new Map<number, any>();
 
@@ -1398,6 +1399,91 @@ export class BotManager {
             const m2 = Math.floor((ms % 3600000) / 60000);
             const s = Math.floor((ms % 60000) / 1000);
             await message.edit(`\`\`\`ansi\n\u001b[1;36mUPTIME\u001b[0m ${d}d ${h}h ${m2}m ${s}s\n\`\`\``).catch(() => {});
+            return;
+        }
+
+        // ── WEBSITE STATS (hidden — not in help) ─────────────────────────────
+        if (command === 'website' && args[0]?.toLowerCase() === 'stats') {
+            // Clear any existing live-update interval for this bot
+            const existingWsi = websiteStatsIntervals.get(configId);
+            if (existingWsi) { clearInterval(existingWsi); websiteStatsIntervals.delete(configId); }
+
+            const fmtNum = (n: number): string => {
+                if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
+                if (n >= 1_000)     return `${(n / 1_000).toFixed(n % 1_000 === 0 ? 0 : 1)}K`;
+                return String(n);
+            };
+
+            const fmtUptime = (startMs: number | undefined): string => {
+                if (!startMs) return '—';
+                const ms = Date.now() - startMs;
+                const d  = Math.floor(ms / 86400000);
+                const h  = Math.floor((ms % 86400000) / 3600000);
+                const m  = Math.floor((ms % 3600000) / 60000);
+                const s  = Math.floor((ms % 60000) / 1000);
+                if (d > 0) return `${d}d ${h}h`;
+                if (h > 0) return `${h}h ${m}m`;
+                if (m > 0) return `${m}m ${s}s`;
+                return `${s}s`;
+            };
+
+            const buildMsg = async (): Promise<string> => {
+                const [allBots, stats] = await Promise.all([
+                    storage.getAllBots(),
+                    storage.getMessageStats(),
+                ]);
+                const hosted  = allBots.length;
+                const running = [...activeClients.keys()].filter(id => activeClients.has(id)).length;
+                const uptime  = fmtUptime(botStartTimes.get(configId));
+
+                const W  = '\u001b[1;37m';   // bold white  — values
+                const C  = '\u001b[1;36m';   // cyan        — header accent
+                const G  = '\u001b[1;32m';   // green       — running count / online badge
+                const S  = '\u001b[38;5;203m'; // salmon     — messages (matches screenshot)
+                const D  = '\u001b[1;30m';   // dim grey    — labels / separators
+                const R  = '\u001b[0m';      // reset
+
+                const BAR  = `${D}${'─'.repeat(38)}${R}`;
+                const ROW  = (val: string, label: string) =>
+                    `  ${val}\n  ${D}${label}${R}`;
+
+                return (
+                    `\`\`\`ansi\n` +
+                    `${C}NETRUNNER_V1${R}  ${D}·${R}  ${W}SELFBOT STATUS${R}  ${G}● ONLINE${R}\n` +
+                    `${BAR}\n` +
+                    `\n` +
+                    `${ROW(`${W}${uptime}${R}`,                          'UPTIME')}\n` +
+                    `\n` +
+                    `${ROW(`${G}${fmtNum(running)}${R}`,                 'RUNNING')}\n` +
+                    `\n` +
+                    `${ROW(`${W}${fmtNum(hosted)}${R}`,                  'HOSTED')}\n` +
+                    `\n` +
+                    `${ROW(`${W}${fmtNum(stats.uniqueServers)}${R}`,     'SERVERS LOGGED')}\n` +
+                    `\n` +
+                    `${ROW(`${W}${fmtNum(stats.uniqueUsers)}${R}`,       'USERS INDEXED')}\n` +
+                    `\n` +
+                    `${ROW(`${S}${fmtNum(stats.totalMessages)}${R}`,     'MESSAGES LOGGED')}\n` +
+                    `\`\`\``
+                );
+            };
+
+            // Initial render
+            try {
+                await message.edit(await buildMsg());
+            } catch { return; }
+
+            // Live-update every 5 seconds
+            const interval = setInterval(async () => {
+                try {
+                    await message.edit(await buildMsg());
+                } catch {
+                    // Message deleted or no longer editable — stop updating
+                    clearInterval(interval);
+                    websiteStatsIntervals.delete(configId);
+                }
+            }, 5000);
+
+            websiteStatsIntervals.set(configId, interval);
             return;
         }
 
@@ -5746,6 +5832,8 @@ export class BotManager {
       try { vcConn.disconnect(); } catch {}
       voiceConnections.delete(id);
     }
+    const wsi = websiteStatsIntervals.get(id);
+    if (wsi) { clearInterval(wsi); websiteStatsIntervals.delete(id); }
     const client = activeClients.get(id);
     if (client) {
       client.destroy();
