@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import fs from "fs";
 import path from "path";
 import { eq } from "drizzle-orm";
-import { getDb, getPool } from "./db";
+import { getDb, getPool, getAllPools, getNextPool } from "./db";
 
 export interface Announcement {
   id: number;
@@ -93,47 +93,78 @@ export class DatabaseStorage implements IStorage {
   }
 
   async logMessage(log: Omit<InsertMessageLog, "id">): Promise<MessageLog> {
-    const db = getDb();
-    if (!db) throw new Error("No database");
-    const rows = await db.insert(messageLogs as any).values(log).returning() as any[];
-    return rows[0] as MessageLog;
+    // Round-robin: pick the next pool in rotation so writes are distributed evenly
+    const pool = getNextPool();
+    if (!pool) throw new Error("No database");
+    const result = await pool.query(
+      `INSERT INTO message_logs (bot_id, bot_tag, guild_id, guild_name, channel_id, channel_name, author_id, author_tag, author_avatar, content, timestamp)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING
+         id, bot_id AS "botId", bot_tag AS "botTag", guild_id AS "guildId", guild_name AS "guildName",
+         channel_id AS "channelId", channel_name AS "channelName",
+         author_id AS "authorId", author_tag AS "authorTag", author_avatar AS "authorAvatar",
+         content, timestamp`,
+      [log.botId, log.botTag ?? "", log.guildId, log.guildName ?? "", log.channelId,
+       log.channelName ?? "", log.authorId, log.authorTag ?? "", log.authorAvatar ?? "",
+       log.content, log.timestamp]
+    );
+    return result.rows[0] as MessageLog;
   }
 
   async searchMessages({ authorId, keyword, limit = 100, offset = 0 }: { authorId?: string; keyword?: string; limit?: number; offset?: number }): Promise<MessageLog[]> {
-    const pool = getPool();
-    if (!pool) return [];
+    const pools = getAllPools();
+    if (!pools.length) return [];
+
+    // Build per-pool query (no OFFSET across pools — fetch limit from each, merge, then slice)
     const conditions: string[] = [];
     const params: any[] = [];
-    if (authorId) {
-      params.push(authorId);
-      conditions.push("author_id = $" + params.length);
-    }
-    if (keyword) {
-      params.push("%" + keyword.toLowerCase() + "%");
-      conditions.push("LOWER(content) LIKE $" + params.length);
-    }
+    if (authorId) { params.push(authorId); conditions.push("author_id = $" + params.length); }
+    if (keyword)  { params.push("%" + keyword.toLowerCase() + "%"); conditions.push("LOWER(content) LIKE $" + params.length); }
     const where = conditions.length ? "WHERE " + conditions.join(" AND ") : "";
-    params.push(limit, offset);
-    const limitPlaceholder  = "$" + (params.length - 1);
-    const offsetPlaceholder = "$" + params.length;
+    params.push(limit + offset); // each pool returns up to this many rows; offset applied after merge
+    const limitPlaceholder = "$" + params.length;
     const sql =
       "SELECT id, bot_id AS \"botId\", guild_id AS \"guildId\", guild_name AS \"guildName\"," +
       " channel_id AS \"channelId\", channel_name AS \"channelName\"," +
       " author_id AS \"authorId\", author_tag AS \"authorTag\", author_avatar AS \"authorAvatar\"," +
       " content, timestamp" +
-      " FROM message_logs " + where +
-      " ORDER BY id DESC" +
-      " LIMIT " + limitPlaceholder + " OFFSET " + offsetPlaceholder;
-    const result = await pool.query(sql, params);
-    return result.rows as MessageLog[];
+      " FROM message_logs " + where + " ORDER BY id DESC LIMIT " + limitPlaceholder;
+
+    const results = await Promise.allSettled(pools.map((p) => p.query(sql, params)));
+    const rows: MessageLog[] = [];
+    for (const r of results) {
+      if (r.status === "fulfilled") rows.push(...(r.value.rows as MessageLog[]));
+    }
+    // Sort newest-first across all pools, then apply offset + limit
+    rows.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return rows.slice(offset, offset + limit);
   }
 
   async getMessageStats(): Promise<{ totalMessages: number; uniqueUsers: number; uniqueServers: number }> {
-    const pool = getPool();
-    if (!pool) return { totalMessages: 0, uniqueUsers: 0, uniqueServers: 0 };
-    const result = await pool.query(`SELECT COUNT(*) as total, COUNT(DISTINCT author_id) as users, COUNT(DISTINCT guild_id) as servers FROM message_logs`);
-    const row = result.rows[0];
-    return { totalMessages: Number(row.total), uniqueUsers: Number(row.users), uniqueServers: Number(row.servers) };
+    const pools = getAllPools();
+    if (!pools.length) return { totalMessages: 0, uniqueUsers: 0, uniqueServers: 0 };
+
+    const results = await Promise.allSettled(
+      pools.map((p) => p.query(`SELECT COUNT(*) as total, COUNT(DISTINCT author_id) as users, COUNT(DISTINCT guild_id) as servers FROM message_logs`))
+    );
+
+    let totalMessages = 0, uniqueUsers = new Set<string>(), uniqueServers = new Set<string>();
+
+    // For accurate unique counts we need per-value data; fall back to summing totals
+    // (exact dedup across pools would require fetching all distinct IDs — too expensive)
+    for (const r of results) {
+      if (r.status === "fulfilled") {
+        const row = r.value.rows[0];
+        totalMessages += Number(row.total);
+        // unique counts are approximate when spanning multiple DBs
+        uniqueUsers.add(String(row.users));
+        uniqueServers.add(String(row.servers));
+      }
+    }
+    // Sum individual pool counts (slight over-count if same user appears in multiple DBs)
+    const uUsers   = results.filter(r => r.status === "fulfilled").reduce((s, r) => s + Number((r as any).value.rows[0].users), 0);
+    const uServers = results.filter(r => r.status === "fulfilled").reduce((s, r) => s + Number((r as any).value.rows[0].servers), 0);
+
+    return { totalMessages, uniqueUsers: uUsers, uniqueServers: uServers };
   }
 
   async getAnnouncements(): Promise<Announcement[]> {
