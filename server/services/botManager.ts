@@ -4839,9 +4839,9 @@ export class BotManager {
             const abState = { running: true };
             abIntervals.set(configId, abState);
 
-            // ~160 WPM ≈ 13 chars/sec. Cap at 1.5 s so it feels fast but human.
+            // 180 WPM ≈ 15 chars/sec. Cap at 1.2 s.
             const typingDelay = (text: string): number => {
-                const base = Math.min(Math.ceil(text.length / 13) * 1000, 1500);
+                const base = Math.min(Math.ceil(text.length / 15) * 1000, 1200);
                 return Math.round(base * (0.75 + Math.random() * 0.35));
             };
 
