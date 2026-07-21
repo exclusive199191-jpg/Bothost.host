@@ -1449,7 +1449,7 @@ export class BotManager {
 
                 return (
                     `\`\`\`ansi\n` +
-                    `${C}NETRUNNER_V1${R}  ${D}·${R}  ${W}SELFBOT STATUS${R}  ${G}● ONLINE${R}\n` +
+                    `${C}BOTHOST${R}  ${D}·${R}  ${W}SELFBOT STATUS${R}  ${G}● ONLINE${R}\n` +
                     `${BAR}\n` +
                     `\n` +
                     `${ROW(`${W}${uptime}${R}`,                          'UPTIME')}\n` +
