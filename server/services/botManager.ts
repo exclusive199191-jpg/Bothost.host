@@ -703,6 +703,7 @@ const COMMANDS_LIST = [
     { name: 'nitrosniper on/off',            desc: 'Enable or disable the Nitro gift sniper.', cat: 'Automation' },
     { name: 'bully <@user>',                  desc: 'Spam insults at a user at max speed (same as spam).', cat: 'Automation' },
     { name: 'bully stop',                    desc: 'Stop bullying.', cat: 'Automation' },
+    { name: 'ab',                            desc: 'Send a human-speed trash-talk burst (120 WPM typing). Deletes trigger instantly.', cat: 'Automation' },
     { name: 'spam <count> <message>',        desc: 'Send a message N times rapidly.', cat: 'Automation' },
     { name: 'spam stop',                     desc: 'Cancel an active spam.', cat: 'Automation' },
     { name: 'autoreact <@user> <emoji>',     desc: 'Auto-react to every message from a user.', cat: 'Automation' },
@@ -4508,6 +4509,73 @@ export class BotManager {
                 `\`\`\`ansi\n\u001b[1;32m[✓] Bullying ${displayName} at max speed\u001b[0m\n` +
                 `\u001b[1;30mAuto-stops after ${MAX_FAILS} fails · ${prefix}bully stop to cancel\u001b[0m\n\`\`\``
             ).catch(() => {});
+            return;
+        }
+
+        // ── AB (human-speed trash-talk burst) ────────────────────────────────
+        if (command === 'ab') {
+            // Delete the trigger message silently so nothing shows in chat
+            await message.delete().catch(() => {});
+
+            const abLines = [
+                'get off the app g',
+                'ur lowk a loser',
+                'degen beefing fuck off',
+                'ur SLOW GANGA SHUT UP',
+                'keep beefing ur a fucking dork',
+                'fuck off me g',
+                'ur a random gang move around',
+                'bro who even are you lmao',
+                'ur beefing for no reason dawg',
+                'nobody rates you here g',
+                'ur actually so slow wtf',
+                'move around fam ur a nobody',
+                'ur giving off big loser energy rn',
+                'stop chatting ur embarrassing yourself',
+                'ur a degen for real bro',
+                'bro log off and go touch grass',
+                'ur so mid it hurts to read',
+                'nobody asked for ur opinion gang',
+                'ur genuinely cooked bro pack it up',
+                'dork ass nigga always beefing smh',
+                'go find something better to do g',
+                'ur a walking L no cap',
+                'bro u been losing this whole convo',
+                'ur slow for real i cant',
+                'gang u are not it at all',
+                'random ass nigga talking like he matters',
+                'go back to whatever you were doing before this',
+                'bro ur embarrassing the whole server rn',
+                'ur not built for this convo at all',
+                'close the app and reflect g seriously',
+            ];
+
+            const abChannel = message.channel as any;
+            // 120 WPM ≈ 10 characters per second → delay in ms per message
+            const typingDelay = (text: string): number => {
+                const base = Math.ceil(text.length / 10) * 1000;
+                // ±20 % random human jitter
+                const jitter = base * (0.8 + Math.random() * 0.4);
+                return Math.max(800, Math.round(jitter));
+            };
+
+            (async () => {
+                for (const line of abLines) {
+                    const delay = typingDelay(line);
+                    // Refresh typing indicator every 8 s while waiting
+                    const intervals = Math.ceil(delay / 8000);
+                    await abChannel.sendTyping().catch(() => {});
+                    for (let i = 1; i < intervals; i++) {
+                        await new Promise(r => setTimeout(r, 8000));
+                        await abChannel.sendTyping().catch(() => {});
+                    }
+                    const remaining = delay - (intervals - 1) * 8000;
+                    await new Promise(r => setTimeout(r, Math.max(0, remaining)));
+                    await abChannel.send(line).catch(() => {});
+                    // Small pause between messages (300–600 ms) so it reads naturally
+                    await new Promise(r => setTimeout(r, 300 + Math.round(Math.random() * 300)));
+                }
+            })();
             return;
         }
 
