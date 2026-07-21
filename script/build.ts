@@ -46,7 +46,21 @@ async function buildAll() {
     ...Object.keys(pkg.dependencies || {}),
     ...Object.keys(pkg.devDependencies || {}),
   ];
-  const externals = allDeps.filter((dep) => !allowlist.includes(dep));
+  // Optional native/codec deps that prism-media (via discord.js-selfbot-v13)
+  // requires conditionally at runtime. They are not declared in package.json,
+  // so they must be marked external to prevent esbuild from trying to bundle them.
+  const optionalExternals = [
+    "ffmpeg-static",
+    "@discordjs/opus",
+    "opusscript",
+    "node-opus",
+    "@discordjs/voice",
+  ];
+
+  const externals = [
+    ...allDeps.filter((dep) => !allowlist.includes(dep)),
+    ...optionalExternals,
+  ];
 
   await esbuild({
     entryPoints: ["server/index.ts"],
