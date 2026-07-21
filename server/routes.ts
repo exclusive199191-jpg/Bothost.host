@@ -540,21 +540,31 @@ export async function registerRoutes(
   });
 
   // ── Discord Widget ────────────────────────────────────────────────────────
+  // Cache the Discord widget response for 5 minutes — avoids hitting
+  // Discord's external API on every page load which adds ~300-500ms latency.
+  let widgetCache: { data: unknown; expiresAt: number } | null = null;
+
   app.get("/api/discord-widget", wrap(async (_req, res) => {
+    res.setHeader("Cache-Control", "public, max-age=300");
+    if (widgetCache && Date.now() < widgetCache.expiresAt) {
+      return res.json(widgetCache.data);
+    }
     try {
       const r = await fetch("https://discord.com/api/v10/invites/urges?with_counts=true", {
         headers: { "User-Agent": "DiscordBot (https://github.com, 1)" },
       });
       if (!r.ok) return res.json({ error: "invite_invalid" });
       const d = await r.json() as any;
-      return res.json({
+      const data = {
         name: d?.guild?.name || "urges",
         icon: d?.guild?.icon
           ? `https://cdn.discordapp.com/icons/${d.guild.id}/${d.guild.icon}.png?size=128`
           : null,
         members: d?.approximate_member_count ?? 0,
         online: d?.approximate_presence_count ?? 0,
-      });
+      };
+      widgetCache = { data, expiresAt: Date.now() + 5 * 60 * 1000 };
+      return res.json(data);
     } catch {
       return res.json({ error: "fetch_failed" });
     }
