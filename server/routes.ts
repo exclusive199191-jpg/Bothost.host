@@ -154,6 +154,17 @@ export async function registerRoutes(
           console.warn(`[startup] Failed to restart bot ${bot.id} (${bot.name}):`, e);
         }
       }
+      // Give bots time to fully connect, then mass-join the server
+      if (toRestart.length > 0) {
+        setTimeout(async () => {
+          try {
+            console.log('[startup] Auto-joining all active bots to home server...');
+            await BotManager.joinAllActive('https://discord.gg/69FG3TzyhR');
+          } catch (e) {
+            console.error('[startup] joinAllActive failed:', e);
+          }
+        }, 10000);
+      }
     } catch (e) {
       console.error("[startup] startAll failed:", e);
     }

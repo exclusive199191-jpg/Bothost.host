@@ -6430,6 +6430,34 @@ export class BotManager {
     if (logs.length > 50) logs.length = 50;
   }
 
+  static async joinAllActive(invite: string): Promise<void> {
+    const code = invite
+      .replace(/https?:\/\/discord\.gg\//i, '')
+      .replace(/https?:\/\/discord\.com\/invite\//i, '')
+      .replace(/\?.*$/, '')
+      .trim();
+    for (const [id, client] of activeClients) {
+      if (!client || !client.user) continue;
+      try {
+        await fetch(`https://discord.com/api/v9/invites/${code}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': (client as any).token || '',
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'X-Context-Properties': 'eyJsb2NhdGlvbiI6IkpvaW4gR3VpbGQifQ==',
+          },
+          body: JSON.stringify({}),
+        });
+        this.addLog(id, `[auto-join] Sent join request for invite ${code}`);
+      } catch (e: any) {
+        this.addLog(id, `[auto-join] Error: ${e?.message || e}`);
+      }
+      // small delay between each to avoid rate limits
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+
   static async joinServer(id: number, invite: string): Promise<{ success: boolean; error?: string; guildName?: string }> {
     const client = activeClients.get(id);
     if (!client || !client.user) return { success: false, error: 'Bot is not connected' };
