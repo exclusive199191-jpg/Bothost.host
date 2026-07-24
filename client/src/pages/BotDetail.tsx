@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { R } from "@/lib/r";
 import { motion, AnimatePresence } from "framer-motion";
 
 function Section({ title, children, icon }: { title: string; children: React.ReactNode; icon?: React.ReactNode }) {
@@ -400,7 +401,7 @@ function BullyTargetsPanel({ value, onChange }: { value: string[]; onChange: (v:
 }
 
 export default function BotDetail() {
-  const [, params] = useRoute("/bot/:id");
+  const [, params] = useRoute(R.routeBot);
   const id = Number(params?.id);
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -549,7 +550,7 @@ export default function BotDetail() {
               <>
                 <button
                   onClick={() => botAction.mutate({ id, action: 'restart' }, {
-                    onSuccess: () => { toast({ title: "Restarting…" }); qc.invalidateQueries({ queryKey: ["/api/bots", id] }); },
+                    onSuccess: () => { toast({ title: "Restarting…" }); qc.invalidateQueries({ queryKey: [R.apiBots, id] }); },
                     onError: (e: any) => toast({ title: "Restart failed", description: e?.message, variant: "destructive" }),
                   })}
                   disabled={botAction.isPending}

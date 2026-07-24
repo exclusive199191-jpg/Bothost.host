@@ -13,6 +13,7 @@ import {
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { R } from "@/lib/r";
 import React from "react";
 import type { BotConfig } from "@shared/schema";
 
@@ -59,19 +60,19 @@ export default function Dashboard() {
   const [hoveredCard, setHoveredCard] = React.useState<number | null>(null);
 
   const { data: globalStats } = useQuery<{ totalHosted: number; totalRunning: number }>({
-    queryKey: ["/api/stats"],
+    queryKey: [R.apiStats],
     refetchInterval: 30000,
   });
   const { data: uptimeData } = useQuery<{ uptimeSeconds: number }>({
-    queryKey: ["/api/uptime"],
+    queryKey: [R.apiUptime],
     refetchInterval: 60000,
   });
   const { data: widget } = useQuery<{ name: string; icon: string | null; members: number; online: number; error?: string }>({
-    queryKey: ["/api/discord-widget"],
+    queryKey: [R.apiDiscordWidget],
     refetchInterval: 120000,
   });
   const { data: announcements } = useQuery<Array<{ id: number; version: string; title: string; body: string; date: string; createdAt: number }>>({
-    queryKey: ["/api/announcements"],
+    queryKey: [R.apiAnnouncements],
     refetchInterval: 60000,
   });
 
@@ -110,12 +111,12 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-2">
             <ThemeCustomizer />
-            <Link href="/accounts">
+            <Link href={R.routeAccounts}>
               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/20 text-primary/70 hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors text-xs font-mono">
                 <Users className="w-3 h-3" /><span className="hidden sm:inline">Accounts</span>
               </button>
             </Link>
-            <Link href="/admin">
+            <Link href={R.routeAdmin}>
               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 text-muted-foreground hover:text-white hover:border-primary/30 hover:bg-primary/5 transition-colors text-xs font-mono">
                 <Shield className="w-3 h-3" /><span className="hidden sm:inline">Admin</span>
               </button>
@@ -225,7 +226,7 @@ export default function Dashboard() {
                       </div>
 
                       <div className="flex items-center gap-1.5 mt-3">
-                        <Link href={`/bot/${bot.id}`}>
+                        <Link href={R.routeBot.replace(':id', String(bot.id))}>
                           <button className="flex-1 h-8 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-[11px] font-mono text-white/70 hover:text-white transition-all flex items-center justify-center gap-1.5">
                             <Settings className="w-3 h-3" /> Configure
                           </button>

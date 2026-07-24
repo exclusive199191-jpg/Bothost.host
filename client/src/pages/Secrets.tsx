@@ -11,6 +11,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertBotConfigSchema } from "@shared/schema";
 import { Shield, Save, RefreshCcw } from "lucide-react";
 import { z } from "zod";
+import { R } from "@/lib/r";
 
 const settingsSchema = z.object({
   token: z.string().min(1, "Token is required"),
@@ -19,7 +20,7 @@ const settingsSchema = z.object({
 export default function Secrets() {
   const { toast } = useToast();
   const { data: bots, isLoading } = useQuery<BotConfig[]>({ 
-    queryKey: ["/api/bots"] 
+    queryKey: [R.apiBots] 
   });
 
   const mainBot = bots?.find(b => b.name === "Main User Account");
@@ -37,14 +38,14 @@ export default function Secrets() {
   const mutation = useMutation({
     mutationFn: async (values: z.infer<typeof settingsSchema>) => {
       if (!mainBot) throw new Error("Main bot not found");
-      const res = await apiRequest("PUT", `/api/bots/${mainBot.id}`, {
+      const res = await apiRequest("PUT", R.apiBotsId.replace(':id', String(mainBot.id)), {
         ...mainBot,
         token: values.token
       });
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bots"] });
+      queryClient.invalidateQueries({ queryKey: [R.apiBots] });
       toast({
         title: "Success",
         description: "Bot token updated successfully. The bot will restart to apply the new token.",

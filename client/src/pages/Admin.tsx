@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { R } from "@/lib/r";
 
 interface AdminBot {
   id: number;
@@ -106,7 +107,7 @@ export default function Admin() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const fetchAnnouncements = useCallback(async () => {
-    const r = await fetch("/api/announcements", { credentials: "include" });
+    const r = await fetch(R.apiAnnouncements, { credentials: "include" });
     if (r.ok) setAnnouncements(await r.json());
   }, []);
 
@@ -114,8 +115,8 @@ export default function Admin() {
     setLoading(true);
     try {
       const [botsRes, dataRes] = await Promise.all([
-        fetch("/api/admin/bots", { credentials: "include" }),
-        fetch("/api/admin/data", { credentials: "include" }),
+        fetch(R.apiAdminBots, { credentials: "include" }),
+        fetch(R.apiAdminData, { credentials: "include" }),
       ]);
       if (botsRes.ok) setBots(await botsRes.json());
       if (dataRes.ok) setAdminData(await dataRes.json());
@@ -134,7 +135,7 @@ export default function Admin() {
     setLoginLoading(true);
     setLoginError("");
     try {
-      const res = await fetch("/api/admin/auth", {
+      const res = await fetch(R.apiAdminAuth, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -167,7 +168,7 @@ export default function Admin() {
     if (!confirm("Disconnect ALL running bots? This will stop every live account.")) return;
     setActionLoading("disconnect-all");
     try {
-      const res = await fetch("/api/admin/bots/disconnect-all", { method: "POST", credentials: "include" });
+      const res = await fetch(R.apiAdminBotsDisconnectAll, { method: "POST", credentials: "include" });
       const data = await res.json();
       toast({ title: "Disconnected", description: `Stopped ${data.stopped} bot(s).` });
       await fetchAll();
@@ -182,7 +183,7 @@ export default function Admin() {
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
     setActionLoading(`delete-${id}`);
     try {
-      await fetch(`/api/admin/bots/${id}`, { method: "DELETE", credentials: "include" });
+      await fetch(R.apiAdminBotsId.replace(':id', String(id)), { method: "DELETE", credentials: "include" });
       toast({ title: "Deleted", description: `${name} removed.` });
       await fetchAll();
     } catch {
@@ -195,7 +196,7 @@ export default function Admin() {
   const restartBot = async (id: number, name: string) => {
     setActionLoading(`restart-${id}`);
     try {
-      const res = await fetch(`/api/admin/bots/${id}/restart`, { method: "POST", credentials: "include" });
+      const res = await fetch(R.apiAdminBotsIdRestart.replace(':id', String(id)), { method: "POST", credentials: "include" });
       const data = await res.json();
       if (data.success) {
         toast({ title: "Restarted", description: `${name} is back online.` });
@@ -215,14 +216,14 @@ export default function Admin() {
     setAnnLoading(true);
     try {
       if (editingAnn) {
-        const r = await fetch(`/api/admin/announcements/${editingAnn.id}`, {
+        const r = await fetch(R.apiAdminAnnouncementsId.replace(':id', String(editingAnn.id)), {
           method: "PUT", credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(annForm),
         });
         if (r.ok) { const a = await r.json(); setAnnouncements(prev => prev.map(x => x.id === a.id ? a : x)); }
       } else {
-        const r = await fetch("/api/admin/announcements", {
+        const r = await fetch(R.apiAdminAnnouncements, {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(annForm),
@@ -239,7 +240,7 @@ export default function Admin() {
 
   const deleteAnnouncement = async (id: number) => {
     if (!confirm("Delete this update?")) return;
-    await fetch(`/api/admin/announcements/${id}`, { method: "DELETE", credentials: "include" });
+    await fetch(R.apiAdminAnnouncementsId.replace(':id', String(id)), { method: "DELETE", credentials: "include" });
     setAnnouncements(prev => prev.filter(a => a.id !== id));
     toast({ title: "Deleted" });
   };

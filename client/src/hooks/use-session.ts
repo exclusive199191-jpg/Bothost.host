@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { R } from "@/lib/r";
 
 const STORAGE_KEY = "bothost_user_id";
 
@@ -17,10 +18,10 @@ export function userIdHeaders(): Record<string, string> {
 
 export function useSession() {
   return useQuery<{ id: string }>({
-    queryKey: ["/api/auth/init"],
+    queryKey: [R.apiAuthInit],
     queryFn: async () => {
       const storedId = getUserId();
-      const res = await fetch("/api/auth/init", {
+      const res = await fetch(R.apiAuthInit, {
         credentials: "include",
         headers: storedId ? { "X-User-Id": storedId } : {},
       });

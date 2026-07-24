@@ -18,18 +18,22 @@ export const errorSchemas = {
   }),
 };
 
+// Paths are decoded at runtime — not stored as readable strings in the bundle
+const K = 0x5F;
+const _d = (a: number[]) => a.map(c => String.fromCharCode(c ^ K)).join('');
+
 export const api = {
   bots: {
     list: {
       method: 'GET' as const,
-      path: '/api/bots' as const,
+      path: _d([112,62,47,54,112,61,48,43,44]),
       responses: {
         200: z.array(z.custom<typeof botConfigs.$inferSelect>()),
       },
     },
     get: {
       method: 'GET' as const,
-      path: '/api/bots/:id' as const,
+      path: _d([112,62,47,54,112,61,48,43,44,112,101,54,59]),
       responses: {
         200: z.custom<typeof botConfigs.$inferSelect>(),
         404: errorSchemas.notFound,
@@ -37,7 +41,7 @@ export const api = {
     },
     create: {
       method: 'POST' as const,
-      path: '/api/bots' as const,
+      path: _d([112,62,47,54,112,61,48,43,44]),
       input: insertBotConfigSchema.omit({ userId: true }),
       responses: {
         201: z.custom<typeof botConfigs.$inferSelect>(),
@@ -46,7 +50,7 @@ export const api = {
     },
     update: {
       method: 'PUT' as const,
-      path: '/api/bots/:id' as const,
+      path: _d([112,62,47,54,112,61,48,43,44,112,101,54,59]),
       input: insertBotConfigSchema.partial(),
       responses: {
         200: z.custom<typeof botConfigs.$inferSelect>(),
@@ -55,29 +59,28 @@ export const api = {
     },
     delete: {
       method: 'DELETE' as const,
-      path: '/api/bots/:id' as const,
+      path: _d([112,62,47,54,112,61,48,43,44,112,101,54,59]),
       responses: {
         204: z.void(),
         404: errorSchemas.notFound,
       },
     },
-    // Bot Actions
     restart: {
-        method: 'POST' as const,
-        path: '/api/bots/:id/restart' as const,
-        responses: {
-            200: z.object({ success: z.boolean(), message: z.string() }),
-            404: errorSchemas.notFound
-        }
+      method: 'POST' as const,
+      path: _d([112,62,47,54,112,61,48,43,44,112,101,54,59,112,45,58,44,43,62,45,43]),
+      responses: {
+        200: z.object({ success: z.boolean(), message: z.string() }),
+        404: errorSchemas.notFound,
+      },
     },
     stop: {
-        method: 'POST' as const,
-        path: '/api/bots/:id/stop' as const,
-        responses: {
-            200: z.object({ success: z.boolean(), message: z.string() }),
-            404: errorSchemas.notFound
-        }
-    }
+      method: 'POST' as const,
+      path: _d([112,62,47,54,112,61,48,43,44,112,101,54,59,112,44,43,48,47]),
+      responses: {
+        200: z.object({ success: z.boolean(), message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
   },
 };
 
